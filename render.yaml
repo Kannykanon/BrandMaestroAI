@@ -31,8 +31,13 @@ services:
     dockerfilePath: ./dockerfile
     plan: free
     healthCheckPath: /health
-    # Runs the API and a Celery worker in one container.
-    dockerCommand: sh /app/scripts/render_start.sh
+    # uvicorn only. Generation runs in the worker service below.
+    #
+    # Measured on the built image under a 512MB limit: uvicorn holds ~347MB
+    # and a Celery worker ~350MB, so the two together idle at ~486MB of 512
+    # and are killed once a generation loads on top. Split, each fits its own
+    # instance with headroom — which is also the shape docker-compose uses.
+    dockerCommand: sh -c "uvicorn main:app --host 0.0.0.0 --port $PORT"
     envVars:
       # ---- datastores (wired automatically from the resources above) ----
       - key: POSTGRES_URI
@@ -88,6 +93,58 @@ services:
         value: "1"
 
       # ---- optional tracing; leave unset to disable ----
+      - key: OPIK_API_KEY
+        sync: false
+      - key: OPIK_WORKSPACE
+        sync: false
+      - key: OPIK_PROJECT_NAME
+        value: brandmaestro-ai
+
+  - type: worker
+    name: brandmaestro-worker
+    runtime: docker
+    dockerfilePath: ./dockerfile
+    # Background workers have no free plan on Render. This is the one paid
+    # component; the API, Postgres and Key Value all run on free instances.
+    plan: starter
+    dockerCommand: sh -c "celery -A celery_task worker --queues generation,feedback,retraining,rag_refresh --concurrency 1 --loglevel info"
+    envVars:
+      # Same datastores as the API — the queue only works if both ends share
+      # one broker, and the Brand Brain cache is shared deliberately.
+      - key: POSTGRES_URI
+        fromDatabase:
+          name: brandmaestro-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: brandmaestro-redis
+          type: keyvalue
+          property: connectionString
+
+      - key: LLM_PROVIDER
+        value: vertex_ai
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: LOCATION
+        value: us-central1
+      - key: PROJECT_ID
+        sync: false
+      # Upload the same service account JSON as a Secret File on this service
+      # too; secret files are per-service on Render.
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/service-account.json
+      - key: PARALLEL_API_KEY
+        sync: false
+
+      # Must match the API's value: tokens signed by one are read by the other.
+      - key: SECRET_KEY
+        fromService:
+          name: brandmaestro-api
+          type: web
+          envVarKey: SECRET_KEY
+      - key: ALGORITHM
+        value: HS256
+
       - key: OPIK_API_KEY
         sync: false
       - key: OPIK_WORKSPACE
