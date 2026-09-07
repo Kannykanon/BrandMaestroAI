@@ -463,6 +463,14 @@ def init_db():
             from uuid import uuid4
             from sqlalchemy import text
             with engine.begin() as conn:
+                # pgvector. docker-compose gets this from init.sql, which only
+                # runs for that image's first-boot init; a managed Postgres
+                # (Render, Cloud SQL) never sees it. LlamaIndex's PGVectorStore
+                # also creates it lazily, but that happens on the first RAG
+                # call rather than at startup — better to fail loudly here than
+                # midway through a generation.
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
                 # Check if column exists
                 check_sql = text("""
                     SELECT 1 
