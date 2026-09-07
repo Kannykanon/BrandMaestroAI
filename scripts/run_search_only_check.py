@@ -96,15 +96,16 @@ def main():
         ctx = stage("analyzer.get_context() with no metrics", lambda: analyzer.get_context())
         print(f"          -> returned {len((ctx or ''))} chars")
 
-        from nodes.enforcer import _extract_permitted_claims, _run_preflight_checks
-        from nodes.writer import _extract_section, _extract_brand_name, _extract_asset_bank
+        from utils.brand_profile import extract_permitted_claims
+        from utils.enforcement import run_preflight_checks
+        from utils.brand_profile import extract_asset_bank, extract_brand_name, extract_section
         c = ctx or ""
-        stage("_extract_permitted_claims on empty brain", lambda: _extract_permitted_claims(c))
-        stage("_extract_brand_name on empty brain", lambda: _extract_brand_name(c))
-        stage("_extract_asset_bank on empty brain", lambda: _extract_asset_bank(c))
-        stage("_extract_section on empty brain", lambda: _extract_section(c, "OPENING PATTERN"))
+        stage("_extract_permitted_claims on empty brain", lambda: extract_permitted_claims(c))
+        stage("_extract_brand_name on empty brain", lambda: extract_brand_name(c))
+        stage("_extract_asset_bank on empty brain", lambda: extract_asset_bank(c))
+        stage("_extract_section on empty brain", lambda: extract_section(c, "OPENING PATTERN"))
         stage("_run_preflight_checks on empty brain",
-              lambda: _run_preflight_checks("Some sample copy. It has sentences.", c))
+              lambda: run_preflight_checks("Some sample copy. It has sentences.", c))
 
     if memory is not None:
         stage("memory.get_patterns() with no history", lambda: memory.get_patterns(content_type))

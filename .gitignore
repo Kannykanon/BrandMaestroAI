@@ -37,6 +37,7 @@ Thumbs.db
 # Working backups created during development
 *.bak
 *.bak*
+*.pre-refactor
 
 # Local agent/session config
 .claude/

@@ -12,6 +12,11 @@ from prompts.writer import (
     HUMAN_DIRECTIVE_BLOCK,
 )
 from graph.state import GraphState
+from utils.brand_profile import (
+    extract_asset_bank,
+    extract_brand_name,
+    extract_section,
+)
 
 logger = logging.getLogger(__name__)
 import re
@@ -39,95 +44,6 @@ DEFAULT_PATTERNS = {
     "approved": [],
     "rejected": []
 }
-
-
-def _extract_section(text: str, header: str) -> str:
-    """
-    Extract a named section from the brand_brains synthesis text.
-    Sections are delimited by lines starting with '#'.
-    
-    Matches by checking if the line (stripped of '#' and whitespace)
-    starts with the header — avoids partial matches like 'OPENING'
-    matching 'OPENING MOVE' inside section_patterns.
-    """
-    lines = text.split('\n')
-    capture = False
-    result = []
-    for line in lines:
-        # Normalize: strip '#' prefix and whitespace, then check if header matches
-        normalized = line.strip().lstrip('#').strip()
-        if normalized.upper().startswith(header.upper()):
-            capture = True
-            continue
-        if capture and line.strip().startswith('#'):
-            break
-        if capture:
-            result.append(line)
-    return '\n'.join(result).strip()
-
-
-
-def _extract_brand_name(metrics: str) -> str:
-    """
-    Extract the brand name, tolerating a common synthesis-LLM slip where the
-    name is folded straight into the section header (e.g. '# MERIDIAN STUDIOS')
-    instead of the requested '# BRAND NAME' header followed by the name on its
-    own line. Without this fallback, that formatting drift silently defaults
-    the writer to a generic 'our agency' placeholder in the generated copy.
-    """
-    name = _extract_section(metrics, "BRAND NAME")
-    if name and "not extracted" not in name.lower() and "inject manually" not in name.lower():
-        return name.strip()
-
-    first_header = re.match(r"\s*#\s*(.+)", metrics)
-    if first_header:
-        candidate = first_header.group(1).strip()
-        if candidate and candidate.upper() not in ("BRAND NAME", "BRAND ASSET BANK"):
-            return candidate.title() if candidate.isupper() else candidate
-
-    return ""
-
-
-def _extract_asset_bank(metrics: str) -> str:
-    """
-    Extract the BRAND ASSET BANK section and format it as an explicit
-    closed list of permitted claims for injection into the writer prompt.
-    This prevents the writer from hallucinating client counts, percentages,
-    and named frameworks by giving it only the facts it is allowed to use.
-    Now also extracts FINANCIAL TARGETS & PROJECTIONS so proposal-type content
-    can use specific numbers, dollar amounts, and timeframes without triggering
-    the hallucination gate.
-    """
-    match = re.search(
-        r"#\s*BRAND ASSET BANK\s*\n(.*?)(?=\n#\s+[A-Z]|\Z)",
-        metrics,
-        re.DOTALL | re.IGNORECASE
-    )
-    if not match:
-        return (
-            "No asset bank available yet. "
-            "Do NOT invent specific numbers, client counts, percentages, or ROI figures. "
-            "Use only general brand observations without specific data points."
-        )
-    asset_text = match.group(1).strip()
-
-    # Check whether a FINANCIAL TARGETS section exists in the asset bank
-    has_financial = bool(re.search(
-        r"FINANCIAL TARGETS", asset_text, re.IGNORECASE
-    ))
-
-    header = (
-        "PERMITTED BRAND CLAIMS — use ONLY these exact numbers and facts when writing brand experience claims.\n"
-        "Do NOT invent any number, percentage, client count, timeframe, or framework name not listed here.\n"
-    )
-    if has_financial:
-        header += (
-            "FINANCIAL TARGETS & PROJECTIONS listed below are explicitly permitted — "
-            "use them verbatim when writing program objectives, financial summaries, or roadmap timeframes.\n"
-        )
-
-    return header + "\n" + asset_text
-
 
 
 @observe("writer_node")
@@ -174,37 +90,37 @@ def writer_node(state: GraphState) -> GraphState:
     # Extract high-signal sections from brand brain for focused injection
     # These are injected individually — we do NOT also inject the full metrics blob
     # to avoid duplicate context that wastes tokens and confuses the model
-    generation_instructions = _extract_section(metrics, "GENERATION INSTRUCTIONS")
-    signature_phrases       = _extract_section(metrics, "SIGNATURE CONSTRUCTIONS")
-    brand_name              = _extract_brand_name(metrics)
+    generation_instructions = extract_section(metrics, "GENERATION INSTRUCTIONS")
+    signature_phrases       = extract_section(metrics, "SIGNATURE CONSTRUCTIONS")
+    brand_name              = extract_brand_name(metrics)
     
     # Formulaic patterns
-    opening_formula         = _extract_section(metrics, "OPENING PATTERN")
-    closing_formula         = _extract_section(metrics, "CLOSING PATTERN")
-    mechanical_rules        = _extract_section(metrics, "MECHANICAL RULES")
-    evidence_anchoring      = _extract_section(metrics, "EVIDENCE PATTERN")
-    diagnostic_style        = _extract_section(metrics, "DIAGNOSTIC STYLE")
-    reframing_moves         = _extract_section(metrics, "REFRAMING MOVES")
+    opening_formula         = extract_section(metrics, "OPENING PATTERN")
+    closing_formula         = extract_section(metrics, "CLOSING PATTERN")
+    mechanical_rules        = extract_section(metrics, "MECHANICAL RULES")
+    evidence_anchoring      = extract_section(metrics, "EVIDENCE PATTERN")
+    diagnostic_style        = extract_section(metrics, "DIAGNOSTIC STYLE")
+    reframing_moves         = extract_section(metrics, "REFRAMING MOVES")
     
     # Structural patterns — combine signature constructions + thinking templates
     # for a complete picture of the brand's canonical structural moves
-    structural_patterns = _extract_section(metrics, "SIGNATURE CONSTRUCTIONS")
-    thinking_templates  = _extract_section(metrics, "THINKING TEMPLATES")
-    canonical_formula   = _extract_section(metrics, "CANONICAL STRUCTURAL FORMULA")
+    structural_patterns = extract_section(metrics, "SIGNATURE CONSTRUCTIONS")
+    thinking_templates  = extract_section(metrics, "THINKING TEMPLATES")
+    canonical_formula   = extract_section(metrics, "CANONICAL STRUCTURAL FORMULA")
     if thinking_templates:
         structural_patterns = (structural_patterns + "\n\nTHINKING TEMPLATES:\n" + thinking_templates) if structural_patterns else thinking_templates
     if canonical_formula:
         structural_patterns = (structural_patterns + "\n\nCANONICAL STRUCTURAL FORMULA:\n" + canonical_formula) if structural_patterns else canonical_formula
     
     # New dimensions from improved extraction
-    measured_mechanics      = _extract_section(metrics, "MEASURED MECHANICS")
-    pronoun_pattern         = _extract_section(metrics, "PRONOUN PATTERN")
-    qualification_style     = _extract_section(metrics, "QUALIFICATION STYLE")
-    tone_signature          = _extract_section(metrics, "TONE SIGNATURE")
-    capitalization_style    = _extract_section(metrics, "CAPITALIZATION STYLE")
+    measured_mechanics      = extract_section(metrics, "MEASURED MECHANICS")
+    pronoun_pattern         = extract_section(metrics, "PRONOUN PATTERN")
+    qualification_style     = extract_section(metrics, "QUALIFICATION STYLE")
+    tone_signature          = extract_section(metrics, "TONE SIGNATURE")
+    capitalization_style    = extract_section(metrics, "CAPITALIZATION STYLE")
 
     # Extract permitted claims asset bank — passed explicitly to prevent hallucination
-    asset_bank = _extract_asset_bank(metrics)
+    asset_bank = extract_asset_bank(metrics)
 
     # Fall back gracefully if sections are missing (cold start / sparse brain)
     if not generation_instructions:

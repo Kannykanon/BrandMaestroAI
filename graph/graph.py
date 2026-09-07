@@ -31,7 +31,7 @@ def build_graph(search: SearchPort) -> StateGraph:
 
     # Same ceiling the Enforcer applies, read from one place so the two
     # cannot drift apart (MAX_REVISION_ITERATIONS env var).
-    from nodes.enforcer import MAX_ITERATIONS as MAX_GRAPH_ITERATIONS
+    from utils.enforcement import MAX_ITERATIONS as MAX_GRAPH_ITERATIONS
 
     def _route_after_enforcer(s):
         if s["approved"]:

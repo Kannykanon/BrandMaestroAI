@@ -1,0 +1,219 @@
+"""Readers for the synthesized Brand Brain.
+
+The Brand Brain is a single markdown-ish document produced by
+brand_metrics.build_and_cache_context(). These helpers pull individual sections
+out of it. They live here rather than beside any one node because the
+Researcher, Writer and Enforcer all read the same document, and the Researcher
+was previously importing a private helper out of the Writer to do it.
+"""
+import re
+
+
+def extract_section(text: str, header: str) -> str:
+    """
+    Extract a named section from the brand_brains synthesis text.
+    Sections are delimited by lines starting with '#'.
+    
+    Matches by checking if the line (stripped of '#' and whitespace)
+    starts with the header — avoids partial matches like 'OPENING'
+    matching 'OPENING MOVE' inside section_patterns.
+    """
+    lines = text.split('\n')
+    capture = False
+    result = []
+    for line in lines:
+        # Normalize: strip '#' prefix and whitespace, then check if header matches
+        normalized = line.strip().lstrip('#').strip()
+        if normalized.upper().startswith(header.upper()):
+            capture = True
+            continue
+        if capture and line.strip().startswith('#'):
+            break
+        if capture:
+            result.append(line)
+    return '\n'.join(result).strip()
+
+
+def extract_brand_name(metrics: str) -> str:
+    """
+    Extract the brand name, tolerating a common synthesis-LLM slip where the
+    name is folded straight into the section header (e.g. '# MERIDIAN STUDIOS')
+    instead of the requested '# BRAND NAME' header followed by the name on its
+    own line. Without this fallback, that formatting drift silently defaults
+    the writer to a generic 'our agency' placeholder in the generated copy.
+    """
+    name = extract_section(metrics, "BRAND NAME")
+    if name and "not extracted" not in name.lower() and "inject manually" not in name.lower():
+        return name.strip()
+
+    first_header = re.match(r"\s*#\s*(.+)", metrics)
+    if first_header:
+        candidate = first_header.group(1).strip()
+        if candidate and candidate.upper() not in ("BRAND NAME", "BRAND ASSET BANK"):
+            return candidate.title() if candidate.isupper() else candidate
+
+    return ""
+
+
+def extract_asset_bank(metrics: str) -> str:
+    """
+    Extract the BRAND ASSET BANK section and format it as an explicit
+    closed list of permitted claims for injection into the writer prompt.
+    This prevents the writer from hallucinating client counts, percentages,
+    and named frameworks by giving it only the facts it is allowed to use.
+    Now also extracts FINANCIAL TARGETS & PROJECTIONS so proposal-type content
+    can use specific numbers, dollar amounts, and timeframes without triggering
+    the hallucination gate.
+    """
+    match = re.search(
+        r"#\s*BRAND ASSET BANK\s*\n(.*?)(?=\n#\s+[A-Z]|\Z)",
+        metrics,
+        re.DOTALL | re.IGNORECASE
+    )
+    if not match:
+        return (
+            "No asset bank available yet. "
+            "Do NOT invent specific numbers, client counts, percentages, or ROI figures. "
+            "Use only general brand observations without specific data points."
+        )
+    asset_text = match.group(1).strip()
+
+    # Check whether a FINANCIAL TARGETS section exists in the asset bank
+    has_financial = bool(re.search(
+        r"FINANCIAL TARGETS", asset_text, re.IGNORECASE
+    ))
+
+    header = (
+        "PERMITTED BRAND CLAIMS — use ONLY these exact numbers and facts when writing brand experience claims.\n"
+        "Do NOT invent any number, percentage, client count, timeframe, or framework name not listed here.\n"
+    )
+    if has_financial:
+        header += (
+            "FINANCIAL TARGETS & PROJECTIONS listed below are explicitly permitted — "
+            "use them verbatim when writing program objectives, financial summaries, or roadmap timeframes.\n"
+        )
+
+    return header + "\n" + asset_text
+
+
+def extract_permitted_claims(metrics: str) -> str:
+    """
+    Extract the BRAND ASSET BANK section from the brand brain and format it
+    as an explicit closed list of permitted claims for the hallucination check.
+
+    This converts the unstructured asset bank text into a numbered whitelist
+    so the enforcer LLM can do exact lookup rather than relying on recall.
+    Returns a formatted string ready for prompt injection.
+    """
+    # Extract the BRAND ASSET BANK section
+    match = re.search(
+        r"#\s*BRAND ASSET BANK\s*\n(.*?)(?=\n#\s+[A-Z]|\Z)",
+        metrics,
+        re.DOTALL | re.IGNORECASE
+    )
+    if not match:
+        return (
+            "No asset bank extracted yet. "
+            "All specific numeric claims (client counts, percentages, ROI figures) "
+            "in the content are UNVERIFIABLE and must be treated as hallucinations. "
+            "Flag any specific number tied to brand experience."
+        )
+
+    asset_text = match.group(1).strip()
+
+    # Parse individual claim lines — handle both bullet and dash formats
+    lines = [l.strip().lstrip("-•*").strip() for l in asset_text.splitlines() if l.strip()]
+
+    # Separate into categories for clarity
+    social_proof     = []
+    frameworks       = []
+    values           = []
+    financial_targets = []
+    other            = []
+
+    current_category = None
+    for line in lines:
+        upper = line.upper()
+        if "SOCIAL PROOF" in upper:
+            current_category = "social_proof"
+            continue
+        elif "FRAMEWORK" in upper or "METHODOLOG" in upper:
+            current_category = "frameworks"
+            continue
+        elif "VALUE" in upper or "BELIEF" in upper:
+            current_category = "values"
+            continue
+        elif "FINANCIAL TARGET" in upper or "PROJECTION" in upper:
+            current_category = "financial_targets"
+            continue
+        elif line.startswith("#") or (line.isupper() and len(line) > 5):
+            current_category = "other"
+            continue
+
+        if not line or line.startswith("#"):
+            continue
+
+        if current_category == "social_proof":
+            social_proof.append(line)
+        elif current_category == "frameworks":
+            frameworks.append(line)
+        elif current_category == "values":
+            values.append(line)
+        elif current_category == "financial_targets":
+            financial_targets.append(line)
+        else:
+            other.append(line)
+
+    sections = []
+
+    if social_proof:
+        numbered = "\n".join(f"  {i+1}. {c}" for i, c in enumerate(social_proof))
+        sections.append(f"PERMITTED SOCIAL PROOF CLAIMS (exact numbers the brand may claim):\n{numbered}")
+
+    if financial_targets:
+        numbered = "\n".join(f"  {i+1}. {c}" for i, c in enumerate(financial_targets))
+        sections.append(
+            f"PERMITTED FINANCIAL TARGETS & PROJECTIONS (specific numbers, percentages, dollar amounts, "
+            f"timeframes, and quantified outcomes the brand may use):\n{numbered}"
+        )
+
+    if frameworks:
+        numbered = "\n".join(f"  {i+1}. {c}" for i, c in enumerate(frameworks))
+        sections.append(f"PERMITTED FRAMEWORKS & METHODOLOGIES:\n{numbered}")
+
+    if values:
+        numbered = "\n".join(f"  {i+1}. {c}" for i, c in enumerate(values))
+        sections.append(f"PERMITTED STATED VALUES & BELIEFS:\n{numbered}")
+
+    if other:
+        numbered = "\n".join(f"  {i+1}. {c}" for i, c in enumerate(other))
+        sections.append(f"OTHER PERMITTED CLAIMS:\n{numbered}")
+
+    if not sections:
+        return (
+            "Asset bank found but could not be parsed into discrete claims. "
+            "Treat ALL specific numeric claims in the content as unverified "
+            "unless they appear verbatim in the brand metrics text above."
+        )
+
+    header = (
+        "The following is the COMPLETE list of specific claims this brand is permitted to make.\n"
+        "Any specific number, percentage, client count, or named framework NOT on this list "
+        "is a hallucination and must be flagged. EXCEPTION: numbers that appear verbatim in "
+        "the PERMITTED FINANCIAL TARGETS & PROJECTIONS list are always allowed.\n\n"
+    )
+    return header + "\n\n".join(sections)
+
+
+def measured_mechanics_section(metrics: str) -> str | None:
+    """The MEASURED MECHANICS block, or None when the brain has no such section.
+
+    Written by brand_metrics._measure_corpus_mechanics() by counting the brand's
+    own documents, so the values are measurements rather than model judgements.
+    Both the mechanics check and the placeholder check read it.
+    """
+    match = re.search(
+        r"#\s*MEASURED MECHANICS\s*\n(.*?)(?=\n#\s+[A-Z]|\Z)",
+        metrics, re.DOTALL | re.IGNORECASE,
+    )
+    return match.group(1) if match else None
