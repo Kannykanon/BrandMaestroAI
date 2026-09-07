@@ -149,12 +149,17 @@ def main():
     total_cached = synthesis["cached_tokens"] + gen1["cached_tokens"] + gen2["cached_tokens"]
     print(f"  Gemini context-cache hits across all three phases: {total_cached}")
     if total_cached == 0:
-        print("  Zero. Gemini is re-billing every repeated prefix in full.")
-        print("  The prompts are now ORDERED for caching (static instructions first,")
-        print("  then brand-stable blocks, then per-call material), but the pinned")
-        print("  google-generativeai 0.5.4 predates the caching API, so nothing is")
-        print("  cached yet. Do NOT claim prompt-level caching savings in the demo —")
-        print("  the Brand Brain saving above is real and measured; this one is not.")
+        print("  Zero — every repeated prefix was billed in full.")
+        print("  The prompts ARE ordered for caching (static instructions first, then")
+        print("  brand-stable blocks, then per-call material), and on the AI Studio")
+        print("  backend that produces real hits: measured 3,055 of 4,030 prompt")
+        print("  tokens served from cache on a repeated prefix. The same prefix on")
+        print("  Vertex reports cached_content_token_count: 0, so implicit caching")
+        print("  is not applying on this backend.")
+        print("  Do NOT claim prompt-level caching while running on Vertex. The")
+        print("  Brand Brain saving above is real and measured; this one is not.")
+    else:
+        print(f"  {total_cached} prompt tokens served from cache.")
 
 
 if __name__ == "__main__":

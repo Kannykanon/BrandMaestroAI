@@ -21,6 +21,15 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
+# Generated copy and research context routinely contain em-dashes, curly quotes
+# and emoji. Windows redirects stdout as cp1252, which raises UnicodeEncodeError
+# on the first such character — killing a run that had already succeeded.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except AttributeError:
+        pass
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -80,12 +89,21 @@ def ensure_user():
         return user.business_id, user.id
 
 
-def ingest(business_id, user_id, filename, content_type, extract_voice=True):
-    """Mirror what POST /documents/top-performing does for one file."""
+def ingest(business_id, user_id, filename, content_type, doc_role=None):
+    """Mirror what POST /documents/top-performing does for one file.
+
+    doc_role decides whether the document teaches the brand its voice or only
+    supplies facts, exactly as the upload route does: a "voice" document is
+    extracted into the Brand Brain, a "reference" document is indexed for
+    retrieval and held out of extraction.
+    """
     from brand_metrics import BrandMetricsSQL
     from brand_rag import BrandRAG
-    from database import BrandDocument, get_db_session
+    from database import DOC_ROLE_VOICE, BrandDocument, get_db_session
     from embedding_stategy import build_embedding
+
+    doc_role = doc_role or DOC_ROLE_VOICE
+    extract_voice = doc_role == DOC_ROLE_VOICE
 
     content = read_doc(filename)
 
@@ -94,6 +112,7 @@ def ingest(business_id, user_id, filename, content_type, extract_voice=True):
             user_id=user_id,
             business_id=business_id,
             content_type=content_type,
+            doc_role=doc_role,
             file_content=content,
             filename=filename,
         )
@@ -117,7 +136,7 @@ def ingest(business_id, user_id, filename, content_type, extract_voice=True):
 
     print(
         f"  ingested {filename:<42} type={content_type:<14} "
-        f"chars={len(content):<6} voice_extracted={extracted}",
+        f"chars={len(content):<6} role={doc_role:<9} voice_extracted={extracted}",
         flush=True,
     )
     return doc_id
@@ -262,8 +281,12 @@ def main():
         use_search=True,
     )
 
-    banner("PHASE 2 - ingest the Nightfall Protocol product document")
-    ingest(business_id, user_id, PRODUCT_DOC[0], PRODUCT_DOC[1])
+    banner("PHASE 2 - ingest the Nightfall Protocol product document (reference)")
+    # A press kit is not previously successful content. It supplies the facts
+    # for Run B via retrieval, but must not teach Meridian how to write, or the
+    # generated release drifts toward press-kit register.
+    from database import DOC_ROLE_REFERENCE
+    ingest(business_id, user_id, PRODUCT_DOC[0], PRODUCT_DOC[1], doc_role=DOC_ROLE_REFERENCE)
     synthesize(business_id, PRODUCT_DOC[1])
 
     banner("RUN B - generate WITHOUT web search, grounded in the product doc (use_search=False)")

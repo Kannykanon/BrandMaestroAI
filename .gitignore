@@ -1,5 +1,10 @@
 # Secrets - never commit
 .env
+# Google service account keys — never commit, whatever they are named
+*-*.json
+*service-account*.json
+*credentials*.json
+application_default_credentials.json
 .env.*
 !.env.example
 
