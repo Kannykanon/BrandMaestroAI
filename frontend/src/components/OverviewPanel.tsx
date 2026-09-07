@@ -75,7 +75,7 @@ const OverviewPanel = () => {
           </div>
           <div className="info-alert">
             <i className="fa-solid fa-circle-info"></i>
-            <p>BrandMuse AI automatically synthesizes feedback to continuously align generated outputs with your top-performing uploaded documents.</p>
+            <p>BrandMaestro AI automatically synthesizes feedback to continuously align generated outputs with your top-performing uploaded documents.</p>
           </div>
         </div>
       </div>

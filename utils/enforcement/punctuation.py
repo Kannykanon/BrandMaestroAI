@@ -7,6 +7,8 @@ it actually refers to.
 import logging
 import re
 
+from utils.brand_profile import measured_mechanics_section
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,7 +28,48 @@ USE_CUES = (
 )
 
 
-def mark_is_banned(rules_text: str, aliases: tuple) -> bool:
+# Marks whose real usage rate is counted from the corpus in MEASURED MECHANICS.
+# A count beats a description: the synthesized prose is written by a model and
+# drifts between runs, while these are measured from the brand's own documents.
+# Observed drift on an unchanged corpus containing zero exclamation marks:
+#   run 1  "Semicolons, em dashes, and exclamation marks are absent."
+#   run 2  "exclamation marks are reserved for rare, deliberate emphasis."
+# The second reads as permission and silently unbans the mark.
+_MEASURED_KEY_FOR_MARK = {
+    "exclamation": "exclamation_marks_per_100_words",
+    "question": "question_marks_per_100_words",
+}
+
+
+def measured_rate_for(metrics: str, aliases: tuple):
+    """Counted per-100-word rate for a mark, or None if it is not measured."""
+    key = next((_MEASURED_KEY_FOR_MARK[a] for a in aliases
+                if a in _MEASURED_KEY_FOR_MARK), None)
+    if not key:
+        return None
+    section = measured_mechanics_section(metrics)
+    if not section:
+        return None
+    found = re.search(rf"{key}:\s*([0-9.]+)", section)
+    return float(found.group(1)) if found else None
+
+
+def mark_is_banned(rules_text: str, aliases: tuple, measured_rate=None) -> bool:
+    """Whether this brand prohibits a punctuation mark.
+
+    When `measured_rate` is supplied it decides the question outright: a brand
+    that never once used a mark across its own documents does not permit it,
+    whatever the synthesized prose says about it this run, and a brand that does
+    use it is not banned from it. The prose is consulted only for marks that
+    are not counted.
+    """
+    if measured_rate is not None:
+        return measured_rate == 0.0
+
+    return _mark_is_banned_from_prose(rules_text, aliases)
+
+
+def _mark_is_banned_from_prose(rules_text: str, aliases: tuple) -> bool:
     """Decide whether ONE punctuation mark is prohibited by this brand.
 
     Previously both callers used a document-level test: if the PUNCTUATION
@@ -121,7 +164,7 @@ def sanitize_banned_punctuation(content: str, metrics: str) -> tuple[str, list[s
     )
     if punctuation_match:
         rules = punctuation_match.group(1)
-        if mark_is_banned(rules, ("exclamation",)) and "!" in fixed:
+        if mark_is_banned(rules, ("exclamation",), measured_rate_for(metrics, ("exclamation",))) and "!" in fixed:
             fixed = fixed.replace("!", ".")
             applied.append("exclamation marks -> periods")
 

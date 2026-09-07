@@ -1,4 +1,4 @@
-# BrandMuse AI
+# BrandMaestro AI
 
 Generates marketing copy for film and TV titles in each title's own voice.
 

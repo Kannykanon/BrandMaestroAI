@@ -95,7 +95,7 @@ def get_trace_callbacks(graph_flow=None, tags=None):
         tracer = OpikTracer(
             graph=graph_repr,
             tags=tags or [],
-            project_name=os.getenv("OPIK_PROJECT_NAME", "brandmuse-ai"),
+            project_name=os.getenv("OPIK_PROJECT_NAME", "brandmaestro-ai"),
         )
         return [tracer]
     except Exception as e:

@@ -26,7 +26,11 @@ from utils.enforcement.provenance import (
     find_ungrounded_contact_details,
     find_unverified_quote_attributions,
 )
-from utils.enforcement.punctuation import mark_is_banned, sanitize_banned_punctuation
+from utils.enforcement.punctuation import (
+    mark_is_banned,
+    measured_rate_for,
+    sanitize_banned_punctuation,
+)
 from utils.enforcement.text import find_excerpt
 
 __all__ = [
@@ -43,6 +47,7 @@ __all__ = [
     "find_ungrounded_contact_details",
     "find_unverified_quote_attributions",
     "mark_is_banned",
+    "measured_rate_for",
     "run_preflight_checks",
     "sanitize_banned_punctuation",
 ]

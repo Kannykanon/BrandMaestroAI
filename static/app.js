@@ -251,7 +251,7 @@ async function triggerGeneration(e) {
     statusBadge.innerText = 'Initializing';
     statusBadge.className = 'output-status running';
 
-    logConsole('Connecting to BrandMuse AI content generator pipeline...', 'highlight');
+    logConsole('Connecting to BrandMaestro AI content generator pipeline...', 'highlight');
 
     try {
         const response = await fetch(`${API_BASE}/conversation/generate/stream`, {

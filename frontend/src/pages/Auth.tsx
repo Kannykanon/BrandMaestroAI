@@ -70,11 +70,11 @@ const Auth = () => {
       <div className="auth-panel-left">
         <div className="auth-panel-brand">
           <span className="logo-icon"><i className="fa-solid fa-wand-magic-sparkles"></i></span>
-          <span className="logo-text">BrandMuse<span>AI</span></span>
+          <span className="logo-text">BrandMaestro<span>AI</span></span>
         </div>
         <div className="auth-panel-hero">
           <h2 className="auth-panel-headline">Your brand voice.<br />Every piece of content.</h2>
-          <p className="auth-panel-sub">Upload your best content once. BrandMuse AI learns your unique voice and generates perfectly aligned ads, blogs, proposals, and emails with a single prompt.</p>
+          <p className="auth-panel-sub">Upload your best content once. BrandMaestro AI learns your unique voice and generates perfectly aligned ads, blogs, proposals, and emails with a single prompt.</p>
           <ul className="auth-feature-list">
             <li><i className="fa-solid fa-check"></i> One-time brand voice setup</li>
             <li><i className="fa-solid fa-check"></i> Real-time streaming generation</li>
@@ -89,7 +89,7 @@ const Auth = () => {
           <div className="auth-header">
             <div className="logo">
               <span className="logo-icon"><i className="fa-solid fa-wand-magic-sparkles"></i></span>
-              <span className="logo-text">BrandMuse<span>AI</span></span>
+              <span className="logo-text">BrandMaestro<span>AI</span></span>
             </div>
             <p className="auth-subtitle">Sign in to your workspace</p>
           </div>

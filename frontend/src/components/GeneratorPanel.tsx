@@ -45,7 +45,7 @@ const GeneratorPanel = () => {
     setGenerationId('');
     setQuotaError(null);
     setStatus('Initializing');
-    addLog('Connecting to BrandMuse AI content generator pipeline...', 'highlight');
+    addLog('Connecting to BrandMaestro AI content generator pipeline...', 'highlight');
 
     try {
       const token = localStorage.getItem('bg_access_token');

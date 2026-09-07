@@ -7,7 +7,7 @@ import re
 
 from utils.enforcement.mechanics import check_measured_mechanics
 from utils.enforcement.placeholders import find_unfilled_placeholders
-from utils.enforcement.punctuation import mark_is_banned
+from utils.enforcement.punctuation import mark_is_banned, measured_rate_for
 from utils.enforcement.text import find_excerpt
 
 
@@ -23,7 +23,7 @@ def run_preflight_checks(content: str, metrics: str) -> list[dict]:
     punctuation_match = re.search(r"PUNCTUATION HABITS:\n(.*?)(?=\n[A-Z_]+:|\n#|\Z)", metrics, re.DOTALL | re.IGNORECASE)
     if punctuation_match:
         rules = punctuation_match.group(1)
-        if mark_is_banned(rules, ("exclamation",)) and "!" in content:
+        if mark_is_banned(rules, ("exclamation",), measured_rate_for(metrics, ("exclamation",))) and "!" in content:
             failures.append({
                 "message": "Brand avoids exclamation marks (!), but they were found.",
                 "excerpt": find_excerpt(content, "!"),
