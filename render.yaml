@@ -1,0 +1,85 @@
+# Render Blueprint — provisions the whole stack from this repo.
+#
+#   Render Dashboard -> New -> Blueprint -> point at this repository.
+#
+# Three services instead of the five docker-compose runs, because Celery
+# brokers on Redis rather than RabbitMQ (see celery_task.CELERY_BROKER_URL),
+# and the worker shares a container with the API (see scripts/render_start.sh).
+#
+# Values marked sync:false are NOT in this file and must be set in the Render
+# dashboard — they are credentials.
+
+databases:
+  - name: brandmatreo-postgres
+    databaseName: brandmatreo
+    user: brandmatreo
+    plan: free
+    postgresMajorVersion: "16"
+
+services:
+  - type: keyvalue
+    name: brandmatreo-redis
+    plan: free
+    # Brand Brain cache, Celery broker, result backend and the generation
+    # stream all share this instance.
+    ipAllowList: []
+    maxmemoryPolicy: noeviction   # a Celery broker must not drop queued tasks
+
+  - type: web
+    name: brandmatreo-api
+    runtime: docker
+    dockerfilePath: ./dockerfile
+    plan: free
+    healthCheckPath: /health
+    # Runs the API and a Celery worker in one container.
+    dockerCommand: sh /app/scripts/render_start.sh
+    envVars:
+      # ---- datastores (wired automatically from the resources above) ----
+      - key: POSTGRES_URI
+        fromDatabase:
+          name: brandmatreo-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: brandmatreo-redis
+          type: keyvalue
+          property: connectionString
+
+      # ---- model backend: Vertex AI on Google Cloud ----
+      - key: LLM_PROVIDER
+        value: vertex_ai
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: LOCATION
+        value: us-central1
+      - key: PROJECT_ID
+        sync: false          # your Google Cloud project id
+      # Application Default Credentials cannot exist here — no browser, no
+      # gcloud. Upload the service account JSON as a Render Secret File named
+      # service-account.json and point this at it.
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/service-account.json
+
+      # ---- partner requirement ----
+      - key: PARALLEL_API_KEY
+        sync: false
+
+      # ---- application ----
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"
+      - key: FRONTEND_URL
+        sync: false          # origin allowed by CORS
+      - key: CELERY_CONCURRENCY
+        value: "2"
+
+      # ---- optional tracing; leave unset to disable ----
+      - key: OPIK_API_KEY
+        sync: false
+      - key: OPIK_WORKSPACE
+        sync: false
+      - key: OPIK_PROJECT_NAME
+        value: brandmatreo-ai
