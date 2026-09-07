@@ -18,9 +18,26 @@ logger = logging.getLogger(__name__)
 # Celery app
 # ---------------------------------------------------------------------------
 
+# Redis is the default broker rather than RabbitMQ. Redis is already required
+# for the Brand Brain cache, the result backend and the generation stream, so
+# brokering on it too removes an entire service — which matters wherever
+# managed RabbitMQ is not on offer (Render, Fly, most PaaS free tiers).
+#
+# RabbitMQ is still supported: set CELERY_BROKER_URL (or the legacy RABBIT_URL)
+# to an amqp:// URL and Celery uses it unchanged. The queue and routing config
+# below is transport-agnostic.
+# RABBIT_URL is deliberately NOT consulted: docker-compose no longer starts a
+# RabbitMQ service, so honouring a stale RABBIT_URL left in someone's .env
+# would point the broker at a host that is not running. Set CELERY_BROKER_URL
+# explicitly to use RabbitMQ.
+CELERY_BROKER_URL = (
+    os.getenv("CELERY_BROKER_URL")
+    or os.getenv("REDIS_URL", "redis://redis:6379/0")
+)
+
 celery_app = Celery(
     "brandguard",
-    broker=os.getenv("RABBIT_URL", "amqp://guest:guest@rabbitmq:5672//"),
+    broker=CELERY_BROKER_URL,
     backend=os.getenv("REDIS_URL", "redis://redis:6379/0")
 )
 
