@@ -40,10 +40,24 @@ echo "[render_start] starting api on port ${PORT}"
 uvicorn main:app --host 0.0.0.0 --port "${PORT}" &
 UVICORN_PID=$!
 
-# If either process dies, exit so the platform restarts the container rather
-# than leaving a half-working service up.
-wait -n "$CELERY_PID" "$UVICORN_PID"
-EXIT_CODE=$?
-echo "[render_start] a process exited (code ${EXIT_CODE}) — stopping the other"
+# If either process dies, stop the other and exit, so the platform restarts the
+# container rather than leaving a half-working service up — an API serving
+# requests nothing will consume, or a worker with nothing feeding it.
+#
+# Polled with kill -0 rather than `wait -n`, which is a bash builtin: this
+# image runs /bin/sh (dash), where `wait -n` fails with "Illegal option -n"
+# and takes the container down on startup.
+while true; do
+    if ! kill -0 "$CELERY_PID" 2>/dev/null; then
+        echo "[render_start] celery worker exited"
+        break
+    fi
+    if ! kill -0 "$UVICORN_PID" 2>/dev/null; then
+        echo "[render_start] api exited"
+        break
+    fi
+    sleep 5
+done
+
 term
-exit "$EXIT_CODE"
+exit 1
