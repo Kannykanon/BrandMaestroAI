@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BrandMuse AI — On-Brand Publicity Content Per Title</title>
+    <!-- Modern Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="/static/theme.css">
+        <!-- Markdown Parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <!-- Toast Notifications container -->
+    <div id="toast-container"></div>
+
+    <!-- MAIN GATE (AUTHENTICATION SCREEN) -->
+    <div id="auth-gate" class="auth-wrapper">
+
+        <!-- Left panel: product showcase with image -->
+        <div class="auth-panel-left">
+            <div class="auth-panel-brand">
+                <span class="logo-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+                <span class="logo-text">BrandMuse<span>AI</span></span>
+            </div>
+            <div class="auth-panel-hero">
+                <h2 class="auth-panel-headline">Every title's voice.<br>Every piece of publicity.</h2>
+                <p class="auth-panel-sub">Upload a title's approved materials once. BrandMuse AI learns that exact voice and generates perfectly aligned press releases, social captions, trailer copy, and talent bios with a single prompt.</p>
+                <ul class="auth-feature-list">
+                    <li><i class="fa-solid fa-check"></i> One-time brand voice setup</li>
+                    <li><i class="fa-solid fa-check"></i> Real-time streaming generation</li>
+                    <li><i class="fa-solid fa-check"></i> Self-improving from feedback</li>
+                    <li><i class="fa-solid fa-check"></i> Ads &middot; Blogs &middot; Proposals &middot; Emails</li>
+                </ul>
+            </div>
+            <div class="auth-dashboard-preview">
+                <img id="auth-preview-img" alt="BrandMuse AI Dashboard" style="display:none; width:100%; border-radius:10px; box-shadow:0 20px 50px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.08);">
+            </div>
+        </div>
+
+        <!-- Right panel: auth form -->
+        <div class="auth-panel-right">
+            <div class="auth-card">
+                <div class="auth-header">
+                    <div class="logo">
+                        <span class="logo-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+                        <span class="logo-text">BrandMuse<span>AI</span></span>
+                    </div>
+                    <p class="auth-subtitle">Sign in to your workspace</p>
+                </div>
+
+                <!-- Auth Navigation tabs -->
+                <div class="auth-tabs">
+                    <button id="tab-login" class="auth-tab active" onclick="switchAuthTab('login')">Sign In</button>
+                    <button id="tab-register" class="auth-tab" onclick="switchAuthTab('register')">Register</button>
+                </div>
+
+                <!-- Login Form -->
+                <form id="form-login" class="auth-form active" onsubmit="handleLogin(event)">
+                    <div class="input-group">
+                        <label for="login-username"><i class="fa-regular fa-user"></i> Username</label>
+                        <input type="text" id="login-username" placeholder="e.g. brandmanager" required autocomplete="username">
+                    </div>
+                    <div class="input-group">
+                        <label for="login-password"><i class="fa-solid fa-lock"></i> Password</label>
+                        <input type="password" id="login-password" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" required autocomplete="current-password">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block" id="btn-login-submit">
+                        <span>Sign In to Dashboard</span>
+                        <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                    </button>
+                </form>
+
+                <!-- Register Form -->
+                <form id="form-register" class="auth-form" onsubmit="handleRegister(event)">
+                    <div class="form-row">
+                        <div class="input-group">
+                            <label for="reg-firstname">First Name</label>
+                            <input type="text" id="reg-firstname" placeholder="Jane" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="reg-lastname">Last Name</label>
+                            <input type="text" id="reg-lastname" placeholder="Doe" required>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label for="reg-username"><i class="fa-regular fa-user"></i> Username</label>
+                        <input type="text" id="reg-username" placeholder="janedoe" required autocomplete="username">
+                    </div>
+                    <div class="input-group">
+                        <label for="reg-email"><i class="fa-regular fa-envelope"></i> Email Address</label>
+                        <input type="email" id="reg-email" placeholder="jane.doe@company.com" required autocomplete="email">
+                    </div>
+                    <div class="input-group">
+                        <label for="reg-password"><i class="fa-solid fa-lock"></i> Password</label>
+                        <input type="password" id="reg-password" placeholder="Min 8 characters" required autocomplete="new-password">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block" id="btn-register-submit">
+                        <span>Create Account</span>
+                        <i class="fa-solid fa-user-plus"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- APPLICATION LAYOUT (DASHBOARD) -->
+    <div id="app-layout" class="app-container hidden">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <div class="logo">
+                    <span class="logo-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+                    <span class="logo-text">BrandMuse<span>AI</span></span>
+                </div>
+            </div>
+            
+            <div class="user-profile-badge">
+                <div class="avatar"><i class="fa-solid fa-circle-user"></i></div>
+                <div class="profile-details">
+                    <div class="username" id="display-user-fullname">Jane Doe</div>
+                    <div class="user-tier"><span class="badge badge-accent">Enterprise</span></div>
+                </div>
+            </div>
+
+            <nav class="sidebar-menu">
+                <button class="nav-item active" onclick="switchPanel('dashboard')" id="nav-dashboard">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </button>
+                <button class="nav-item" onclick="switchPanel('generator')" id="nav-generator">
+                    <i class="fa-solid fa-pen-nib"></i>
+                    <span>Content Generator</span>
+                </button>
+                <button class="nav-item" onclick="switchPanel('documents')" id="nav-documents">
+                    <i class="fa-solid fa-file-arrow-up"></i>
+                    <span>Brand Documents</span>
+                </button>
+                <button class="nav-item" onclick="switchPanel('patterns')" id="nav-patterns">
+                    <i class="fa-solid fa-brain"></i>
+                    <span>Learning Memory</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="btn-logout" onclick="handleLogout()">
+                    <i class="fa-solid fa-power-off"></i>
+                    <span>Sign Out</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="top-header">
+                <div class="page-title-area">
+                    <h1 id="page-title">Dashboard Overview</h1>
+                    <p class="subtitle" id="page-subtitle">Track and configure this title's voice rules, generation capacity, and memory metrics.</p>
+                </div>
+                <div class="header-actions">
+                    <div class="business-id-selector">
+                        <span class="label">Active Title ID:</span>
+                        <div class="business-id-field">
+                            <span id="display-business-id" class="value">b12345-uuid-67890</span>
+                            <button class="btn-copy" onclick="copyBusinessId()" title="Copy Title ID"><i class="fa-regular fa-copy"></i></button>
+                        </div>
+                    </div>
+                    <div class="status-indicator">
+                        <span class="pulse"></span>
+                        <span class="status-text">Connected</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- PANEL: OVERVIEW -->
+            <section id="panel-dashboard" class="dashboard-panel active">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="icon-wrapper"><i class="fa-solid fa-shield-halved"></i></div>
+                        <div class="stat-details">
+                            <h3>Brand Integrity</h3>
+                            <div class="value">98.4%</div>
+                            <p class="trend positive"><i class="fa-solid fa-arrow-trend-up"></i> +1.2% this week</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="icon-wrapper"><i class="fa-solid fa-bolt"></i></div>
+                        <div class="stat-details">
+                            <h3>Content Generations</h3>
+                            <div class="value" id="stat-generations-count">0</div>
+                            <p class="trend"><i class="fa-regular fa-clock"></i> Active session counters</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="icon-wrapper"><i class="fa-solid fa-file-shield"></i></div>
+                        <div class="stat-details">
+                            <h3>RAG Documents</h3>
+                            <div class="value" id="stat-docs-count">0</div>
+                            <p class="trend positive"><i class="fa-solid fa-circle-check"></i> Vector indexing online</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-content-split">
+                    <!-- Generation History & Quick Start -->
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fa-regular fa-clock"></i> Recent Generations & Synthesis</h2>
+                            <button class="btn btn-secondary btn-sm" onclick="switchPanel('generator')">Create New</button>
+                        </div>
+                        <div class="history-list" id="history-container">
+                            <div class="empty-state">
+                                <i class="fa-regular fa-folder-open"></i>
+                                <p>No generations made yet during this session. Head over to the Content Generator to begin.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Side card: Brand Profile Summary -->
+                    <div class="content-card secondary-card">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-brain"></i> Memory Synthesis</h2>
+                        </div>
+                        <div class="brand-voice-preview">
+                            <div class="preview-item">
+                                <span class="label">Brand Voice Tone</span>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill" style="width: 85%"></div>
+                                </div>
+                                <span class="percentage">85% Professional / Confident</span>
+                            </div>
+                            <div class="preview-item">
+                                <span class="label">Approved Rules Cached</span>
+                                <span class="count" id="display-approved-rules-count">0 rules active</span>
+                            </div>
+                            <div class="preview-item">
+                                <span class="label">Target Audience Alignment</span>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill" style="width: 92%"></div>
+                                </div>
+                                <span class="percentage">92% B2B Executive Tone</span>
+                            </div>
+                        </div>
+                        <div class="info-alert">
+                            <i class="fa-solid fa-circle-info"></i>
+                            <p>BrandMuse AI automatically synthesizes feedback to continuously align generated outputs with your top-performing uploaded documents.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PANEL: GENERATOR -->
+            <section id="panel-generator" class="dashboard-panel">
+                <div class="generator-split">
+                    <!-- Form Controls -->
+                    <div class="content-card">
+                        <h2>Configure Creative Output</h2>
+                        <p class="card-subtitle">Define parameters to generate on-brand publicity content for this title.</p>
+                        
+                        <form id="form-generator" onsubmit="triggerGeneration(event)">
+                            <div class="input-group">
+                                <label>Content Format Profile</label>
+                                <div class="format-cards">
+                                    <label class="format-card active">
+                                        <input type="radio" name="content_type" value="blog" checked onclick="selectFormatCard(this)">
+                                        <i class="fa-solid fa-newspaper"></i>
+                                        <span>Press Release</span>
+                                    </label>
+                                    <label class="format-card">
+                                        <input type="radio" name="content_type" value="social" onclick="selectFormatCard(this)">
+                                        <i class="fa-solid fa-hashtag"></i>
+                                        <span>Social Caption</span>
+                                    </label>
+                                    <label class="format-card">
+                                        <input type="radio" name="content_type" value="ad" onclick="selectFormatCard(this)">
+                                        <i class="fa-solid fa-clapperboard"></i>
+                                        <span>Trailer Copy</span>
+                                    </label>
+                                    <label class="format-card">
+                                        <input type="radio" name="content_type" value="proposal" onclick="selectFormatCard(this)">
+                                        <i class="fa-solid fa-id-badge"></i>
+                                        <span>Talent Bio</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="input-group">
+                                <label for="gen-topic">Core Subject / Campaign Topic</label>
+                                <input type="text" id="gen-topic" placeholder="e.g. Season 2 premiere announcement social campaign" required>
+                            </div>
+
+
+                            <div class="input-row toggle-row">
+                                <div class="toggle-container">
+                                    <span class="toggle-label"><i class="fa-solid fa-globe"></i> Activate Real-Time Web Search</span>
+                                    <label class="switch">
+                                        <input type="checkbox" id="gen-use-search">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary btn-block" id="btn-generate-submit">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                <span>Initiate Stream Generation</span>
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Live Output Terminal -->
+                    <div class="content-card output-card">
+                        <div class="output-header">
+                            <h2><i class="fa-solid fa-terminal"></i> Synthesizer Output Stream</h2>
+                            <div class="output-status" id="generation-status-badge">Idle</div>
+                        </div>
+                        
+                        <!-- Terminal logs -->
+                        <div class="stream-console" id="stream-console">
+                            <span class="placeholder-text"><i class="fa-solid fa-arrow-left"></i> Configure inputs and trigger the generation stream. Execution logs will render in real time.</span>
+                        </div>
+
+                        <!-- Generated Content output markup container -->
+                        <div class="generated-output-box hidden" id="generated-output-box">
+                            <div class="content-rendered-header">
+                                <h3>Generated Draft</h3>
+                                <button class="btn btn-secondary btn-sm" onclick="copyGeneratedText()"><i class="fa-regular fa-copy"></i> Copy</button>
+                            </div>
+                            <div class="rendered-markdown" id="rendered-content-text">
+                                <!-- Final result gets written here -->
+                            </div>
+                        </div>
+
+                        <!-- FEEDBACK PANEL (Fades in once generation finishes) -->
+                        <div class="feedback-card hidden" id="feedback-card-container">
+                            <div class="card-header-accent">
+                                <h3><i class="fa-regular fa-thumbs-up"></i> Quality Inspection & Learning Feedback</h3>
+                                <p>Submit scores to retrain and refine the underlying Brand Voice agent.</p>
+                            </div>
+                            <form id="form-feedback" onsubmit="submitFeedback(event)">
+                                <input type="hidden" id="feedback-generation-id">
+                                
+                                <div class="feedback-metrics-row">
+                                    <div class="feedback-approve-switch">
+                                        <span class="label">Integrity Status:</span>
+                                        <div class="approve-badge-toggle">
+                                            <label class="approve-toggle">
+                                                <input type="checkbox" id="feedback-human-approved" checked onchange="updateApproveBadge(this)">
+                                                <span class="approve-label-badge approved">APPROVED</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="feedback-score-slider">
+                                        <div class="slider-header">
+                                            <span class="label">Tone Compliance Score:</span>
+                                            <span id="display-feedback-score" class="score-value">8.5 / 10</span>
+                                        </div>
+                                        <input type="range" id="feedback-human-score" min="0" max="10" step="0.5" value="8.5" oninput="updateScoreSlider(this)">
+                                    </div>
+                                </div>
+
+                                <div class="input-group">
+                                    <label for="feedback-comments">Directives / Corrections / Voice Notes</label>
+                                    <textarea id="feedback-comments" placeholder="Describe matches or deviations from the requested style, tone, signature phrases..." rows="3" required></textarea>
+                                </div>
+
+                                <button type="submit" class="btn btn-accent btn-block" id="btn-submit-feedback">
+                                    <i class="fa-solid fa-square-poll-horizontal"></i>
+                                    <span>Commit Feedback to Model Memory</span>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PANEL: DOCUMENTS -->
+            <section id="panel-documents" class="dashboard-panel">
+                <div class="documents-layout">
+                    <!-- Upload Document Card -->
+                    <div class="content-card">
+                        <h2>Upload Approved Publicity Materials</h2>
+                        <p class="card-subtitle">Feed this title's past press releases, social captions, trailer scripts, or talent bios into the vector database. BrandMuse AI extracts linguistic rules automatically.</p>
+                        
+                        <form id="form-upload" onsubmit="uploadDocument(event)">
+                            <div class="input-row">
+                                <div class="input-group">
+                                    <label for="upload-content-type">Associate Content Type Profile</label>
+                                    <select id="upload-content-type" required>
+                                        <option value="blog">Press Release Model</option>
+                                        <option value="social">Social Caption Model</option>
+                                        <option value="ad">Trailer Copy Model</option>
+                                        <option value="proposal">Talent Bio Model</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <!-- Drag & Drop Zone -->
+                            <div class="upload-dropzone" id="upload-dropzone" onclick="triggerFileInput()">
+                                <i class="fa-solid fa-cloud-arrow-up"></i>
+                                <p class="primary-msg">Select or drop reference file here</p>
+                                <p class="secondary-msg">Supports UTF-8 encoded .txt, .csv, and .pdf documents (Max 100k chars)</p>
+                                <input type="file" id="upload-file-input" class="hidden" onchange="handleFileSelect(event)" required>
+                            </div>
+
+                            <!-- Selected File details -->
+                            <div class="selected-file-badge hidden" id="selected-file-badge">
+                                <span class="file-icon"><i class="fa-regular fa-file-lines"></i></span>
+                                <span class="file-name" id="selected-file-name">filename.txt</span>
+                                <button type="button" class="btn-clear" onclick="clearSelectedFile()"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary btn-block" id="btn-upload-submit">
+                                <i class="fa-solid fa-upload"></i>
+                                <span>Upload and Process Reference Document</span>
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Uploaded Docs List -->
+                    <div class="content-card">
+                        <h2>Currently Vectorized Brand Guidelines</h2>
+                        <p class="card-subtitle">Documents utilized to build RAG context for content generation.</p>
+                        
+                        <div class="documents-table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Filename</th>
+                                        <th>Content Type Alignment</th>
+                                        <th>Indexed On</th>
+                                        <th>Integrity Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-documents-body">
+                                    <tr>
+                                        <td colspan="4" class="table-empty">
+                                            <i class="fa-regular fa-folder"></i>
+                                            <p>No guideline documents vectorized yet. Use the upload card to sync brand guidelines.</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PANEL: LEARNING MEMORY -->
+            <section id="panel-patterns" class="dashboard-panel">
+                <div class="memory-header-card">
+                    <div class="memory-card-details">
+                        <h2>Active Title Memory & Stylistic Rules</h2>
+                        <p>Toggle content profiles to view the specific, structured patterns and rules synthesised from human feedback loops.</p>
+                    </div>
+                    <div class="profile-selector">
+                        <button class="btn btn-secondary active" onclick="loadMemoryPatterns('blog')" id="btn-memory-blog">Press Releases</button>
+                        <button class="btn btn-secondary" onclick="loadMemoryPatterns('social')" id="btn-memory-social">Social Captions</button>
+                        <button class="btn btn-secondary" onclick="loadMemoryPatterns('ad')" id="btn-memory-ad">Trailer Copy</button>
+                        <button class="btn btn-secondary" onclick="loadMemoryPatterns('proposal')" id="btn-memory-proposal">Talent Bios</button>
+                    </div>
+                </div>
+
+                <div class="patterns-grid">
+                    <!-- Approved Guidelines -->
+                    <div class="content-card approved-patterns-card">
+                        <div class="card-header-accent green">
+                            <h3><i class="fa-regular fa-circle-check"></i> Stylistic Guideposts (Approved Patterns)</h3>
+                            <p>Patterns verified to accurately mimic the desired brand tone.</p>
+                        </div>
+                        <div class="patterns-container" id="approved-patterns-list">
+                            <div class="empty-state">
+                                <i class="fa-solid fa-shield-heart"></i>
+                                <p>No approved rules mapped yet for this content profile.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Rejected Guidelines -->
+                    <div class="content-card rejected-patterns-card">
+                        <div class="card-header-accent red">
+                            <h3><i class="fa-regular fa-circle-xmark"></i> Compliance Red-Lines (Rejected Patterns)</h3>
+                            <p>Style constructs flagged by reviewers and restricted from usage.</p>
+                        </div>
+                        <div class="patterns-container" id="rejected-patterns-list">
+                            <div class="empty-state">
+                                <i class="fa-solid fa-ban"></i>
+                                <p>No rejected rules mapped yet for this content profile.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Script imports -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

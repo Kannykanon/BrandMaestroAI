@@ -1,0 +1,17 @@
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.pyo
+.git
+.gitignore
+*.egg-info
+.pytest_cache
+.mypy_cache
+node_modules
+*.log
+.env
+.env.*
+dist
+build

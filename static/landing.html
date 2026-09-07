@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BrandMuse AI - Every Title Sounds Like Itself</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Base Theme -->
+    <link rel="stylesheet" href="/static/theme.css">
+    
+    <style>
+        /* Landing Page Specific Styles */
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            overflow-x: hidden;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Navbar */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px 64px;
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+            background: rgba(7, 7, 10, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: var(--font-heading);
+            font-size: 24px;
+            font-weight: 800;
+            color: #fff;
+            text-decoration: none;
+        }
+
+        .navbar-brand .logo-icon {
+            color: var(--primary-red);
+            font-size: 22px;
+            filter: drop-shadow(0 0 6px var(--primary-red-glow));
+        }
+
+        .navbar-brand span {
+            color: var(--primary-red);
+        }
+
+        .navbar-actions .btn {
+            padding: 12px 24px;
+            font-size: 15px;
+            text-decoration: none;
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 120px 24px 60px;
+            position: relative;
+            background: radial-gradient(circle at 50% 30%, rgba(239, 68, 68, 0.08) 0%, transparent 60%);
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 50%;
+            transform: translateX(-50%);
+            width: 80vw;
+            height: 50vh;
+            background: radial-gradient(ellipse at top, rgba(239, 68, 68, 0.15), transparent 70%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .badge-pill {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--accent-red-light);
+            padding: 6px 16px;
+            border-radius: 50px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            margin-bottom: 24px;
+            display: inline-block;
+            animation: pulse-glow 2s infinite;
+        }
+
+        @keyframes pulse-glow {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        .hero-title {
+            font-family: var(--font-heading);
+            font-size: 72px;
+            font-weight: 800;
+            line-height: 1.1;
+            letter-spacing: -2px;
+            margin-bottom: 24px;
+            background: linear-gradient(180deg, #FFFFFF 0%, #A1A1AA 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            max-width: 900px;
+        }
+
+        .hero-subtitle {
+            font-size: 20px;
+            color: var(--text-secondary);
+            max-width: 600px;
+            line-height: 1.6;
+            margin-bottom: 40px;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 60px;
+        }
+        
+        .btn-large {
+            padding: 16px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 8px;
+            text-decoration: none;
+        }
+
+        .hero-image-wrapper {
+            perspective: 1000px;
+            max-width: 1100px;
+            width: 100%;
+            margin: 0 auto;
+            position: relative;
+            z-index: 10;
+        }
+
+        .hero-image {
+            width: 100%;
+            border-radius: 12px;
+            transform: rotateX(15deg) translateY(0);
+            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.8), 0 0 40px rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .hero-image-wrapper:hover .hero-image {
+            transform: rotateX(5deg) translateY(-10px);
+            box-shadow: 0 50px 120px rgba(0, 0, 0, 0.9), 0 0 60px rgba(239, 68, 68, 0.2);
+        }
+
+        /* Features Section */
+        .features {
+            padding: 120px 24px;
+            background: var(--bg-main);
+            position: relative;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 80px;
+        }
+
+        .section-title {
+            font-family: var(--font-heading);
+            font-size: 42px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 16px;
+            letter-spacing: -1px;
+        }
+
+        .section-subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 32px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .feature-card {
+            background: rgba(18, 18, 23, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 40px 32px;
+            border-radius: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-8px);
+            border-color: rgba(239, 68, 68, 0.3);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 30px rgba(239, 68, 68, 0.1);
+        }
+
+        .feature-icon {
+            width: 64px;
+            height: 64px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: var(--primary-red);
+            font-size: 28px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+        }
+
+        .feature-card h3 {
+            font-family: var(--font-heading);
+            font-size: 24px;
+            color: #fff;
+            margin-bottom: 12px;
+        }
+
+        .feature-card p {
+            color: var(--text-secondary);
+            line-height: 1.7;
+            font-size: 15px;
+        }
+
+        
+        /* Interactive Demo */
+        .demo-section {
+            padding: 100px 24px;
+            background: linear-gradient(to bottom, var(--bg-main), #0f0a0a);
+        }
+        .demo-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #000;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 30px 60px rgba(0,0,0,0.8);
+            overflow: hidden;
+        }
+        .demo-header {
+            background: rgba(255,255,255,0.05);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .demo-dot { width: 12px; height: 12px; border-radius: 50%; }
+        .demo-dot.red { background: #ff5f56; }
+        .demo-dot.yellow { background: #ffbd2e; }
+        .demo-dot.green { background: #27c93f; }
+        .demo-body {
+            padding: 30px;
+            font-family: var(--font-mono);
+            color: #a1a1aa;
+            font-size: 15px;
+            line-height: 1.8;
+            min-height: 250px;
+        }
+        .demo-typing::after {
+            content: "|";
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        /* Testimonials */
+        .testimonials {
+            padding: 120px 24px;
+            background: var(--bg-main);
+        }
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .test-card {
+            background: rgba(18, 18, 23, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 30px;
+            border-radius: 16px;
+        }
+        .test-stars { color: #fbbf24; margin-bottom: 16px; }
+        .test-text { font-size: 16px; font-style: italic; margin-bottom: 24px; }
+        .test-author { display: flex; align-items: center; gap: 16px; }
+        .test-author img { width: 50px; height: 50px; border-radius: 50%; object-fit: cover; }
+        .test-name { font-weight: 700; color: #fff; }
+        .test-role { font-size: 13px; color: var(--text-secondary); }
+
+        /* Pricing */
+        .pricing {
+            padding: 120px 24px;
+            background: radial-gradient(circle at top, rgba(239, 68, 68, 0.05) 0%, var(--bg-main) 70%);
+        }
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 32px;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        .pricing-card {
+            background: rgba(18, 18, 23, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            position: relative;
+        }
+        .pricing-card.pro {
+            border-color: var(--primary-red);
+            transform: scale(1.05);
+            box-shadow: 0 20px 50px rgba(239, 68, 68, 0.15);
+        }
+        .popular-badge {
+            position: absolute;
+            top: -12px; left: 50%;
+            transform: translateX(-50%);
+            background: var(--primary-red);
+            color: #fff;
+            padding: 4px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .price { font-family: var(--font-heading); font-size: 48px; font-weight: 800; color: #fff; margin: 24px 0; }
+        .price span { font-size: 16px; color: var(--text-secondary); font-weight: 400; }
+        .pricing-features { text-align: left; margin: 32px 0; list-style: none; padding: 0; }
+        .pricing-features li { margin-bottom: 16px; color: var(--text-secondary); display: flex; align-items: center; gap: 10px; }
+        .pricing-features li i { color: var(--accent-green); }
+        .pricing-card.pro .btn { background: var(--primary-red); color: white; width: 100%; }
+
+        /* FAQ */
+        .faq { padding: 120px 24px; background: var(--bg-main); }
+        .faq-list { max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+        .faq-item {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .faq-question {
+            padding: 20px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            font-weight: 600;
+            color: #fff;
+            transition: background 0.2s;
+        }
+        .faq-question:hover { background: rgba(255,255,255,0.04); }
+        .faq-answer {
+            padding: 0 24px 20px;
+            color: var(--text-secondary);
+            display: none;
+            line-height: 1.6;
+        }
+        .faq-item.active .faq-answer { display: block; }
+        .faq-item.active .faq-question i { transform: rotate(180deg); }
+
+        /* How it works */
+        .workflow {
+            padding: 120px 24px;
+            background: linear-gradient(180deg, var(--bg-main) 0%, #0d0d12 100%);
+            border-top: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .workflow-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            max-width: 800px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .workflow-steps::before {
+            content: '';
+            position: absolute;
+            left: 28px;
+            top: 20px;
+            bottom: 20px;
+            width: 2px;
+            background: rgba(239, 68, 68, 0.2);
+        }
+
+        .step {
+            display: flex;
+            gap: 32px;
+            align-items: flex-start;
+        }
+
+        .step-number {
+            width: 60px;
+            height: 60px;
+            background: var(--primary-red);
+            color: #fff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-heading);
+            font-weight: 800;
+            font-size: 24px;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+            z-index: 2;
+            flex-shrink: 0;
+        }
+
+        .step-content {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 32px;
+            border-radius: 12px;
+            flex: 1;
+        }
+
+        .step-content h3 {
+            font-family: var(--font-heading);
+            font-size: 22px;
+            color: #fff;
+            margin-bottom: 10px;
+        }
+
+        .step-content p {
+            color: var(--text-secondary);
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        /* CTA Section */
+        .cta {
+            padding: 120px 24px;
+            text-align: center;
+            background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjA1KSIvPjwvc3ZnPg==') repeat;
+        }
+
+        .cta-box {
+            max-width: 800px;
+            margin: 0 auto;
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(0, 0, 0, 0.5));
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            padding: 60px 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        .cta-box h2 {
+            font-family: var(--font-heading);
+            font-size: 36px;
+            color: #fff;
+            margin-bottom: 16px;
+        }
+
+        .cta-box p {
+            font-size: 18px;
+            color: var(--text-secondary);
+            margin-bottom: 32px;
+        }
+
+        /* Footer */
+        .footer {
+            padding: 40px 64px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        @media (max-width: 768px) {
+            .hero-title { font-size: 48px; }
+            .navbar { padding: 20px 24px; }
+            .workflow-steps::before { display: none; }
+            .step { flex-direction: column; gap: 16px; }
+            .footer { flex-direction: column; gap: 16px; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <a href="/" class="navbar-brand">
+            <span class="logo-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+            BrandMuse<span>AI</span>
+        </a>
+        <div class="navbar-actions">
+            <a href="/console" class="btn btn-secondary" style="margin-right: 8px;">Log In</a>
+            <a href="/console" class="btn btn-primary">Start Generating</a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="badge-pill">
+            <i class="fa-solid fa-bolt" style="margin-right: 6px;"></i> Publicity Voice Engine for Studios &amp; Streamers
+        </div>
+        <h1 class="hero-title">Every Title Sounds<br>Like Itself.</h1>
+        <p class="hero-subtitle">Upload a title's past press materials — releases, social captions, talent bios, trailer scripts. BrandMuse extracts that title's exact voice and generates new publicity content that matches it, with a built-in check that catches fabricated claims before they reach the wire.</p>
+        
+        <div class="hero-actions">
+            <a href="/console" class="btn btn-primary btn-large">Launch Console <i class="fa-solid fa-arrow-right"></i></a>
+            <a href="#how-it-works" class="btn btn-secondary btn-large">How It Works</a>
+        </div>
+
+        <div class="hero-image-wrapper">
+            <img src="/static/images/auth-preview.png" alt="BrandMuse AI Dashboard" class="hero-image">
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features">
+        <div class="section-header">
+            <h2 class="section-title">A Brand Brain Per Title.</h2>
+            <p class="section-subtitle">A prestige limited series doesn't sound like a teen comedy. We extract each title's own voice from its past press materials — not one blended house style across your whole slate.</p>
+        </div>
+
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="feature-icon"><i class="fa-solid fa-brain"></i></div>
+                <h3>Per-Title Brand Brain</h3>
+                <p>Upload a title's past press releases, social captions, and talent bios. We index them into a semantic search space scoped to that title alone — no bleed-over from other titles on your slate.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><i class="fa-solid fa-bolt-lightning"></i></div>
+                <h3>Real-Time Synthesis</h3>
+                <p>Watch premiere announcements, social copy, and press releases generate instantly via SSE streaming, timed against live reception and comparable-title context pulled through Parallel Search.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><i class="fa-solid fa-user-check"></i></div>
+                <h3>Hallucination Check</h3>
+                <p>Every draft is screened for fabricated claims, stats, or quotes before it reaches a human — the exact failure mode that turns an off-hand AI draft into a correction the studio has to issue.</p>
+            </div>
+        </div>
+    </section>
+
+    
+    <!-- Interactive Demo Section -->
+    <section class="demo-section">
+        <div class="section-header">
+            <h2 class="section-title">See It In Action</h2>
+            <p class="section-subtitle">A live simulation of the BrandMuse AI generation pipeline.</p>
+        </div>
+        <div class="demo-container">
+            <div class="demo-header">
+                <div class="demo-dot red"></div>
+                <div class="demo-dot yellow"></div>
+                <div class="demo-dot green"></div>
+                <span style="margin-left:16px; color:#6b7280; font-size:13px; font-family:var(--font-mono);">bash - generative_pipeline</span>
+            </div>
+            <div class="demo-body">
+                <span style="color:var(--accent-green)">></span> Initiating StateGraph Sequence...<br>
+                <span style="color:#3b82f6">[Brand Brain]</span> Retrieved 4 highly relevant brand precedents.<br>
+                <span style="color:#f59e0b">[Writer]</span> Synthesizing draft using Tripartite Negation-Reframe...<br>
+                <br>
+                <div id="demo-text" class="demo-typing" style="color:#fff;"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials Section -->
+    <section class="testimonials">
+        <div class="section-header">
+            <h2 class="section-title">Trusted by Studio &amp; Streaming Marketing Teams</h2>
+            <p class="section-subtitle">See what publicity leads are saying about keeping every title on-voice.</p>
+        </div>
+        <div class="test-grid">
+            <div class="test-card">
+                <div class="test-stars"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></div>
+                <p class="test-text">"Before BrandMuse, our agency partners kept sending back drafts that sounded like every other prestige-drama press release. Now the system nails our lead title's cadence on the first try."</p>
+                <div class="test-author">
+                    <img src="https://i.pravatar.cc/100?img=47" alt="Sarah J.">
+                    <div>
+                        <div class="test-name">Sarah Jenkins</div>
+                        <div class="test-role">VP of Publicity, Northlight Pictures</div>
+                    </div>
+                </div>
+            </div>
+            <div class="test-card">
+                <div class="test-stars"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></div>
+                <p class="test-text">"The hallucination check has already caught a wrong release date and an invented festival mention before either one made it to our press list. That alone paid for the tool."</p>
+                <div class="test-author">
+                    <img src="https://i.pravatar.cc/100?img=33" alt="Marcus T.">
+                    <div>
+                        <div class="test-name">Marcus Torres</div>
+                        <div class="test-role">Marketing Director, Aurora Streaming</div>
+                    </div>
+                </div>
+            </div>
+            <div class="test-card">
+                <div class="test-stars"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></div>
+                <p class="test-text">"We run six franchise labels out of one team. Each one used to blur into the others by the time a release went out. Now each label keeps its own voice, automatically."</p>
+                <div class="test-author">
+                    <img src="https://i.pravatar.cc/100?img=12" alt="Elena R.">
+                    <div>
+                        <div class="test-name">Elena Rodriguez</div>
+                        <div class="test-role">Head of Franchise Marketing, Lumen Studios</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section class="pricing">
+        <div class="section-header">
+            <h2 class="section-title">Simple, Transparent Pricing</h2>
+            <p class="section-subtitle">Scale your content without scaling your headcount.</p>
+        </div>
+        <div class="pricing-grid">
+            <div class="pricing-card">
+                <h3>Starter</h3>
+                <div class="price">$49<span>/mo</span></div>
+                <ul class="pricing-features">
+                    <li><i class="fa-solid fa-check"></i> 5 Brand Canon Documents</li>
+                    <li><i class="fa-solid fa-check"></i> 100 Generations/mo</li>
+                    <li><i class="fa-solid fa-check"></i> Standard Support</li>
+                </ul>
+                <a href="/console" class="btn btn-secondary btn-block">Get Started</a>
+            </div>
+            <div class="pricing-card pro">
+                <div class="popular-badge">Most Popular</div>
+                <h3>Pro</h3>
+                <div class="price">$199<span>/mo</span></div>
+                <ul class="pricing-features">
+                    <li><i class="fa-solid fa-check"></i> 50 Brand Canon Documents</li>
+                    <li><i class="fa-solid fa-check"></i> Unlimited Generations</li>
+                    <li><i class="fa-solid fa-check"></i> Human-in-Loop Retraining</li>
+                    <li><i class="fa-solid fa-check"></i> Priority Support</li>
+                </ul>
+                <a href="/console" class="btn btn-primary btn-block">Start Free Trial</a>
+            </div>
+            <div class="pricing-card">
+                <h3>Enterprise</h3>
+                <div class="price">Custom</div>
+                <ul class="pricing-features">
+                    <li><i class="fa-solid fa-check"></i> Unlimited Brand Canon Documents</li>
+                    <li><i class="fa-solid fa-check"></i> Dedicated pgvector instance</li>
+                    <li><i class="fa-solid fa-check"></i> Custom Fine-Tuning</li>
+                    <li><i class="fa-solid fa-check"></i> SLA & Account Manager</li>
+                </ul>
+                <a href="/console" class="btn btn-secondary btn-block">Contact Sales</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="faq">
+        <div class="section-header">
+            <h2 class="section-title">Frequently Asked Questions</h2>
+        </div>
+        <div class="faq-list">
+            <div class="faq-item">
+                <div class="faq-question">How does the Brand Brain work? <i class="fa-solid fa-chevron-down"></i></div>
+                <div class="faq-answer">We don"t just use generic RAG. We use a proprietary extraction pipeline that builds a Markdown-based structural blueprint and vectorizes your exact stylistic rhythm to vectorize your uploaded PDFs and text. When generating new content, our retrieval system fetches the most stylistically relevant paragraphs to use as few-shot exemplars, forcing the LLM to adopt your exact tone.</div>
+            </div>
+            <div class="faq-item">
+                <div class="faq-question">Is my brand data used to train public models? <i class="fa-solid fa-chevron-down"></i></div>
+                <div class="faq-answer">Absolutely not. Your uploaded documents are isolated in a dedicated Postgres pgvector database assigned solely to your Business ID. We do not use customer data to train foundational models.</div>
+            </div>
+            <div class="faq-item">
+                <div class="faq-question">What happens when I reject a generation? <i class="fa-solid fa-chevron-down"></i></div>
+                <div class="faq-answer">When you reject content in the human feedback loop, the system extracts the specific stylistic failure and commits it to a negative constraint database. Future generations are explicitly instructed to avoid these identified anti-patterns.</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How it Works -->
+    <section id="how-it-works" class="workflow">
+        <div class="section-header">
+            <h2 class="section-title">The Generation Pipeline</h2>
+            <p class="section-subtitle">A state-of-the-art StateGraph architecture ensuring compliance and brilliance.</p>
+        </div>
+
+        <div class="workflow-steps">
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3>Ingest & Vectorize</h3>
+                    <p>Upload your reference documents. Our asynchronous workers chunk and embed the text into a pgvector-backed Postgres database, completely isolating your brand data from other tenants.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Dynamic Blueprint Mapping</h3>
+                    <p>When you request new content, the pipeline retrieves the most semantically relevant examples from your past work to use as strict few-shot exemplars, capturing your exact pacing and rhythm.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Auditor Verification</h3>
+                    <p>An autonomous Auditor node reviews the generated content against your strict brand constraints. If it fails, the Writer is instructed to rewrite it until it hits an 8.0/10 compliance score.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta">
+        <div class="cta-box">
+            <h2>Ready to scale your voice?</h2>
+            <p>Join the next generation of AI-assisted brand management.</p>
+            <a href="/console" class="btn btn-primary btn-large">Start Synthesizing Now</a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div>&copy; 2026 BrandMuse AI. All rights reserved.</div>
+        <div>Built for premium brand management.</div>
+    </footer>
+
+
+    <script>
+        // FAQ Accordion
+        document.querySelectorAll(".faq-question").forEach(q => {
+            q.addEventListener("click", () => {
+                const item = q.parentElement;
+                item.classList.toggle("active");
+            });
+        });
+
+        // Typing effect for Demo
+        const demoText = "The old way of generating AI content is broken. It is generic. It is lifeless. It is instantly recognizable as a machine.\n\nAt BrandMuse, we processed over 50,000 corporate assets and found that 87% of AI output fails enterprise brand compliance.\n\nPrompt engineering is not enough. Basic fine-tuning is not enough. True neural stylistic extraction and StateGraph auditing is the only path forward.";
+        let i = 0;
+        const speed = 30;
+        const target = document.getElementById("demo-text");
+        
+        function typeWriter() {
+            if (i < demoText.length) {
+                target.innerHTML += demoText.charAt(i) === "\n" ? "<br>" : demoText.charAt(i);
+                i++;
+                setTimeout(typeWriter, speed);
+            } else {
+                setTimeout(() => {
+                    target.innerHTML = "";
+                    i = 0;
+                    typeWriter();
+                }, 5000);
+            }
+        }
+        
+        const observer = new IntersectionObserver((entries) => {
+            if(entries[0].isIntersecting) {
+                typeWriter();
+                observer.disconnect();
+            }
+        });
+        observer.observe(document.querySelector(".demo-section"));
+    </script>
+</body>
+
+</html>
