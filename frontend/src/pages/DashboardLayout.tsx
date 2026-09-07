@@ -52,7 +52,7 @@ const DashboardLayout = () => {
         <div className="sidebar-brand">
           <div className="logo">
             <span className="logo-icon"><i className="fa-solid fa-wand-magic-sparkles"></i></span>
-            <span className="logo-text">BrandMuse<span>AI</span></span>
+            <span className="logo-text">BrandMaestro<span>AI</span></span>
           </div>
         </div>
         

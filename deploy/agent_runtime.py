@@ -29,7 +29,7 @@ def researcher_pipeline_builder(*, model=None, **kwargs):
     `runnable_builder` for `vertexai.agent_engines.LanggraphAgent`.
 
     We intentionally ignore the `model` Agent Platform would otherwise
-    inject via ChatVertexAI: BrandMuse's nodes route models internally per
+    inject via ChatVertexAI: BrandMaestro's nodes route models internally per
     task type through `model.LLMSingleton` (extraction/enforcement/
     synthesis/generation each get their own temperature + model choice),
     so the graph builds its own model routing rather than taking a single

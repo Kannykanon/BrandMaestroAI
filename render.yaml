@@ -10,15 +10,15 @@
 # dashboard — they are credentials.
 
 databases:
-  - name: brandmatreo-postgres
-    databaseName: brandmatreo
-    user: brandmatreo
+  - name: brandmaestro-postgres
+    databaseName: brandmaestro
+    user: brandmaestro
     plan: free
     postgresMajorVersion: "16"
 
 services:
   - type: keyvalue
-    name: brandmatreo-redis
+    name: brandmaestro-redis
     plan: free
     # Brand Brain cache, Celery broker, result backend and the generation
     # stream all share this instance.
@@ -26,7 +26,7 @@ services:
     maxmemoryPolicy: noeviction   # a Celery broker must not drop queued tasks
 
   - type: web
-    name: brandmatreo-api
+    name: brandmaestro-api
     runtime: docker
     dockerfilePath: ./dockerfile
     plan: free
@@ -37,11 +37,11 @@ services:
       # ---- datastores (wired automatically from the resources above) ----
       - key: POSTGRES_URI
         fromDatabase:
-          name: brandmatreo-postgres
+          name: brandmaestro-postgres
           property: connectionString
       - key: REDIS_URL
         fromService:
-          name: brandmatreo-redis
+          name: brandmaestro-redis
           type: keyvalue
           property: connectionString
 
@@ -82,4 +82,4 @@ services:
       - key: OPIK_WORKSPACE
         sync: false
       - key: OPIK_PROJECT_NAME
-        value: brandmatreo-ai
+        value: brandmaestro-ai

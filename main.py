@@ -40,15 +40,15 @@ async def lifespan(app: FastAPI):
         socket_timeout=10,
         socket_connect_timeout=10,
     )
-    logger.info("BrandMuse AI started successfully")
+    logger.info("BrandMaestro AI started successfully")
     yield
     app.state.redis.close()
     engine.dispose()
-    logger.info("Shutting down BrandMuse AI")
+    logger.info("Shutting down BrandMaestro AI")
 
 
 app = FastAPI(
-    title="BrandMuse AI",
+    title="BrandMaestro AI",
     description="Brand voice content generation API",
     version="1.0.0",
     lifespan=lifespan
@@ -102,7 +102,7 @@ app.include_router(document.router, prefix="/documents", tags=["Documents"])
 
 @app.get("/")
 async def root():
-    return {"message": "BrandMuse AI API is running."}
+    return {"message": "BrandMaestro AI API is running."}
 
 
 @app.get("/health", tags=["Health"])

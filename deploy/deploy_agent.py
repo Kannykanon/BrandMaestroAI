@@ -1,6 +1,6 @@
 # deploy/deploy_agent.py
 """
-One-time (or one-per-release) deploy of BrandMuse's LangGraph pipeline to
+One-time (or one-per-release) deploy of BrandMaestro's LangGraph pipeline to
 Google Cloud Agent Platform Runtime.
 
 Run this from your machine (not inside the Docker Compose stack) after:
@@ -65,9 +65,9 @@ def main():
             "llama-index-embeddings-fastembed",
             "fastembed",
         ],
-        display_name="brandmuse-content-pipeline",
+        display_name="brandmaestro-content-pipeline",
         description=(
-            "BrandMuse AI: Researcher -> Writer -> Enforcer -> Deployer "
+            "BrandMaestro AI: Researcher -> Writer -> Enforcer -> Deployer "
             "brand-voice content generation pipeline."
         ),
     )

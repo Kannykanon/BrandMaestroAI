@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "Starting BrandMuse AI VM Setup..."
+echo "Starting BrandMaestro AI VM Setup..."
 
 # Update and install dependencies
 sudo apt-get update
