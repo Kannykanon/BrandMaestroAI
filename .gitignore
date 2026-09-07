@@ -1,0 +1,42 @@
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / frontend
+node_modules/
+dist/
+.vercel/
+
+# Large binaries that must not be in the repo
+frontend/cloudflared
+frontend/cloudflared.exe
+*.tar.gz
+
+# Tooling / evaluation caches
+.deepeval/
+.deepeval*
+*.log
+
+# Editors and OS junk
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Working backups created during development
+*.bak
+*.bak2
+
+# Local agent/session config
+.claude/

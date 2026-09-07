@@ -1,0 +1,26 @@
+name: Deploy BrandMuse AI
+
+on:
+  push:
+    branches:
+      - best-branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            cd /home/ubuntu/brandmuse
+            git pull origin best-branch
+            docker build -t brandmuse-app .
+            docker compose up -d --force-recreate api worker_generation worker_feedback worker_retraining worker_rag flower

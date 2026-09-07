@@ -1,0 +1,207 @@
+services:
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------------------
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.11-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-brandguard}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Embedding Init (runs once before workers start)
+  # ---------------------------------------------------------------------------
+
+  embedding_init:
+    build: .
+    user: root
+    command: >
+      sh -c "mkdir -p /tmp/fastembed_cache &&
+            chmod 777 /tmp/fastembed_cache &&
+            python -c \"from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-small-en-v1.5')\""
+    environment:
+      SECRET_KEY: ${SECRET_KEY}
+      FRONTEND_URL: ${FRONTEND_URL}
+      FASTEMBED_CACHE_PATH: /tmp/fastembed_cache
+    volumes:
+      - fastembed_cache:/tmp/fastembed_cache
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Application
+  # ---------------------------------------------------------------------------
+
+  api:
+    build: .
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+    ports:
+      - "8000:8000"
+    environment:
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      PARALLEL_API_KEY: ${PARALLEL_API_KEY}
+      POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      RABBIT_URL: amqp://${RABBITMQ_USER:-brandguard}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
+      SECRET_KEY: ${SECRET_KEY}
+      FRONTEND_URL: ${FRONTEND_URL}
+      FASTEMBED_CACHE_PATH: /tmp/fastembed_cache
+    volumes:
+      - fastembed_cache:/tmp/fastembed_cache
+      - ./static:/app/static
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      embedding_init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  worker_generation:
+    build: .
+    command: celery -A celery_task worker --queues generation --concurrency 8 --loglevel info
+    deploy:
+      replicas: 2
+    environment:
+      PYTHONPATH: /app
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      PARALLEL_API_KEY: ${PARALLEL_API_KEY}
+      POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      RABBIT_URL: amqp://${RABBITMQ_USER:-brandguard}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
+      SECRET_KEY: ${SECRET_KEY}
+      FRONTEND_URL: ${FRONTEND_URL}
+      FASTEMBED_CACHE_PATH: /tmp/fastembed_cache
+    volumes:
+      - fastembed_cache:/tmp/fastembed_cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      embedding_init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  worker_feedback:
+    build: .
+    command: celery -A celery_task worker --queues feedback --concurrency 8 --loglevel info
+    environment:
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      PARALLEL_API_KEY: ${PARALLEL_API_KEY}
+      POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      RABBIT_URL: amqp://${RABBITMQ_USER:-brandguard}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker_retraining:
+    build: .
+    command: celery -A celery_task worker --queues retraining --concurrency 2 --loglevel info
+    environment:
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      PARALLEL_API_KEY: ${PARALLEL_API_KEY}
+      POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      RABBIT_URL: amqp://${RABBITMQ_USER:-brandguard}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker_rag:
+    build: .
+    command: celery -A celery_task worker --queues rag_refresh --concurrency 2 --loglevel info
+    environment:
+      PYTHONPATH: /app
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      PARALLEL_API_KEY: ${PARALLEL_API_KEY}
+      POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      RABBIT_URL: amqp://${RABBITMQ_USER:-brandguard}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
+      SECRET_KEY: ${SECRET_KEY}
+      FRONTEND_URL: ${FRONTEND_URL}
+      FASTEMBED_CACHE_PATH: /tmp/fastembed_cache
+    volumes:
+      - fastembed_cache:/tmp/fastembed_cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      embedding_init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  flower:
+    build: .
+    command: celery -A celery_task flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      RABBIT_URL: amqp://${RABBITMQ_USER:-brandguard}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  fastembed_cache:
