@@ -72,9 +72,24 @@ Each has its own chunking strategy.
 
 ## Hackathon requirements
 
-**Google Cloud.** Every model call goes through `google-generativeai`, via `langchain-google-genai`. See `model.py`. The LangGraph pipeline can also be deployed to Agent Platform Runtime — see `deploy/` and the section below.
+**Google Cloud.** Every model call runs on Vertex AI — generation via
+`ChatVertexAI` and retrieval embeddings via `VertexAIEmbeddings`, both against
+a Google Cloud project with Application Default Credentials or a service
+account. See `model.py` and `embedding_stategy.py`. No non-Google model is used
+anywhere in the pipeline.
 
-**Parallel.** The Researcher calls `client.beta.search(...)` from the `parallel-web` SDK. See `search.py`. Turn on "Activate Real-Time Web Search" in the generator to use it.
+`LLM_PROVIDER` selects the backend: `vertex_ai` (default for deployment) or
+`ai_studio`, which runs the same Gemini models through an API key instead. Both
+paths are supported; the tradeoff between them is set out under Caching below.
+
+The LangGraph pipeline can additionally be deployed to Agent Platform Runtime —
+see `deploy/` and the section below — though the graph runs in-process without
+it.
+
+**Parallel.** The Researcher calls `client.search(...)` from the official
+`parallel-web` SDK at runtime. See `search.py`. Web search is additive: RAG over
+the brand's own documents always runs, and Parallel supplies external context on
+top when `use_search` is on.
 
 ---
 
@@ -88,7 +103,7 @@ Each has its own chunking strategy.
 | Web search | Parallel Search API | Current context for the Researcher |
 | Vector search | LlamaIndex + pgvector | Retrieval over uploaded documents |
 | Embeddings | Gemini `text-embedding-004` | Google model, 768 dims, same API key as generation |
-| Queue | Celery + RabbitMQ | Generation takes 30s+, so it runs async |
+| Queue | Celery on Redis | Generation takes 30s+, so it runs async. Redis brokers the queues as well as holding the cache, result backend and stream — one service instead of two |
 | Database | PostgreSQL 16 + pgvector | Storage and similarity search |
 | Cache | Redis | Brand Brain cache, live generation streaming |
 | Auth | JWT + Argon2 | Token auth, hashed passwords |
@@ -100,7 +115,7 @@ Each has its own chunking strategy.
 ## Architecture
 
 ```
-      FastAPI  ->  RabbitMQ  ->  workers (generation x2, feedback, rag)
+      FastAPI  ->  Redis (broker)  ->  workers (generation x2, feedback, rag)
          |                              |
          |                    Researcher -> Writer -> Enforcer -> Deployer
          |                              |
@@ -124,7 +139,6 @@ docker compose up -d
 | API | 8000 |
 | PostgreSQL | 5433 |
 | Redis | 6379 |
-| RabbitMQ | 5672 |
 | Flower | 5555 |
 
 Frontend:
@@ -174,6 +188,86 @@ A user can only reach their own `business_id`.
 **Google embeddings.** Retrieval runs on Gemini `text-embedding-004` (768 dims), using the same API key as generation, so every model in the pipeline is Google's. A local third-party encoder would be cheaper per call, but it puts a non-Google model in the middle of the retrieval path. `EmbeddingPort` keeps that swappable: `FastEmbedEmbedding` remains available as an offline fallback, and the vector table name carries the embedding dimension so the two never collide.
 
 **Human review is optional.** Content auto-approves above the threshold. A human can reject with notes, which triggers a regeneration and is stored for later. If nobody reviews, the system still runs on its own synthesis.
+
+---
+
+## Caching, and what each layer actually saves
+
+Three different caches sit in this system. They are often conflated, so it is
+worth being precise about which cost each one removes — and which one we give
+up by running on Vertex AI.
+
+| Layer | Where | Removes | Status |
+|---|---|---|---|
+| Brand Brain cache | Redis (+ Postgres) | Re-synthesizing a brand's voice profile on every request | **Active** |
+| LLM response cache | Redis | The entire API call, for a byte-identical prompt | **Active** |
+| Context (prompt) cache | Google, server-side | Input-token billing on a repeated prompt *prefix* | **Not active on Vertex** |
+
+**Brand Brain cache — the one that matters.** The voice profile is synthesized
+once per `(business_id, content_type)` and reused. Measured on this corpus:
+**5,561 tokens per generation avoided, about 23% of total cost.** It is an
+architectural property rather than an optimization: voice is a property of the
+brand, not of the request, so it should be computed per brand and not per
+request. Invalidation is soft — a superseded profile keeps serving while its
+replacement is rebuilt, so an upload never makes the next generation pay a
+synchronous re-synthesis. Ten uploads at once cost one rebuild, not ten,
+because synthesis is debounced.
+
+**LLM response cache — real, but narrow.** Redis memoizes the full response
+for an identical prompt. That helps repeated demo runs and any unchanged
+prompt, and it does nothing at all once a single character differs, which is
+every genuinely new generation. Note when reading benchmarks: a re-run of the
+same script serves from this cache, which makes elapsed times collapse (a
+90-second generation reporting 6 seconds) while still reporting token counts.
+Vary the topic to measure honestly.
+
+**Context caching — the tradeoff we accepted.** Gemini can cache a prompt
+*prefix* server-side and bill those input tokens at a discount. The prompts
+here are deliberately ordered for it: universal static instructions first, then
+the brand-stable block, then per-call material last, which is why the Enforcer
+prompt has ~14,000 characters of cacheable prefix ahead of its first variable
+slot.
+
+It works on the AI Studio backend. Measured, three calls sharing a
+4,030-token prefix:
+
+```
+call 1   prompt=4030  cached=0
+call 2   prompt=4030  cached=3055     <- 76% served from cache
+call 3   prompt=4030  cached=3055
+```
+
+The same prefix on Vertex AI reports `cached_content_token_count: 0` on every
+call, well above the minimum token threshold. Implicit caching does not apply
+there.
+
+So there is a real choice, and we made it deliberately:
+
+|  | Context caching | Runs on Google Cloud | Billing |
+|---|---|---|---|
+| AI Studio (`LLM_PROVIDER=ai_studio`) | Yes, ~76% of prefix | API key, not a Cloud service | Separate AI Studio wallet |
+| Vertex AI (`LLM_PROVIDER=vertex_ai`) | Not observed | Yes, a Cloud service | Cloud billing |
+
+**We run on Vertex and forgo the caching discount.** Running the models as a
+Google Cloud service is worth more than the token saving, and the Brand Brain
+cache — the larger and more defensible saving — is unaffected either way. The
+choice is one environment variable, so the other path stays available.
+
+**Redis cannot substitute for context caching.** It is tempting to think a
+local cache could cover the gap. It cannot: context caching is server-side,
+where Google stores the prefix's attention state and discounts those tokens.
+Redis sits on our side of the wire, so a prompt that differs by one character
+is still transmitted and billed in full. The two caches solve different
+problems, and we already run the one Redis can do.
+
+**If the discount is wanted on Vertex**, the route is *explicit* caching rather
+than implicit: `vertexai.caching.CachedContent` plus
+`ChatVertexAI(cached_content=...)`, creating one cached resource per
+`(brand, content_type)` over the stable prefix. Both are available in the
+pinned SDK. It is not implemented here because it adds a resource lifecycle to
+manage — creation, TTL, storage billed per token-hour, and invalidation
+whenever the Brand Brain changes — and it only pays off above a reuse rate we
+have not yet measured.
 
 ---
 
