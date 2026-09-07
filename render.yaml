@@ -73,8 +73,19 @@ services:
         value: "60"
       - key: FRONTEND_URL
         sync: false          # origin allowed by CORS
+      # Measured on the built image: uvicorn ~347MB RSS, the Celery main and
+      # forked worker ~167MB and ~192MB (largely shared via fork). At
+      # concurrency 2 the container idles at 590MB, over the 512MB a free or
+      # starter instance gets, and dies on boot. At 1 it idles at ~486MB —
+      # inside the limit, but with little headroom for a generation.
+      #
+      # If this OOMs under load, split the worker out rather than raising the
+      # concurrency: run `celery -A celery_task worker` as its own Render
+      # Background Worker against the same Key Value instance, and drop
+      # dockerCommand here so the web service runs uvicorn alone. Each process
+      # then gets its own memory limit, which is the shape docker-compose uses.
       - key: CELERY_CONCURRENCY
-        value: "2"
+        value: "1"
 
       # ---- optional tracing; leave unset to disable ----
       - key: OPIK_API_KEY
