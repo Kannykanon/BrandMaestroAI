@@ -85,7 +85,7 @@ def ingest(business_id, user_id, filename, content_type, extract_voice=True):
     from brand_metrics import BrandMetricsSQL
     from brand_rag import BrandRAG
     from database import BrandDocument, get_db_session
-    from embedding_stategy import GoogleEmbedding
+    from embedding_stategy import build_embedding
 
     content = read_doc(filename)
 
@@ -105,7 +105,7 @@ def ingest(business_id, user_id, filename, content_type, extract_voice=True):
     rag = BrandRAG(
         business_id=business_id,
         content_type=content_type,
-        embedding=GoogleEmbedding(),
+        embedding=build_embedding(),
     )
     rag.refresh(content)
 

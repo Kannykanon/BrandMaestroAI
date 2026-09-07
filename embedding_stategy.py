@@ -129,6 +129,110 @@ class GoogleEmbedding(EmbeddingPort):
         return _GoogleLlamaIndexEmbedding(model_name=model_name)
 
 
+class VertexEmbedding(EmbeddingPort):
+    """The same Google embedding models, served through Vertex AI.
+
+    Identical model and identical 768 dimensions to GoogleEmbedding, so the two
+    are interchangeable against an existing vector table — switching provider
+    does not force a re-index. What changes is billing and auth: Vertex runs on
+    a Google Cloud project with Application Default Credentials, so it draws on
+    Cloud billing (including trial credits) rather than an AI Studio key.
+    """
+
+    _DIM_MAP: dict[str, int] = {
+        "text-embedding-004": 768,
+        "text-embedding-005": 768,
+    }
+    DEFAULT_MODEL = "text-embedding-004"
+
+    def __init__(self, model: str | None = None, project: str | None = None,
+                 location: str | None = None):
+        model = (model or os.getenv("EMBEDDING_MODEL", self.DEFAULT_MODEL)).removeprefix("models/")
+        if model not in self._DIM_MAP:
+            raise ValueError(
+                f"Unknown Vertex embedding model '{model}'. "
+                f"Known models: {list(self._DIM_MAP)}"
+            )
+        self._model = model
+        self._project = project or os.getenv("PROJECT_ID", "").strip()
+        self._location = location or os.getenv("LOCATION", "us-central1")
+        if not self._project:
+            raise ValueError(
+                "PROJECT_ID is required for Vertex embeddings. Set it in .env, "
+                "or set EMBEDDING_PROVIDER=ai_studio to use GOOGLE_API_KEY."
+            )
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    @property
+    def embed_dim(self) -> int:
+        return self._DIM_MAP[self._model]
+
+    def to_llamaindex(self):
+        from langchain_google_vertexai import VertexAIEmbeddings
+        from llama_index.core.embeddings import BaseEmbedding
+
+        client = VertexAIEmbeddings(
+            model_name=self._model, project=self._project, location=self._location
+        )
+        model_name = self._model
+
+        class _VertexLlamaIndexEmbedding(BaseEmbedding):
+            @classmethod
+            def class_name(cls) -> str:
+                return "vertex_ai"
+
+            def _get_query_embedding(self, query: str) -> list[float]:
+                return client.embed_query(query)
+
+            def _get_text_embedding(self, text: str) -> list[float]:
+                return client.embed_documents([text])[0]
+
+            def _get_text_embeddings(self, texts: list[str]) -> list[list[float]]:
+                return client.embed_documents(list(texts))
+
+            async def _aget_query_embedding(self, query: str) -> list[float]:
+                return self._get_query_embedding(query)
+
+            async def _aget_text_embedding(self, text: str) -> list[float]:
+                return self._get_text_embedding(text)
+
+        return _VertexLlamaIndexEmbedding(model_name=model_name)
+
+
+def build_embedding(provider: str | None = None) -> EmbeddingPort:
+    """Return the configured embedding backend.
+
+    Defaults to EMBEDDING_PROVIDER, falling back to LLM_PROVIDER so a single
+    switch moves generation and retrieval together — which is almost always
+    what is wanted, since a split leaves two different accounts being billed
+    for one request.
+
+      ai_studio (default)  Gemini API via GOOGLE_API_KEY
+      vertex_ai            Vertex AI via Application Default Credentials
+      offline              local third-party encoder; requires the `offline`
+                           dependency group and is not a Google model
+    """
+    provider = (
+        provider
+        or os.getenv("EMBEDDING_PROVIDER")
+        or os.getenv("LLM_PROVIDER")
+        or "ai_studio"
+    ).strip().lower()
+
+    if provider == "vertex_ai":
+        return VertexEmbedding()
+    if provider == "offline":
+        return FastEmbedEmbedding()
+    if provider == "ai_studio":
+        return GoogleEmbedding()
+    raise ValueError(
+        f"EMBEDDING_PROVIDER must be 'ai_studio', 'vertex_ai' or 'offline', got {provider!r}"
+    )
+
+
 class FastEmbedEmbedding(EmbeddingPort):
     """BAAI/bge-small-en-v1.5 → 384 dims (local, no API key required).
 

@@ -523,7 +523,7 @@ def send_notification(self, webhook_url: str, content: str, generation_id: str, 
 def refresh_rag(self, business_id, content_type, new_doc_content):
     import hashlib
     from brand_rag import BrandRAG
-    from embedding_stategy import GoogleEmbedding
+    from embedding_stategy import build_embedding
     from brand_metrics import BrandMetricsSQL
 
     lock = None
@@ -541,7 +541,7 @@ def refresh_rag(self, business_id, content_type, new_doc_content):
         rag = BrandRAG(
             business_id=business_id,
             content_type=content_type,
-            embedding=GoogleEmbedding()
+            embedding=build_embedding()
         )
         analyzer = BrandMetricsSQL(
             business_id=business_id,

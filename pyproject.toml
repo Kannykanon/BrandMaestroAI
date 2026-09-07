@@ -30,8 +30,9 @@ dependencies = [
     "email-validator>=2.3.0",
     "pydantic[email]>=2.13.4",
     "langchain-google-genai>=2.0,<3.0",
+    "langchain-google-vertexai>=2.0,<3.0",
     "google-generativeai>=0.8",
-    "google-cloud-aiplatform>=1.81.0",
+    "google-cloud-aiplatform>=1.81.0,<2.0",
     "celery-types>=0.26.0",
     "opik>=2.2.52",
 ]

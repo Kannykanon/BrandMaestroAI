@@ -36,7 +36,7 @@ Thumbs.db
 
 # Working backups created during development
 *.bak
-*.bak2
+*.bak*
 
 # Local agent/session config
 .claude/

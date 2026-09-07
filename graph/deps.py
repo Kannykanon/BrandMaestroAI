@@ -19,7 +19,7 @@ at graph-build time.
 from brand_rag import BrandRAG
 from brand_metrics import BrandMetricsSQL
 from learning_memory import FeedbackPortSQL
-from embedding_stategy import EmbeddingPort, GoogleEmbedding
+from embedding_stategy import EmbeddingPort, build_embedding
 
 # Lazily constructed on first real call and reused after that — importing
 # this module (e.g. to monkeypatch resolve_deps in tests) must not trigger
@@ -30,7 +30,7 @@ _embedding = None
 def _get_embedding() -> EmbeddingPort:
     global _embedding
     if _embedding is None:
-        _embedding = GoogleEmbedding()
+        _embedding = build_embedding()
     return _embedding
 
 

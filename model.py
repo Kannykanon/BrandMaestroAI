@@ -11,6 +11,18 @@ logger = logging.getLogger(__name__)
 # the Brand Brain cache TTL in brand_metrics.py.
 LLM_CACHE_TTL_SECONDS = 86400
 
+# Which Gemini backend to call. Both run the same models; they differ in which
+# account they bill and how they authenticate. Default is ai_studio so an
+# existing GOOGLE_API_KEY setup keeps working with no configuration change.
+PROVIDER_AI_STUDIO = "ai_studio"
+PROVIDER_VERTEX = "vertex_ai"
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", PROVIDER_AI_STUDIO).strip().lower()
+if LLM_PROVIDER not in (PROVIDER_AI_STUDIO, PROVIDER_VERTEX):
+    raise ValueError(
+        f"LLM_PROVIDER must be {PROVIDER_AI_STUDIO!r} or {PROVIDER_VERTEX!r}, "
+        f"got {LLM_PROVIDER!r}"
+    )
+
 # ChatGoogleGenerativeAI defaults to timeout=None (unbounded — the client
 # falls back to the underlying SDK's own default, observed in practice to
 # let a single stuck call hang for ~10 minutes before it even raises
@@ -233,7 +245,9 @@ class ChatGemini(LLMModel):
         timeout: float = None,
         max_retries: int = None,
     ):
-        if not api_key.strip():
+        # Vertex authenticates with Application Default Credentials, so an API
+        # key is only required on the AI Studio path.
+        if LLM_PROVIDER == PROVIDER_AI_STUDIO and not api_key.strip():
             raise ValueError("Google API key required")
         self._model = model
         self._api_key = api_key
@@ -275,6 +289,45 @@ class ChatGemini(LLMModel):
         }
 
     def to_langchain(self):
+        """Build the chat model for whichever Gemini backend is configured.
+
+        Same model family either way — the difference is the account it bills
+        to and how it authenticates:
+
+          ai_studio (default)  GOOGLE_API_KEY. Simple, but a separate wallet
+                               from Google Cloud, with its own free-tier
+                               request cap that GCP credits cannot raise.
+          vertex_ai            Google Cloud project + Application Default
+                               Credentials. Bills to the Cloud billing
+                               account, so trial credits apply, and it is a
+                               Google Cloud service rather than a standalone
+                               API key.
+
+        Kept switchable rather than migrated outright so the choice is a
+        deployment decision, not a code change — and so a credential or quota
+        problem on one path is one env var away from the other.
+        """
+        callbacks = [_make_token_callback(self._model)]
+
+        if LLM_PROVIDER == PROVIDER_VERTEX:
+            from langchain_google_vertexai import ChatVertexAI
+
+            project = os.getenv("PROJECT_ID", "").strip()
+            if not project:
+                raise RuntimeError(
+                    "LLM_PROVIDER=vertex_ai requires PROJECT_ID. Set it in .env, "
+                    "or set LLM_PROVIDER=ai_studio to use GOOGLE_API_KEY instead."
+                )
+            return ChatVertexAI(
+                model=self._model,
+                project=project,
+                location=os.getenv("LOCATION", "us-central1"),
+                temperature=self._temperature,
+                max_output_tokens=self._max_tokens,
+                max_retries=self._max_retries,
+                callbacks=callbacks,
+            )
+
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
             model=self._model,
@@ -283,7 +336,7 @@ class ChatGemini(LLMModel):
             max_output_tokens=self._max_tokens,
             timeout=self._timeout,
             max_retries=self._max_retries,
-            callbacks=[_make_token_callback(self._model)],
+            callbacks=callbacks,
         )
 
     def __repr__(self) -> str:
@@ -382,9 +435,11 @@ class LLMSingleton:
                     asyncio.set_event_loop(asyncio.new_event_loop())
 
                 google_api_key = os.getenv("GOOGLE_API_KEY", "").strip()
-                if not google_api_key:
+                if not google_api_key and LLM_PROVIDER == PROVIDER_AI_STUDIO:
                     raise RuntimeError(
-                        "GOOGLE_API_KEY is required. Set it in your .env or environment."
+                        "GOOGLE_API_KEY is required when LLM_PROVIDER=ai_studio. "
+                        "Set it in your .env, or set LLM_PROVIDER=vertex_ai to "
+                        "authenticate with Application Default Credentials instead."
                     )
 
                 max_tokens = cls.MODE_MAX_TOKENS.get(mode, 8192)
