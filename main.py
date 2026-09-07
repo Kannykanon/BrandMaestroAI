@@ -100,11 +100,29 @@ app.include_router(conversation.router, prefix="/conversation", tags=["Conversat
 app.include_router(document.router, prefix="/documents", tags=["Documents"])
 
 
-@app.get("/")
-async def root():
-    return {"message": "BrandMaestro AI API is running."}
-
-
 @app.get("/health", tags=["Health"])
 async def health_check():
     return {"status": "ok"}
+
+
+# Serve the UI from the API itself, so one deployed URL is the whole product.
+#
+# Mounted last, after every router, because a mount at "/" claims all paths
+# below it: mounting earlier would shadow /users, /conversation and /documents.
+# Serving both from one origin also removes the CORS and mixed-content problems
+# a separately-hosted frontend would introduce.
+#
+# The API's own liveness lives at /health, which is registered above and so
+# still wins over the static mount.
+_STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+if os.path.isdir(_STATIC_DIR):
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="static")
+    logger.info("Serving UI from %s at /", _STATIC_DIR)
+else:
+    logger.warning("static/ not found — API will run without a UI")
+
+    @app.get("/")
+    async def root():
+        return {"message": "BrandMaestro AI API is running."}
