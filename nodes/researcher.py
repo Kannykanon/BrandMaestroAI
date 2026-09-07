@@ -4,31 +4,11 @@ from model import LLMSingleton
 from search import SearchPort
 from prompts.researcher import RESEARCH_SUMMARY, PUBLISHABLE_FACTS_FILTER
 from graph.state import GraphState
+from utils.brand_profile import extract_section
+from utils.documents import has_reference_documents
 
 logger = logging.getLogger(__name__)
 from utils.observe import observe
-
-
-def _has_reference_documents(business_id: str, content_type: str) -> bool:
-    """Does this content type have any reference documents indexed?
-
-    Only reference documents (product docs, press kits, briefs) carry internal
-    planning material, so the publishable-facts filter is only worth an LLM call
-    when at least one exists. Returns False on any error so a database problem
-    costs a filter pass, not the generation.
-    """
-    try:
-        from database import BrandDocument, DOC_ROLE_REFERENCE, get_db_session
-
-        with get_db_session() as session:
-            return session.query(BrandDocument.id).filter_by(
-                business_id=business_id,
-                content_type=content_type,
-                doc_role=DOC_ROLE_REFERENCE,
-            ).first() is not None
-    except Exception as e:
-        logger.warning("Could not check for reference documents: %s", e)
-        return False
 
 
 @observe("researcher_node")
@@ -65,10 +45,9 @@ def researcher_node(state: GraphState, search: SearchPort) -> GraphState:
         metrics = analyzer.get_context()
         if metrics:
             # Extract just the overview and value hierarchy for research filtering
-            from nodes.writer import _extract_section
-            overview = _extract_section(metrics, "BRAND VOICE OVERVIEW")
-            value_hierarchy = _extract_section(metrics, "VALUE HIERARCHY")
-            diagnostic = _extract_section(metrics, "DIAGNOSTIC STYLE")
+            overview = extract_section(metrics, "BRAND VOICE OVERVIEW")
+            value_hierarchy = extract_section(metrics, "VALUE HIERARCHY")
+            diagnostic = extract_section(metrics, "DIAGNOSTIC STYLE")
 
             parts = [p for p in [overview, value_hierarchy, diagnostic] if p]
             if parts:
@@ -93,7 +72,7 @@ def researcher_node(state: GraphState, search: SearchPort) -> GraphState:
     # the writer ever sees it. Only worth a call when this content type actually
     # has reference documents indexed — past published content is publishable by
     # definition and needs no filtering.
-    if owned.strip() and _has_reference_documents(state["business_id"], content_type):
+    if owned.strip() and has_reference_documents(state["business_id"], content_type):
         try:
             cleaned = LLMSingleton.get("extraction").invoke(
                 PUBLISHABLE_FACTS_FILTER.format(source_material=owned)

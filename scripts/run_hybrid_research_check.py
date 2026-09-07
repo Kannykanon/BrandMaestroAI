@@ -38,7 +38,7 @@ for _s in (sys.stdout, sys.stderr):
 
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
-from nodes.enforcer import _find_extractive_spans, MAX_VERBATIM_SPAN_WORDS
+from utils.enforcement import MAX_VERBATIM_SPAN_WORDS, find_extractive_spans
 
 DOWNLOADS = r"C:\Users\HomePC\Downloads"
 PRODUCT_DOC = "product-document-nightfall-protocol.txt"
@@ -95,7 +95,7 @@ def report(label, final, product_doc):
     print(f"    approved          : {final.get('approved')}   score={final.get('score')}/10   "
           f"iterations={final.get('iteration')}")
 
-    spans = _find_extractive_spans(content, product_doc)
+    spans = find_extractive_spans(content, product_doc)
     print(f"    extractive spans vs product doc (> {MAX_VERBATIM_SPAN_WORDS} words): {len(spans)}")
     for s in spans[:3]:
         print(f"       ({s['length']}w) {s['text'][:90]!r}")
