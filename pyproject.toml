@@ -3,7 +3,11 @@ name = "langgraph-marketing-automation"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+# Upper bound is deliberate. An open-ended ">=3.11" is read by resolvers as
+# including Python 4, and any dependency capped at "<4" (celery-types, among
+# others) then has no version satisfying the range, so resolution fails with a
+# confusing message about a Python version nobody is using.
+requires-python = ">=3.11,<4"
 dependencies = [
     "httpx>=0.28.1",
     "langchain>=0.3,<0.4",
