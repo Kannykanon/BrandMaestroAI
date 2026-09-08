@@ -47,12 +47,25 @@ def check_measured_mechanics(content: str, metrics: str) -> list[dict]:
                                                         MECHANICS_MIN_RATE):
             continue
         label = key.replace("_per_100_words", "").replace("_", " ")
+        # A rate has a numerator and a denominator, and "use it less" only
+        # addresses the numerator. Where the brand concentrates a feature in
+        # particular sections — a trailer copy sheet puts all-caps in its card
+        # blocks and almost none in its sound notes, restrictions and usage
+        # sections — a draft containing only the heavily marked section cannot
+        # reach the whole document's rate however much it trims. Its caps are
+        # correct; it is missing the sections that dilute them. Saying only
+        # "reduce" sent the writer round every remaining iteration deleting
+        # cards it was right to include.
         failures.append({
             "message": (
                 f"Brand uses {label} at {target:.1f} per 100 words; this draft uses "
-                f"{actual:.1f} per 100 words ({actual / target:.1f}x). Match the "
-                f"brand's rate rather than amplifying it — reduce to roughly "
-                f"{target:.1f} per 100 words."
+                f"{actual:.1f} per 100 words ({actual / target:.1f}x). Bring it to "
+                f"roughly {target:.1f} per 100 words. This is a rate, so there are "
+                f"two ways to do that: use the feature less, or — if the brand's "
+                f"documents of this kind also contain sections where it barely "
+                f"appears — write those sections too. If your draft reproduces only "
+                f"the most heavily marked part of the document, the second is the "
+                f"fix and deleting content is not."
             ),
             "excerpt": "",
         })

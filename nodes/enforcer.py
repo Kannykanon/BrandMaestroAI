@@ -33,6 +33,16 @@ def enforcer_node(state: GraphState) -> GraphState:
     from graph.deps import resolve_deps
     rag, analyzer, _memory = resolve_deps(state["business_id"], state["content_type"])
 
+    # Gates this draft has already been corrected for. The writer sees only
+    # the newest feedback, so without carrying this forward it fixes the latest
+    # violation and reintroduces one it had already resolved — the loop then
+    # oscillates instead of converging and runs out of iterations on a draft
+    # that was acceptable two rounds earlier.
+    prior_violations = list(state.get("violation_history") or [])
+
+    def with_violation(label: str) -> list[str]:
+        return prior_violations if label in prior_violations else prior_violations + [label]
+
     content        = state["content"]
     metrics        = analyzer.get_context()
     iteration      = state.get("iteration", 1)
@@ -91,6 +101,7 @@ def enforcer_node(state: GraphState) -> GraphState:
             "signature_match": 0.0,
             "feedback": feedback,
             "flagged_passages": "\n".join(flagged_lines),
+            "violation_history": with_violation("fabricated quote attribution"),
             "creative_angle": "unknown",
         }
 
@@ -128,6 +139,7 @@ def enforcer_node(state: GraphState) -> GraphState:
             "signature_match": 0.0,
             "feedback": feedback,
             "flagged_passages": "\n".join(flagged_lines),
+            "violation_history": with_violation("fabricated contact details"),
             "creative_angle": "unknown",
         }
 
@@ -177,6 +189,7 @@ def enforcer_node(state: GraphState) -> GraphState:
             "signature_match": 0.0,
             "feedback": feedback,
             "flagged_passages": "\n".join(flagged_lines),
+            "violation_history": with_violation("altered quotation"),
             "creative_angle": "unknown",
         }
 
@@ -224,6 +237,7 @@ def enforcer_node(state: GraphState) -> GraphState:
             "signature_match": 0.0,
             "feedback": feedback,
             "flagged_passages": "\n".join(flagged_lines),
+            "violation_history": with_violation("extractive copying"),
             "creative_angle": "unknown",
         }
 
@@ -253,6 +267,7 @@ def enforcer_node(state: GraphState) -> GraphState:
             "signature_match": 0.0,
             "feedback": feedback,
             "flagged_passages": "\n".join(flagged_lines) if flagged_lines else "Multiple formatting violations.",
+            "violation_history": with_violation("mechanical rule violation"),
             "creative_angle": "unknown"
         }
 
