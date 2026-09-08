@@ -191,16 +191,30 @@ sentence against 13.9, no exclamation marks. Reads like the corpus: opens with t
 announcement, quotes the director and the sound designer, closes with the credit block and
 the standing boilerplate. Takes a few minutes and several heartbeats.
 
-**Social Caption Model (`social`) — do not demo live.** It produces a single block of copy
-rather than the platform-labelled caption sets the corpus is made of, and it reaches for
-register the corpus never uses ("Experience SALVAGE. Hear the acclaimed sound design.").
-On one run it finished unapproved at 5.0 after a specific collision: the Brand Brain had
-inferred a signature construction from the corpus — announce a decision, then give the
-audience-facing reason — the writer implemented it as "We decided to release SALVAGE on
-digital and disc on 14 April…", and the internal-material gate then rejected "We decided"
-as something the brand told itself rather than told its audience. The score went 7.9 → 5.0
-because the enforcer's own instruction produced the violation. Both rules are individually
-right; they disagree here. Not fixed.
+**Social Caption Model (`social`) — do not demo live.** It approves (8.1/10 on the second
+enforcer iteration), so it will not visibly fail on camera. It is still wrong in three ways,
+and the first is not a matter of taste:
+
+- **It misquotes people.** The corpus has Okpara saying *"It isn't. It's loud, and it's
+  close, and it's mostly your own body."* Social output renders that as *"It is not. It is
+  loud. It is close. It is mostly your own body."* — a real person's words, changed. The
+  press-release path gets this right and keeps the contractions inside the quotation. Don't
+  put a misquotation on camera.
+- **0.8 contractions per 100 words against the corpus's 3.3**, which is far enough outside
+  tolerance that the mechanics gate arguably should have caught it. The same de-contracting
+  habit driving the misquote.
+- **No platform labels, and hype the corpus never uses.** All three social documents are
+  organised entirely around `INSTAGRAM —` / `X —` / `LINKEDIN —` blocks; the output has none
+  of them, and it closes with "Experience SALVAGE. Hear the acclaimed sound design. Dive into
+  the commentary."
+
+An earlier run, before the copying-gate fixes, ended unapproved at 5.0 through a genuine
+rule collision worth knowing about: the Brand Brain had inferred "announce a decision, then
+give the audience-facing reason" from the corpus, the writer wrote "We decided to release
+SALVAGE on digital and disc on 14 April…", and the internal-material gate rejected "We
+decided" as something the brand told itself rather than told its audience. 7.9 down to 5.0
+because the enforcer's own instruction produced the violation. It did not recur on the
+latest run, but both rules are still live and they still disagree.
 
 **Trailer Copy Model (`ad`) and Talent Bio Model (`proposal`) — untested end to end.**
 The corpora are loaded and the brains are synthesised, but no generation has been run
