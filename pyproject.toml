@@ -16,6 +16,19 @@ build-backend = "setuptools.build_meta"
 packages = []
 py-modules = []
 
+# Same statement again for Poetry, which ignores [tool.setuptools] and has its
+# own notion of the "root package". Without this it tries to install the
+# project itself, finds no module named after it, and fails with:
+#
+#   The current project could not be installed:
+#   No file/folder found for package langgraph-marketing-automation
+#   If you do not want to install the current project use --no-root.
+#
+# Poetry is not used locally — this exists because some build platforms detect
+# a pyproject.toml and reach for Poetry regardless of what produced it.
+[tool.poetry]
+package-mode = false
+
 [project]
 name = "langgraph-marketing-automation"
 version = "0.1.0"
