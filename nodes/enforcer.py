@@ -44,8 +44,13 @@ def enforcer_node(state: GraphState) -> GraphState:
     # that was acceptable two rounds earlier.
     prior_violations = list(state.get("violation_history") or [])
 
-    def with_violation(label: str) -> list[str]:
-        return prior_violations if label in prior_violations else prior_violations + [label]
+    def with_violation(label: str, detail: str = "") -> list[str]:
+        # The detail matters for a repeat offender. Social copy was told
+        # "extractive copying" at rounds one, three, five and six and reached for
+        # the same distinctive sentence every time; a bare gate name does not say
+        # which phrase to stop using, so the constraint could not be acted on.
+        entry = f"{label}: {detail}" if detail else label
+        return prior_violations if entry in prior_violations else prior_violations + [entry]
 
     content        = state["content"]
     metrics        = analyzer.get_context()
@@ -380,7 +385,12 @@ def enforcer_node(state: GraphState) -> GraphState:
             "signature_match": 0.0,
             "feedback": feedback,
             "flagged_passages": "\n".join(flagged_lines),
-            "violation_history": with_violation("extractive copying"),
+            "violation_history": with_violation(
+                "do not reuse this wording from the source",
+                "; ".join(
+                    '"' + span["text"][:90] + '"' for span, _ in prose_spans
+                ) or None,
+            ),
             "creative_angle": "unknown",
         }
 
