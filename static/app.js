@@ -14,6 +14,17 @@ let appState = {
 // API Base URL config (Relative routes work on same origin)
 const API_BASE = window.location.origin;
 
+// The writer takes format_type as a hint about the artefact being written,
+// and falls back to content_type when it is absent. The four content types the
+// UI offers each correspond to exactly one artefact, so there is nothing for a
+// user to choose here and no control for it.
+const FORMAT_TYPES = {
+    blog:     'press_release',
+    social:   'social_caption',
+    ad:       'trailer_copy',
+    proposal: 'talent_bio',
+};
+
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
     // Check if user has a token already
@@ -236,7 +247,13 @@ async function triggerGeneration(e) {
 
     const contentType = document.querySelector('input[name="content_type"]:checked').value;
     const topic = document.getElementById('gen-topic').value;
-    const formatType = document.getElementById('gen-format-type').value;
+    // Derived from the chosen content type rather than read from a control.
+    // This previously read #gen-format-type, an element that does not exist in
+    // the page: getElementById returned null, .value threw a TypeError before
+    // the try block below, and clicking Generate did nothing at all — no
+    // request, no error, no console output. Generation from the UI had never
+    // worked, only from the API directly.
+    const formatType = FORMAT_TYPES[contentType] || contentType;
     const useSearch = document.getElementById('gen-use-search').checked;
 
     const submitBtn = document.getElementById('btn-generate-submit');
