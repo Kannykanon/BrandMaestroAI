@@ -202,6 +202,25 @@ claim prompt caching. The tradeoff is documented deliberately.
 
 ---
 
+## The demo account's generation quota
+
+`harborline` is a shared account, so everyone who uses those credentials draws on
+one pool. Its daily limit has been raised to 2000; the default for a
+self-registered account is 50 a day, which is ample for one person and was not
+ample for a shared one — testing exhausted it in an afternoon and every
+generation then returned:
+
+    {"code": "QUOTA_EXHAUSTED", "limit": 50, "used": 50}
+
+Two things follow.
+
+**Check it before you record.** If a generation returns QUOTA_EXHAUSTED there is
+nothing wrong with the pipeline; the counter resets at midnight UTC. The counter
+lives in Redis as `daily_gen:<user id>:<YYYY-MM-DD>`.
+
+**Judges who register their own account get the ordinary 50 a day**, which is
+plenty for evaluating it and means one person cannot spend anyone else's.
+
 ## Known rough edges — read this before you pick a content type
 
 All four approve. Nothing here will fail on camera. What differs is how closely
