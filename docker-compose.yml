@@ -6,6 +6,11 @@ services:
 
   postgres:
     image: pgvector/pgvector:pg16
+    # Load the whole .env so provider settings (LLM_PROVIDER, PROJECT_ID,
+    # LOCATION) reach the container. The explicit environment block below
+    # still wins, and overrides the host-specific values.
+    env_file:
+      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -44,6 +49,11 @@ services:
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
     ports:
       - "8000:8000"
+    # Load the whole .env so provider settings (LLM_PROVIDER, PROJECT_ID,
+    # LOCATION) reach the container. The explicit environment block below
+    # still wins, and overrides the host-specific values.
+    env_file:
+      - .env
     environment:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
@@ -65,6 +75,11 @@ services:
     command: celery -A celery_task worker --queues generation --concurrency 8 --loglevel info
     deploy:
       replicas: 2
+    # Load the whole .env so provider settings (LLM_PROVIDER, PROJECT_ID,
+    # LOCATION) reach the container. The explicit environment block below
+    # still wins, and overrides the host-specific values.
+    env_file:
+      - .env
     environment:
       PYTHONPATH: /app
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
@@ -83,6 +98,11 @@ services:
   worker_feedback:
     build: .
     command: celery -A celery_task worker --queues feedback --concurrency 8 --loglevel info
+    # Load the whole .env so provider settings (LLM_PROVIDER, PROJECT_ID,
+    # LOCATION) reach the container. The explicit environment block below
+    # still wins, and overrides the host-specific values.
+    env_file:
+      - .env
     environment:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
@@ -98,6 +118,11 @@ services:
   worker_retraining:
     build: .
     command: celery -A celery_task worker --queues retraining --concurrency 2 --loglevel info
+    # Load the whole .env so provider settings (LLM_PROVIDER, PROJECT_ID,
+    # LOCATION) reach the container. The explicit environment block below
+    # still wins, and overrides the host-specific values.
+    env_file:
+      - .env
     environment:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
@@ -113,6 +138,11 @@ services:
   worker_rag:
     build: .
     command: celery -A celery_task worker --queues rag_refresh --concurrency 2 --loglevel info
+    # Load the whole .env so provider settings (LLM_PROVIDER, PROJECT_ID,
+    # LOCATION) reach the container. The explicit environment block below
+    # still wins, and overrides the host-specific values.
+    env_file:
+      - .env
     environment:
       PYTHONPATH: /app
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
@@ -133,6 +163,11 @@ services:
     command: celery -A celery_task flower --port=5555
     ports:
       - "5555:5555"
+    # Load the whole .env so provider settings (LLM_PROVIDER, PROJECT_ID,
+    # LOCATION) reach the container. The explicit environment block below
+    # still wins, and overrides the host-specific values.
+    env_file:
+      - .env
     environment:
       REDIS_URL: redis://redis:6379/0
       POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
