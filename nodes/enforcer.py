@@ -24,6 +24,7 @@ from utils.enforcement import (
     find_unverified_quote_attributions,
     run_preflight_checks,
     sanitize_banned_punctuation,
+    sanitize_unbranded_emphasis_caps,
 )
 from utils.llm_output import parse_llm_json
 from utils.observe import observe
@@ -64,6 +65,25 @@ def enforcer_node(state: GraphState) -> GraphState:
             iteration, punctuation_fixes,
         )
     state = {**state, "content": content}
+
+    # 0b. Same treatment for capitals the brand does not shout. Bouncing the
+    # draft did not work: social copy was corrected at round two for EXCLUSIVE,
+    # GRAND, NOT and UNIQUE, reached 7.9 by round five, then shouted PERCEPTION,
+    # NOT, UNIQUE and NOW at round six — a fresh set each time, with the
+    # constraint listed in front of it. The writer was not reintroducing the same
+    # violation, so telling it what it had already fixed could not help. Lower
+    # casing a word is mechanical, so it gets a mechanical fix.
+    #
+    # grounding_text is built below; the brand's own documents are what say which
+    # capitals are permitted, so this needs the same text.
+    _grounding_for_caps = "\n\n".join([metrics, state.get("research", "") or ""])
+    content, caps_fixes = sanitize_unbranded_emphasis_caps(content, _grounding_for_caps)
+    if caps_fixes:
+        logger.info(
+            "Auto-sanitized unbranded emphasis capitals at iteration %d: %s",
+            iteration, caps_fixes,
+        )
+        state = {**state, "content": content}
 
     # Build permitted claims whitelist from asset bank
     permitted_claims = extract_permitted_claims(metrics)

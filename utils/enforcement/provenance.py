@@ -21,6 +21,7 @@ from utils.enforcement.text import (
     card_line_regions,
     digits,
     inline_caps_words,
+    caps_word_pattern,
     quoted_regions,
     script_dialogue_lines,
     script_dialogue_regions,
@@ -765,3 +766,70 @@ def find_unbranded_emphasis_caps(content: str, grounding_text: str,
         findings.append({"word": word})
 
     return findings[:limit]
+
+
+def sanitize_unbranded_emphasis_caps(content: str, grounding_text: str
+                                     ) -> tuple[str, list[str]]:
+    """Lowercase mid-sentence capitals the brand does not use, in place.
+
+    Same argument as sanitize_banned_punctuation: "this brand does not shout"
+    is mechanical and unambiguous, so it deserves a mechanical fix with a
+    guaranteed outcome rather than a revision round with a probabilistic one.
+
+    Bouncing the draft did not work. Social copy was corrected at round two for
+    EXCLUSIVE, GRAND, NOT and UNIQUE, reached 7.9 by round five, and then shouted
+    PERCEPTION, NOT, UNIQUE and NOW at round six — a fresh set of words each
+    time, with the constraint listed in front of it. The writer was not
+    reintroducing the same violation, so telling it what it had already fixed
+    could not help.
+
+    Which words are permitted comes from the brand's own material, so nothing
+    here is specific to any one brand. A word at the start of a sentence keeps
+    its initial capital.
+    """
+    findings = find_unbranded_emphasis_caps(content, grounding_text, limit=100)
+    if not findings:
+        return content, []
+
+    shouted = {f["word"].upper() for f in findings}
+    fixes = []
+
+    # How the brand itself spells each word when it is not shouting. "GRAND"
+    # belongs to "Grand Jury Prize", so lowercasing it would give "grand Jury
+    # Prize" — unshouted and wrong. The brand's own material is the authority on
+    # the casing, and this text ships without another review round.
+    brand_casing = {}
+    for match in re.finditer(r"[A-Za-z][A-Za-z0-9'&.-]*", grounding_text):
+        word = match.group(0)
+        if word.isupper():
+            continue                  # a shout or a card line; not evidence
+        brand_casing.setdefault(word.upper(), word)
+
+    out = []
+    last = 0
+    for line_match in re.finditer(r"^.*$", content, re.MULTILINE):
+        line = line_match.group(0)
+        if not re.search(r"[a-z]", line):
+            continue          # capitals-only line: structural, left alone
+        for m in caps_word_pattern().finditer(line):
+            start = line_match.start() + m.start()
+            end = line_match.start() + m.end()
+            word = content[start:end]
+            if word.upper() not in shouted:
+                continue
+            preceding = content[:start].rstrip()
+            sentence_start = (not preceding) or preceding[-1] in ".!?:\n"
+
+            fixed = brand_casing.get(word.upper())
+            if fixed is None:
+                fixed = word.capitalize() if sentence_start else word.lower()
+            elif sentence_start:
+                fixed = fixed[0].upper() + fixed[1:]
+            if fixed == word:
+                continue
+            out.append(content[last:start])
+            out.append(fixed)
+            fixes.append(f"{word} -> {fixed}")
+            last = end
+    out.append(content[last:])
+    return "".join(out), fixes
