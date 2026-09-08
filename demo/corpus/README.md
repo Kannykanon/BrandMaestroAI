@@ -36,9 +36,9 @@ it should extract:
 
 | Property | press-release | social | trailer-copy | talent-bios |
 |---|---|---|---|---|
-| words | 1306 | 1183 | 582 | 974 |
-| contractions / 100 words | 3.0 | 3.3 | 3.4 | 3.4 |
-| average sentence (words) | 13.9 | 9.6 | 12.7 | 16.8 |
+| words | 1306 | 1183 | 280 | 974 |
+| contractions / 100 words | 3.0 | 3.3 | 6.1 | 3.4 |
+| average sentence (words) | 13.9 | 9.6 | 13.3 | 16.8 |
 | exclamation marks | 0 | 0 | 0 | 0 |
 | emoji | 0 | 0 | 0 | 0 |
 
@@ -57,8 +57,19 @@ of separating them. Deliberate choices worth knowing about:
   and a corpus full of invented press emails would teach it to produce exactly what that
   gate exists to stop.
 - **Repeated boilerplate.** The "About Harbor Line Pictures" block closes all three press
-  releases, unchanged. That is realistic, and it exercises the extractive-copying gate's
-  exemption for language a brand reuses across its own documents.
+  releases, unchanged. A company's name and what it does are facts about the company, so
+  that block is reproducible; every other kind of repeated phrasing is not.
+- **Publishable copy only — no internal notes.** The trailer sheets originally carried
+  SOUND NOTES, RESTRICTIONS and USAGE sections, which is what a real production sheet looks
+  like and the wrong thing for a voice reference. Those sections are production logistics,
+  and the pipeline has a gate that refuses to publish internal material — so their presence
+  made the trailer-copy path unsatisfiable. The measured all-caps rate averaged the cards
+  against those low-caps sections and demanded 24.1 per 100 words, the writer could only
+  reach that by including them, and the internal-material gate then rejected them. Removing
+  them took the rate to 45.7, which is what card-heavy copy actually measures.
+
+  The lesson generalises: upload what the brand publishes. Internal notes in a reference
+  teach a voice the system is separately forbidden to use.
 
 Facts are consistent across all ten documents — the same runtime, dates, crew, tank
 volume and awards — so a generation that contradicts one of them is a real failure rather
