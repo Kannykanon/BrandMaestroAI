@@ -28,6 +28,10 @@ class GraphState(TypedDict):
     score: float
     feedback: str
     flagged_passages: str
+    # Every gate this generation has already been corrected for. Carried
+    # across revision rounds so the writer stops trading one violation for
+    # another: see the standing-constraints block in WRITER_REVISION.
+    violation_history: list[str]
     style_match: float
     tone_match: float
     structure_match: float

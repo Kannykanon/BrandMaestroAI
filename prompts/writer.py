@@ -181,6 +181,14 @@ REVISION RULES
    - If the violation still exists → fix it per the enforcer instruction.
    Only act on feedback that applies to the content as it currently stands.
 
+1b. STANDING CONSTRAINTS are gates this draft has already failed once and had
+   fixed. They are not the current problem — they are problems you already
+   solved. Fixing the feedback above must not reintroduce any of them. If the
+   only way you can see to satisfy the current feedback is to break one of
+   them, leave the current feedback unaddressed and say nothing: a draft that
+   still has one style note against it is worth more than one that has
+   reintroduced a misquotation or copied its source.
+
 1. Fix ONLY what the enforcer flagged and what still applies after the stale check above. Start with the flagged passages — rewrite those specific sections first.
 2. Do NOT rewrite sections that scored well. Preserve what works.
 3. If style_match < 0.7: adjust sentence length, complexity, rhythm, punctuation, and vocabulary to match brand patterns.
@@ -215,6 +223,8 @@ ENFORCER FEEDBACK:
 
 FLAGGED PASSAGES (fix these specific passages):
 {flagged_passages}
+
+{standing_constraints}
 
 CURRENT SCORES:
 - Style match:     {style_match}

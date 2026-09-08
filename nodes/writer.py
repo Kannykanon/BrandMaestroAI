@@ -255,8 +255,24 @@ def writer_node(state: GraphState) -> GraphState:
             content = f"[System Error: Unable to finalize content - {str(e)[:80]}]"
 
     else:
+        # Gates already corrected in earlier rounds. Handed to the editor as
+        # standing constraints, because it only ever sees the newest feedback:
+        # without them it fixes the latest violation and reintroduces one it had
+        # already resolved, and the loop oscillates until it runs out of
+        # iterations on a draft that was acceptable two rounds earlier.
+        prior_violations = state.get("violation_history") or []
+        if prior_violations:
+            listed = "\n".join(f"  - {v}" for v in prior_violations)
+            standing_constraints = (
+                "STANDING CONSTRAINTS — already corrected once, do not "
+                f"reintroduce:\n{listed}"
+            )
+        else:
+            standing_constraints = "STANDING CONSTRAINTS: none yet."
+
         # REVISION: Only run the Editor (WRITER_REVISION) to fix feedback
         prompt = WRITER_REVISION.format(
+            standing_constraints=standing_constraints,
             human_directive=human_directive,
             previous_content=state.get("content", ""),
             format_type=format_type,
