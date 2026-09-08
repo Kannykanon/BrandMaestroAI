@@ -466,8 +466,36 @@ class BrandRAG:
             os.unlink(temp_path)
     
     def _load_docs(self) -> tuple[list, set[str]]:
+        """Documents to index for retrieval: reference documents only.
+
+        The two document roles feed two different channels, and this is the
+        second one.
+
+        A voice document teaches the Brand Brain how this writer writes — the
+        rhythm, the mechanics, the shapes it reaches for. It is not a source of
+        text. Give a director's scripts to the system and ask for a script on
+        another subject, and nothing in those scripts belongs in the output;
+        only the way they move does.
+
+        A reference document supplies facts, and facts are what retrieval is
+        for. Along with Parallel's web search, it is the only channel the writer
+        may take words from.
+
+        Indexing voice documents here collapsed the distinction. They were
+        retrieved as research and handed to the writer under a header reading
+        "SOURCE MATERIAL — THE BRAND'S OWN DOCUMENTS (AUTHORITATIVE)", so the
+        style references were presented as the authoritative fact source and the
+        writer reproduced them. Every copying violation seen in testing traces
+        back to that.
+
+        With no reference documents the index is empty and the researcher says
+        so, leaving the writer the topic and whatever web search returns. That
+        is the correct outcome, not a degradation: a brand that has uploaded
+        only voice references has told the system how to sound and given it
+        nothing to say.
+        """
         from llama_index.core import Document
-        from database import get_db_session, BrandDocument
+        from database import get_db_session, BrandDocument, DOC_ROLE_REFERENCE
 
         with get_db_session() as session:
             rows = (
@@ -475,14 +503,17 @@ class BrandRAG:
                 .filter_by(
                     business_id=self.business_id,
                     content_type=self.content_type,
+                    doc_role=DOC_ROLE_REFERENCE,
                 )
                 .filter(BrandDocument.file_content.isnot(None))
                 .all()
             )
 
             if not rows:
-                logger.warning(
-                    "No documents found for business_id=%s content_type=%s.",
+                logger.info(
+                    "No reference documents for business_id=%s content_type=%s — "
+                    "retrieval has no facts to serve. Voice documents are not "
+                    "indexed: they shape the Brand Brain, not the content.",
                     self.business_id, self.content_type,
                 )
                 return [], set()
