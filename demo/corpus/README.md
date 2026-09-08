@@ -9,24 +9,49 @@ festival is deliberately fictional (Cascadia International Film Festival) rather
 real one, so no document can be mistaken for a real organisation's record or read as a
 real endorsement.
 
-## Layout
+## Two channels, two roles
 
-| Directory        | `content_type` | UI label            | Documents |
+The documents feed two separate channels and never both.
+
+| Directory | `doc_role` | Channel | Supplies |
+|---|---|---|---|
+| `press-release/`, `social/`, `trailer-copy/`, `talent-bios/` | `voice` | Brand Brain | how the brand writes |
+| `reference/` | `reference` | RAG retrieval | the facts |
+
+A **voice** document teaches the Brand Brain the rhythm, the mechanics and the
+shapes this brand reaches for. It is never indexed for retrieval, so the writer
+never sees its text. Give the system a director's scripts and ask for a script on
+another subject: nothing in those scripts belongs in the output, only the way
+they move.
+
+A **reference** document is the fact channel, alongside Parallel's web search. It
+is indexed for retrieval and held out of the Brand Brain — a fact sheet is
+written in its own flat register, and letting it define the voice would pull
+generated copy toward press-kit prose.
+
+`reference/salvage-production-information.txt` carries everything the copy needs
+to be true: runtime, dates, cast, crew, the tank, the training, the awards, the
+jury citation, and the approved quotations. It also carries an INTERNAL NOTES
+section — positioning, what not to disclose, talent availability — which is
+realistic for a press kit and exercises the publishable-facts filter and the
+enforcer's internal-material gate. Neither should ever reach the output.
+
+The sheet is uploaded once per content type, because retrieval is scoped to
+(`business_id`, `content_type`).
+
+| Directory | `content_type` | UI label | Documents |
 |------------------|----------------|---------------------|-----------|
 | `press-release/` | `blog`         | Press Release Model | 3 |
 | `social/`        | `social`       | Social Caption Model| 3 |
 | `trailer-copy/`  | `ad`           | Trailer Copy Model  | 2 |
 | `talent-bios/`   | `proposal`     | Talent Bio Model    | 2 |
+| `reference/`     | all four       | —                   | 1 each |
 
 Load it with:
 
 ```sh
 ./demo/load_corpus.sh https://brandmaestro.ddnsfree.com <username> <password>
 ```
-
-All ten upload with `doc_role=voice`, so every one feeds the voice profile. To
-demonstrate the `reference` role — facts for retrieval, held out of voice extraction —
-upload a document with `doc_role=reference` instead.
 
 ## The voice, and why it is shaped this way
 

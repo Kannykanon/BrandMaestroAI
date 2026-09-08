@@ -12,14 +12,22 @@ from celery import group
 router = APIRouter()
 
 
-def _upload_idempotency_key(business_id: str, file_content: bytes) -> str:
+def _upload_idempotency_key(business_id: str, content_type: str,
+                            file_content: bytes) -> str:
     """Single source of truth for the upload dedupe key.
 
     Upload and delete previously built this key differently (sha256 vs md5,
     different prefixes), so deleting a document never cleared its key and
     re-uploading the same file returned 409 forever.
+
+    content_type is part of the key because retrieval is scoped to
+    (business_id, content_type): one reference sheet legitimately belongs to
+    several content types, and each needs its own indexed copy. Without it the
+    first upload succeeded and every other content type was refused as a
+    duplicate — so a fact sheet could serve press releases or social captions,
+    never both.
     """
-    return f"upload:{business_id}:{create_idempotency_key(file_content)}"
+    return f"upload:{business_id}:{content_type}:{create_idempotency_key(file_content)}"
 
 
 @router.post("/top-performing", response_model=TaskResponse)
@@ -64,7 +72,7 @@ async def upload(
     if len(doc_content) > 200000:
         raise HTTPException(status_code=400, detail="File is too large")
 
-    _idempotency_key = _upload_idempotency_key(business_id, file_content)
+    _idempotency_key = _upload_idempotency_key(business_id, content_type, file_content)
     if request.app.state.redis.exists(_idempotency_key):
         raise HTTPException(status_code=409, detail="File already processed")
 
@@ -88,20 +96,30 @@ async def upload(
         logger.error("Database error while saving document: %s", e)
         raise HTTPException(status_code=500, detail="Failed to save document")
 
-    # Both roles feed the RAG index — a reference document supplies facts, and
-    # past content supplies retrievable structural examples. Only a "voice"
-    # document is extracted into the Brand Brain: a product doc or press kit is
-    # written in its own register, and letting it define the brand's voice pulls
-    # generated copy toward press-kit prose instead of the brand's own.
-    tasks = [
-        refresh_rag.s(business_id=business_id, content_type=content_type, new_doc_content=doc_content)
-    ]
+    # The two roles feed two different channels and never both.
+    #
+    # A voice document is extracted into the Brand Brain, which describes how the
+    # brand writes. It is deliberately NOT indexed for retrieval: the writer must
+    # not be handed the style references as material, or it reproduces them.
+    #
+    # A reference document — a product sheet, a press kit, a brief — is indexed
+    # for retrieval and held out of the Brand Brain. It supplies facts, and its
+    # own register must not pull generated copy toward press-kit prose.
+    tasks = []
     if doc_role == DOC_ROLE_VOICE:
         tasks.append(
             extract_metrics.s(business_id=business_id, content_type=content_type,
                               doc_id=doc_id, doc_content=doc_content)
         )
+        logger.info(
+            "Document %s uploaded as role=voice — extracted into the Brand Brain, "
+            "not indexed for retrieval", doc_id,
+        )
     else:
+        tasks.append(
+            refresh_rag.s(business_id=business_id, content_type=content_type,
+                          new_doc_content=doc_content)
+        )
         logger.info(
             "Document %s uploaded as role=reference — indexed for retrieval, "
             "held out of Brand Brain extraction", doc_id,
@@ -237,7 +255,7 @@ async def reset_brand_brain(
 
     for content in contents:
         request.app.state.redis.delete(
-            _upload_idempotency_key(business_id, content.encode())
+            _upload_idempotency_key(business_id, content_type, content.encode())
         )
 
     purged = _purge_vectors(business_id, content_type)
@@ -294,7 +312,7 @@ async def delete_document(
     # 2. Clear the upload dedupe key so the same file can be uploaded again
     if doc_content:
         request.app.state.redis.delete(
-            _upload_idempotency_key(business_id, doc_content.encode())
+            _upload_idempotency_key(business_id, content_type, doc_content.encode())
         )
 
     # 3. Drop the embeddings inline. This replaces the previous

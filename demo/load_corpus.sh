@@ -6,8 +6,18 @@
 #   ./demo/load_corpus.sh <base-url> <username> <password>
 #
 # The account is created if it does not exist, then logged into either way.
-# Every document is uploaded with doc_role=voice, so all of it feeds the voice
-# profile rather than being held out as reference facts.
+# Two roles, two channels, and never both:
+#
+#   corpus/<type>/       -> doc_role=voice     -> the Brand Brain (how to write)
+#   corpus/reference/    -> doc_role=reference -> RAG retrieval (what to write)
+#
+# A voice document is never indexed for retrieval. If it were, the writer would
+# be handed the style references as material and would reproduce them, which is
+# what the whole system exists not to do. Facts come from the reference sheet and
+# from Parallel's web search.
+#
+# The reference sheet is uploaded once per content type, because retrieval is
+# scoped to (business_id, content_type).
 #
 # Directory names map to the content types the pipeline uses:
 #   press-release/ -> blog       (UI label: Press Release Model)
@@ -55,11 +65,29 @@ upload_dir() {
     done
 }
 
-echo "==> uploading corpus"
+upload_reference() {
+    local content_type="$1"
+    for f in "$CORPUS/reference"/*.txt; do
+        printf '    %-46s -> %s (reference)\n' "$(basename "$f")" "$content_type"
+        curl -s -X POST "$BASE/documents/top-performing" \
+          -H "Authorization: Bearer $TOKEN" \
+          -F "business_id=$BUSINESS_ID" \
+          -F "content_type=$content_type" \
+          -F "doc_role=reference" \
+          -F "file=@$f" > /dev/null
+    done
+}
+
+echo "==> uploading voice references (Brand Brain)"
 upload_dir press-release blog
 upload_dir social        social
 upload_dir trailer-copy  ad
 upload_dir talent-bios   proposal
+
+echo "==> uploading the fact sheet (retrieval)"
+for ct in blog social ad proposal; do
+    upload_reference "$ct"
+done
 
 echo "==> uploaded documents"
 curl -s "$BASE/documents" -H "Authorization: Bearer $TOKEN" | python -c "
