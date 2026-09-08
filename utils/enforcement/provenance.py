@@ -627,3 +627,23 @@ def find_altered_quotations(content: str, grounding_text: str,
                 })
 
     return findings[:limit]
+
+
+def source_quotation_for_span(span_text: str, grounding_text: str) -> str | None:
+    """The source quotation a copied span reproduces, if it is one.
+
+    Copying a quotation verbatim is not the failure the extractive gate exists
+    for — the failure is doing it without quotation marks, which turns somebody's
+    statement into unattributed prose. The remedy is punctuation, not rewriting,
+    and the two need telling apart because the usual instruction ("keep the
+    fact, discard the wording") is the one thing that must not be done to a
+    quotation.
+    """
+    merged, _ = _source_quotation_groups(grounding_text)
+    words = _quote_words(span_text)
+    if len(words) < 4:
+        return None
+    for cand_words, display in merged:
+        if _contains_subsequence(cand_words, words):
+            return display
+    return None
