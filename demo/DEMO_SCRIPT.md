@@ -15,15 +15,19 @@ Anything marked *(cut first)* goes if you are running long.
 Do these once. They are the difference between a demo that lands and one that stalls.
 
 1. **Log in and leave the tab open.** First page load pulls fonts from a CDN.
-2. **Run one throwaway generation** on the content type you plan to demo. The first
-   generation for a content type builds the vector index; every one after that loads it.
-   You want the judges watching the fast path, not the cold one.
-3. **Have the Documents tab pre-loaded** so the 10 corpus documents are visible.
-4. **Pick your live topic now** and paste it from a note rather than typing it.
-   Suggested: `SALVAGE arrives on digital and disc on 14 April with a commentary track
-   by Ines Kowalczyk and Wren Okpara` — nothing in the corpus mentions a home release,
-   so whatever appears on screen is genuinely new.
-5. **Decide your fallback.** If a live generation stalls, cut to a pre-recorded capture.
+2. **Demo the Press Release Model.** It is the verified path: on the topic below it comes
+   back **approved at 9.0/10 in two enforcer iterations**, with 2.5 contractions per 100
+   words against the corpus's 3.0 and a 13.8-word average sentence against 13.9. See
+   "Known rough edges" before you consider demoing a different content type.
+3. **Run one throwaway generation first.** The first generation for a content type builds
+   the vector index; every one after that loads it. You want the judges watching the fast
+   path, not the cold one.
+4. **Have the Documents tab pre-loaded** so the 10 corpus documents are visible.
+5. **Pick your live topic now** and paste it from a note rather than typing it.
+   Use: `SALVAGE arrives on digital and disc on 14 April, with a commentary track by Ines
+   Kowalczyk and Wren Okpara` — nothing in the corpus mentions a home release, so whatever
+   appears on screen is genuinely new. This is the exact topic the 9.0 run used.
+6. **Decide your fallback.** If a live generation stalls, cut to a pre-recorded capture.
    Say nothing about it; just keep talking.
 
 ---
@@ -99,6 +103,11 @@ the voice profile.
 
 **On screen:** the Enforcer's console output — the iteration count and score.
 
+**What the verified run actually did**, and it is a better story than "it passed":
+iteration 1 was rejected for reproducing 16 consecutive words of the festival's jury
+citation outside quotation marks. The writer paraphrased that one passage. Iteration 2
+approved at 9.0. That is the loop doing its job on a real violation, not a formality.
+
 **If asked "how do you know it isn't just copying?"** — the extractive-copying gate measures
 4-gram overlap against the source corpus. It came down from 23.5% to 3.2% when that gate went
 in, and the number is checked on every generation, not sampled.
@@ -171,6 +180,34 @@ Postgres fallback and stale-while-revalidate, which is roughly 5,561 tokens a ru
 claim prompt caching. The tradeoff is documented deliberately.
 
 ---
+
+## Known rough edges — read this before you pick a content type
+
+Verified on the live host today, same topic each time.
+
+**Press Release Model (`blog`) — demo this one.** Approved at 9.0/10 in two enforcer
+iterations. 2.5 contractions per 100 words against the corpus's 3.0, 13.8-word average
+sentence against 13.9, no exclamation marks. Reads like the corpus: opens with the
+announcement, quotes the director and the sound designer, closes with the credit block and
+the standing boilerplate. Takes a few minutes and several heartbeats.
+
+**Social Caption Model (`social`) — do not demo live.** It produces a single block of copy
+rather than the platform-labelled caption sets the corpus is made of, and it reaches for
+register the corpus never uses ("Experience SALVAGE. Hear the acclaimed sound design.").
+On one run it finished unapproved at 5.0 after a specific collision: the Brand Brain had
+inferred a signature construction from the corpus — announce a decision, then give the
+audience-facing reason — the writer implemented it as "We decided to release SALVAGE on
+digital and disc on 14 April…", and the internal-material gate then rejected "We decided"
+as something the brand told itself rather than told its audience. The score went 7.9 → 5.0
+because the enforcer's own instruction produced the violation. Both rules are individually
+right; they disagree here. Not fixed.
+
+**Trailer Copy Model (`ad`) and Talent Bio Model (`proposal`) — untested end to end.**
+The corpora are loaded and the brains are synthesised, but no generation has been run
+through either. Do not put them on camera without trying them first.
+
+If you want a second content type on screen, run it a few times beforehand and use a
+recording of a good one.
 
 ## Questions you should expect
 
