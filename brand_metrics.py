@@ -359,9 +359,7 @@ class BrandMetricsSQL(MetricPort):
         # exclamation marks per 100 words generating copy at 21.4 — correct in
         # kind, wrong by 3x in degree. Counting the real corpus gives the
         # writer a number to aim at and the enforcer something to check.
-        measured = self._measure_corpus_mechanics()
-        if measured:
-            context = f"{context}\n\n{measured}"
+        context = self._with_measured_mechanics(context)
 
         # Cache to Redis. The fresh value supersedes any stale copy that was
         # being served during the rebuild, so drop that in the same step.
@@ -470,6 +468,28 @@ class BrandMetricsSQL(MetricPort):
     #  Read path — called by writer and enforcer nodes                    #
     # ------------------------------------------------------------------ #
 
+    def _with_measured_mechanics(self, context: str) -> str:
+        """Attach the counted mechanics to a synthesis.
+
+        MEASURED MECHANICS is computed here rather than by the synthesising
+        model, and it is never stored in BrandBrain.synthesis_text — so every
+        path that serves a context has to attach it. One did not.
+
+        get_context() fell back to Postgres, returned synthesis_text bare, and
+        cached that for a day. For those twenty-four hours every deterministic
+        check that reads a measured rate had nothing to read and went quiet:
+        check_measured_mechanics found no targets and returned no failures, and
+        the placeholder gate could not tell a template slot from a brand
+        convention. A press release shipped "[CITY, STATE] – [DATE]" and scored
+        9.6, because the one check that would have caught it was silently off.
+
+        Soft invalidation makes that path ordinary rather than rare: uploading a
+        reference document clears the Redis key, the next request falls through
+        to Postgres, and the gates stay quiet until something rebuilds.
+        """
+        measured = self._measure_corpus_mechanics()
+        return f"{context}\n\n{measured}" if measured else context
+
     def get_context(self) -> str:
         # 1. Try Redis
         cached = self._redis.get(self._cache_key)
@@ -491,9 +511,12 @@ class BrandMetricsSQL(MetricPort):
 
             # Only serve the Postgres brain if it is fully up to date
             if brain and brain.profile_count == metrics_count:
-                # Warm cache
-                self._redis.set(self._cache_key, brain.synthesis_text, ex=CACHE_TTL)
-                return brain.synthesis_text
+                # Attach the counted mechanics before caching. Serving
+                # synthesis_text bare here disabled every gate that reads a
+                # measured rate, for as long as the cache entry lived.
+                context = self._with_measured_mechanics(brain.synthesis_text)
+                self._redis.set(self._cache_key, context, ex=CACHE_TTL)
+                return context
             elif brain:
                 logger.info(
                     "Postgres brain is stale (brain_profiles=%s, actual_metrics=%s) — rebuilding",
