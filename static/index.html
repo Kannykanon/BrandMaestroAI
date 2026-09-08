@@ -429,28 +429,71 @@
 
                     <!-- Uploaded Docs List -->
                     <div class="content-card">
-                        <h2>Currently Vectorized Brand Guidelines</h2>
-                        <p class="card-subtitle">Documents utilized to build RAG context for content generation.</p>
-                        
+                        <div class="card-header">
+                            <div>
+                                <h2>Currently Vectorized Brand Guidelines</h2>
+                                <p class="card-subtitle">Documents utilized to build RAG context for content generation.</p>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" onclick="loadUploadedDocsList()" title="Reload from the server">
+                                <i class="fa-solid fa-rotate"></i>
+                                <span>Refresh</span>
+                            </button>
+                        </div>
+
                         <div class="documents-table-wrapper">
                             <table class="data-table">
                                 <thead>
                                     <tr>
                                         <th>Filename</th>
                                         <th>Content Type Alignment</th>
+                                        <th>Role</th>
                                         <th>Indexed On</th>
-                                        <th>Integrity Status</th>
+                                        <th>Status</th>
                                     </tr>
                                 </thead>
                                 <tbody id="table-documents-body">
                                     <tr>
-                                        <td colspan="4" class="table-empty">
+                                        <td colspan="5" class="table-empty">
                                             <i class="fa-regular fa-folder"></i>
                                             <p>No guideline documents vectorized yet. Use the upload card to sync brand guidelines.</p>
                                         </td>
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+
+                    <!-- Danger zone: clearing what the system has learned.
+                         Kept visually separate from the upload and list cards
+                         so it cannot be mistaken for a routine action. -->
+                    <div class="content-card danger-zone">
+                        <div class="card-header">
+                            <div>
+                                <h2><i class="fa-solid fa-triangle-exclamation"></i> Reset Brand Brain</h2>
+                                <p class="card-subtitle">
+                                    Deletes every document for one content type, their embeddings, and the
+                                    voice profile learned from them. Your other content types are untouched.
+                                    This cannot be undone.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="input-row">
+                            <div class="input-group">
+                                <label for="reset-content-type">Content type to clear</label>
+                                <!-- Mirrors the upload form's options exactly.
+                                     Offering a type the UI cannot upload to
+                                     would only ever clear nothing. -->
+                                <select id="reset-content-type">
+                                    <option value="blog">Press Release Model</option>
+                                    <option value="social">Social Caption Model</option>
+                                    <option value="ad">Trailer Copy Model</option>
+                                    <option value="proposal">Talent Bio Model</option>
+                                </select>
+                            </div>
+                            <button id="btn-reset-brain" class="btn btn-danger" onclick="handleResetBrandBrain()">
+                                <i class="fa-regular fa-trash-can"></i>
+                                <span>Clear This Brand Brain</span>
+                            </button>
                         </div>
                     </div>
                 </div>

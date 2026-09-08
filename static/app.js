@@ -135,8 +135,14 @@ async function handleRegister(e) {
             throw new Error(err.detail || 'Registration failed');
         }
 
-        showToast('Account registered! Please sign in.', 'success');
-        switchAuthTab('login');
+        // /users/create already mints a token for the new account, so making
+        // the user sign in again immediately is a round trip that proves
+        // nothing. Take them straight into the workspace.
+        const data = await response.json();
+        appState.token = data.access_token;
+        localStorage.setItem('bg_access_token', appState.token);
+        showToast(`Welcome, ${first_name} — your workspace is ready`, 'success');
+        await initSession();
     } catch (err) {
         showToast(err.message, 'error');
     } finally {
@@ -515,7 +521,7 @@ async function uploadDocument(e) {
     submitBtn.querySelector('span').innerText = 'Processing & Vectorizing...';
 
     try {
-        const response = await fetch(`${API_BASE}/documents/documents/top-performing`, {
+        const response = await fetch(`${API_BASE}/documents/top-performing`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${appState.token}`
@@ -531,19 +537,12 @@ async function uploadDocument(e) {
         const data = await response.json();
         showToast('Document vectorized successfully!', 'success');
 
-        // Add to mock session documents table
-        appState.sessionDocsCount++;
-        document.getElementById('stat-docs-count').innerText = appState.sessionDocsCount;
-
-        appState.uploadedDocs.unshift({
-            filename: appState.selectedFile.name,
-            contentType: contentType,
-            date: new Date().toLocaleDateString(),
-            status: 'Processing (Vectorized)'
-        });
-
-        updateUploadedDocsTableHTML();
+        // Re-read the list from the server instead of appending a locally
+        // constructed row. The upload has already been persisted, so the server
+        // is the one place that knows the document's real id — which the delete
+        // button needs — and its real status.
         clearSelectedFile();
+        await loadUploadedDocsList();
     } catch (err) {
         showToast(err.message, 'error');
     } finally {
@@ -663,10 +662,17 @@ function updateGenerationsListHTML() {
 
 function updateUploadedDocsTableHTML() {
     const tableBody = document.getElementById('table-documents-body');
+
+    // Kept here so the dashboard tile can never disagree with the table —
+    // both are driven by the same server response.
+    appState.sessionDocsCount = appState.uploadedDocs.length;
+    const countTile = document.getElementById('stat-docs-count');
+    if (countTile) countTile.innerText = appState.sessionDocsCount;
+
     if (appState.uploadedDocs.length === 0) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="4" class="table-empty">
+                <td colspan="5" class="table-empty">
                     <i class="fa-regular fa-folder"></i>
                     <p>No guideline documents vectorized yet. Use the upload card to sync brand guidelines.</p>
                 </td>
@@ -676,12 +682,127 @@ function updateUploadedDocsTableHTML() {
 
     tableBody.innerHTML = appState.uploadedDocs.map(doc => `
         <tr>
-            <td><strong>${doc.filename}</strong></td>
-            <td><span class="badge badge-accent">${doc.contentType.toUpperCase()}</span></td>
-            <td>${doc.date}</td>
-            <td><span class="score-badge">${doc.status}</span></td>
+            <td><strong>${escapeHTML(doc.filename)}</strong></td>
+            <td><span class="badge badge-accent">${escapeHTML((doc.content_type || '').toUpperCase())}</span></td>
+            <td><span class="badge badge-neutral">${doc.doc_role === 'reference' ? 'Reference' : 'Voice'}</span></td>
+            <td>${formatDocDate(doc.uploaded_at)}</td>
+            <td class="doc-actions">
+                <span class="score-badge">${escapeHTML(doc.status || 'ready')}</span>
+                <button class="btn btn-sm btn-danger"
+                        onclick="handleDeleteDocument(${doc.id}, this)"
+                        title="Delete this document and everything derived from it">
+                    <i class="fa-regular fa-trash-can"></i>
+                </button>
+            </td>
         </tr>
     `).join('');
+}
+
+// Filenames come from user uploads, so they reach this table as untrusted
+// text. Interpolating them into innerHTML without escaping would let a file
+// named with a <script> tag run in the next viewer's session.
+function escapeHTML(value) {
+    const div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
+}
+
+function formatDocDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d)) return '—';
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+async function handleDeleteDocument(documentId, btn) {
+    const confirmed = confirm(
+        'Delete this document?\n\n' +
+        'Its embeddings are removed and the brand voice profile is rebuilt ' +
+        'from the documents that remain. This cannot be undone.'
+    );
+    if (!confirmed) return;
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/documents/${documentId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${appState.token}` }
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || 'Failed to delete document');
+        }
+
+        const data = await response.json();
+        showToast(
+            data.brand_brain_resynthesizing
+                ? 'Document deleted — rebuilding the brand voice profile'
+                : 'Document deleted',
+            'success'
+        );
+        await loadUploadedDocsList();
+    } catch (err) {
+        showToast(err.message, 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-regular fa-trash-can"></i>';
+        }
+    }
+}
+
+async function handleResetBrandBrain() {
+    const select = document.getElementById('reset-content-type');
+    const contentType = select.value;
+    // The visible label ("Social Caption Model") is what the user chose; the
+    // value ("social") is an internal key and would read as a different thing.
+    const label = select.options[select.selectedIndex].text;
+
+    // Two steps on purpose: this discards every document and the learned voice
+    // profile for a content type, and there is no undo.
+    const typed = prompt(
+        `This deletes every document you have uploaded to the ${label}, ` +
+        `their embeddings, and the voice profile learned from them.\n\n` +
+        `Your other models are untouched.\n\n` +
+        `Type RESET to confirm.`
+    );
+    if (typed !== 'RESET') {
+        if (typed !== null) showToast('Reset cancelled', 'info');
+        return;
+    }
+
+    const btn = document.getElementById('btn-reset-brain');
+    btn.disabled = true;
+    const original = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Clearing…</span>';
+
+    try {
+        const response = await fetch(`${API_BASE}/documents/brand-brain/${contentType}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${appState.token}` }
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || 'Failed to reset brand brain');
+        }
+
+        const data = await response.json();
+        showToast(
+            `${label} cleared — ${data.documents_deleted} document(s) removed`,
+            'success'
+        );
+        await loadUploadedDocsList();
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = original;
+    }
 }
 
 function loadRecentGenerations() {
@@ -689,8 +810,20 @@ function loadRecentGenerations() {
     updateGenerationsListHTML();
 }
 
-function loadUploadedDocsList() {
-    appState.uploadedDocs = [];
+// Reads from the server rather than from browser memory. The previous version
+// just emptied the local array, so the table was blank on every reload and a
+// user could not see — let alone remove — what an earlier session uploaded.
+async function loadUploadedDocsList() {
+    try {
+        const response = await fetch(`${API_BASE}/documents`, {
+            headers: { 'Authorization': `Bearer ${appState.token}` }
+        });
+        if (!response.ok) throw new Error('Could not load documents');
+        appState.uploadedDocs = await response.json();
+    } catch (err) {
+        appState.uploadedDocs = [];
+        showToast(err.message, 'error');
+    }
     updateUploadedDocsTableHTML();
 }
 
