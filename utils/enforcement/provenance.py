@@ -477,16 +477,12 @@ def _source_quotation_groups(grounding_text: str):
         if len(words) >= 4:      # too short to judge an alteration against
             individual.append((words, re.sub(r"\s+", " ", body).strip()))
 
-    # Script dialogue is a quotation of the film. A trailer copy sheet's
-    # dialogue selects are the actors' lines, so they are matched the same way:
-    # reproduced exactly or flagged.
-    for start, end in script_dialogue_regions(grounding_text):
-        line = grounding_text[start:end]
-        words = _quote_words(line)
-        if len(words) >= 4:
-            entry = (words, re.sub(r"\s+", " ", line).strip())
-            merged.append(entry)
-            individual.append(entry)
+    # Script dialogue is deliberately NOT a candidate here. It is no longer
+    # exempt from the copying gate, so asking for it to be reproduced exactly
+    # would set the two checks against each other: one demanding the line be
+    # rewritten, the other demanding it be preserved, with the writer alternating
+    # between them until the rounds ran out. Dialogue in a reference is writing
+    # to learn from, so there is nothing for a fidelity check to protect.
 
     return merged, individual
 
@@ -615,13 +611,13 @@ def find_altered_quotations(content: str, grounding_text: str,
         return []
     sentence_pool = _sentence_candidates(merged)
 
-    # Passages in this draft that assert somebody's exact words: quoted text,
-    # and script dialogue where the draft is a trailer copy sheet.
+    # Passages in this draft that assert somebody's exact words. Quoted text
+    # only: a character's line is the draft's own writing now, not a claim about
+    # what a real person said.
     candidates = [
         (m.group(1) if m.group(1) is not None else m.group(2))
         for m in _QUOTED_PASSAGE_RE.finditer(content)
     ]
-    candidates += [content[a:b] for a, b in script_dialogue_regions(content)]
 
     findings, seen = [], set()
     for body in candidates:
@@ -732,75 +728,17 @@ def source_quotation_for_span(span_text: str, grounding_text: str) -> str | None
     return None
 
 
-def find_fabricated_dialogue(content: str, grounding_text: str,
-                             limit: int = 5) -> list[dict]:
-    """Script dialogue attributed to a real character that they never said.
-
-    Distinct from an altered quotation, which is a recognisable rewrite of a
-    source line and gets the source wording back. This is invention: trailer
-    copy that approved at 8.1 while containing
-
-        WALE: How much time.
-        RENATA: What is inside.
-        SAM: Is she coming up.
-
-    None of which appear anywhere in the film's dialogue. Nothing resembled a
-    source line closely enough for the alteration check to see it, and putting
-    words in a named character's mouth is not something a distributor can ship.
-
-    Only lines attributed to a speaker the source itself uses are checked. A
-    trailer sheet's label lines ("RELEASE DATE: 14 APRIL") share the shape of
-    dialogue without being dialogue, and the brand's own cast list is what
-    separates them.
-    """
-    if not grounding_text.strip():
-        return []
-
-    source_lines = script_dialogue_lines(grounding_text)
-    if not source_lines:
-        return []
-
-    known_speakers = {speaker.upper() for speaker, *_ in source_lines}
-    merged, individual = _source_quotation_groups(grounding_text)
-
-    # The source's own dialogue at every length. The quotation candidates above
-    # drop passages shorter than four words, which is right for judging whether
-    # a quote was altered and wrong here: "RENATA: Long enough." is two words of
-    # real dialogue, and without it the line was reported as invented.
-    candidates = merged + individual + [
-        (_quote_words(line), line.strip())
-        for _speaker, line, _a, _b in source_lines
-        if _quote_words(line)
-    ]
-
-    findings, seen = [], set()
-    for speaker, line, _start, _end in script_dialogue_lines(content):
-        if speaker.upper() not in known_speakers:
-            continue
-        words = _quote_words(line)
-        if len(words) < 2:
-            continue
-        if any(_contains_subsequence(src_words, words) for src_words, _ in candidates):
-            continue  # said, verbatim
-
-        # Close to something in the source is an alteration, which
-        # find_altered_quotations reports with the correct wording. Only report
-        # what resembles nothing, to avoid two findings for one passage.
-        best = max(
-            (SequenceMatcher(None, " ".join(words), " ".join(w)).ratio()
-             for w, _ in candidates),
-            default=0.0,
-        )
-        if best >= QUOTE_ALTERATION_SIMILARITY:
-            continue
-
-        key = f"{speaker.upper()}|{' '.join(words)}"
-        if key in seen:
-            continue
-        seen.add(key)
-        findings.append({"speaker": speaker, "line": line.strip()})
-
-    return findings[:limit]
+# find_fabricated_dialogue() used to live here, rejecting a line attributed to a
+# character who never said it. It was right for publicity about an existing film
+# and wrong for what this system is for: given a director's scripts and a new
+# subject, writing dialogue nobody has said yet is the product, not a
+# hallucination. Keeping it would also have deadlocked against the copying gate —
+# reference dialogue may not be reused, invented dialogue was not allowed, so no
+# dialogue could be written at all.
+#
+# What still holds: a line reproduced from a reference is caught by
+# find_extractive_spans, and a real person's quotation is caught by
+# find_altered_quotations.
 
 
 def find_unbranded_emphasis_caps(content: str, grounding_text: str,

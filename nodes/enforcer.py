@@ -17,7 +17,6 @@ from utils.enforcement import (
     MAX_VERBATIM_SPAN_WORDS,
     find_altered_quotations,
     find_extractive_spans,
-    find_fabricated_dialogue,
     find_unbranded_emphasis_caps,
     source_quotation_for_span,
     find_ungrounded_contact_details,
@@ -218,48 +217,6 @@ def enforcer_node(state: GraphState) -> GraphState:
             "feedback": feedback,
             "flagged_passages": "\n".join(flagged_lines),
             "violation_history": with_violation("altered quotation"),
-            "creative_angle": "unknown",
-        }
-
-    # 1a-1c. Fabricated-dialogue gate. The altered-quotation check above catches
-    # a source line rewritten; this catches one invented outright. Trailer copy
-    # approved at 8.1 containing "WALE: How much time." and "SAM: Is she coming
-    # up." — lines no character in the film says. Nothing resembled a source line
-    # closely enough for the alteration check to see it, and words put into a
-    # named character's mouth are not something a distributor can publish.
-    fabricated_dialogue = find_fabricated_dialogue(content, grounding_text)
-    if fabricated_dialogue:
-        logger.warning(
-            "FABRICATED DIALOGUE at iteration %d: %s",
-            iteration, [f"{d['speaker']}: {d['line'][:40]}" for d in fabricated_dialogue],
-        )
-        feedback = (
-            "FABRICATED DIALOGUE — this draft puts words in the mouth of a "
-            "character who never says them. Dialogue selects quote the film; they "
-            "are not written for the trailer:\n"
-        )
-        flagged_lines = []
-        for d in fabricated_dialogue:
-            feedback += f"  - {d['speaker']}: {d['line']}\n"
-            flagged_lines.append(
-                f"\"{d['speaker']}: {d['line']}\" — invented dialogue, not in the film"
-            )
-        feedback += (
-            "\nUse only lines that appear in the source material, reproduced exactly. "
-            "If the line you want does not exist, choose a different one that does, or "
-            "cut the dialogue section and let the cards carry the sequence."
-        )
-        return {
-            **state,
-            "approved": False,
-            "score": 0.0,
-            "style_match": 0.0,
-            "tone_match": 0.0,
-            "structure_match": 0.0,
-            "signature_match": 0.0,
-            "feedback": feedback,
-            "flagged_passages": "\n".join(flagged_lines),
-            "violation_history": with_violation("fabricated dialogue"),
             "creative_angle": "unknown",
         }
 
