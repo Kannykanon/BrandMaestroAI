@@ -160,36 +160,89 @@ class TestExtractiveSpans:
 
     @pytest.mark.parametrize("label,content", [
         (
-            # Standing copy the brand reuses across releases. Paraphrasing a
-            # distributor's boilerplate differently each time would be wrong.
-            "repeated boilerplate",
-            "About Harbor Line Pictures\n\nHarbor Line Pictures acquires and "
-            "distributes narrative features in North America, the United Kingdom "
-            "and Ireland. The company releases between six and nine films a year.",
-        ),
-        (
-            # Thirteen shared words, one of them a choice. An award title and a
-            # festival name cannot be paraphrased without becoming wrong.
+            # A fact. Thirteen shared words, one of them a choice: an award title
+            # and a festival name cannot be paraphrased without becoming wrong.
             "award and festival names",
             "SALVAGE won the Grand Jury Prize for Direction at the Cascadia "
             "International Film Festival.",
         ),
         (
+            # A quotation records what a named person said, which is a fact, and
+            # a fact may be reproduced exactly.
             "a quotation, which has to match",
             'Okpara said: "It isn\'t. It\'s loud, and it\'s close, and it\'s mostly '
             'your own body."',
         ),
         (
-            # An actor's line on a trailer copy sheet is the film's, not the
-            # writer's to reword.
+            # Same argument: what a character says in the film is a fact about
+            # the film.
             "script dialogue",
             "WALE: Sixteen days. Then the weather turns and we're done whether "
             "we're finished or not.",
         ),
     ])
-    def test_legitimate_verbatim_passes(self, label, content):
+    def test_facts_may_be_reproduced(self, label, content):
         assert not find_extractive_spans(content, SOURCE), \
-            f"wrongly flagged legitimate verbatim copy: {label}"
+            f"wrongly flagged a fact: {label}"
+
+    def test_repeated_brand_phrasing_is_still_copying(self):
+        """Boilerplate the brand repeats is phrasing, not a fact.
+
+        An earlier version exempted any n-gram the source repeated, reasoning
+        that an "About <company>" block closing every release is standing copy to
+        be reused. That was wrong about what the uploaded documents are: they are
+        references the Brand Brain learns a voice from, not product documents or
+        an asset bank to paste out of. Repetition makes a phrase characteristic
+        of how this brand writes, which is a reason to learn the pattern — not a
+        licence to reproduce the sentence.
+        """
+        content = (
+            "About Harbor Line Pictures\n\nHarbor Line Pictures acquires and "
+            "distributes narrative features in North America, the United Kingdom "
+            "and Ireland. The company releases between six and nine films a year."
+        )
+        assert find_extractive_spans(content, SOURCE), \
+            "reproduced boilerplate was not flagged"
+
+    def test_card_copy_is_phrasing_not_fact(self):
+        """"THE HOLD IS NOT EMPTY" is writing, so a new sheet earns its own.
+
+        Card lines were exempt on the same mistaken reasoning as the boilerplate.
+        An uploaded trailer sheet shows how this brand writes a card; it is not a
+        set of cards to reuse.
+        """
+        source = (
+            "CARD COPY\n\nTHE JOB PAYS ON TONNAGE\nTHE HOLD IS NOT EMPTY\n"
+            "AND THERE ARE THREE OF THEM WORKING THE SAME CONTRACT TOGETHER\n"
+        )
+        content = "AND THERE ARE THREE OF THEM WORKING THE SAME CONTRACT TOGETHER\n"
+        assert find_extractive_spans(content, source), \
+            "card copy was reproduced verbatim and not flagged"
+
+    @pytest.mark.parametrize("label,content,should_flag", [
+        # The fact is statable: an award name is short enough to fall under the
+        # span threshold, so nothing stops the draft naming it.
+        ("the award name alone", "GRAND JURY PRIZE FOR DIRECTION", False),
+        # And statable in the draft's own framing, however long, because the
+        # framing is the draft's.
+        ("the award in the draft's own words",
+         "WINNER OF THE GRAND JURY PRIZE FOR DIRECTION AT CASCADIA", False),
+        # Two of the reference sheet's cards in sequence is the sheet's design,
+        # not a fact, and that is the line.
+        ("two card lines in sequence",
+         "GRAND JURY PRIZE FOR DIRECTION\nCASCADIA INTERNATIONAL FILM FESTIVAL",
+         True),
+    ])
+    def test_a_fact_is_statable_but_a_sheet_is_not_reproducible(
+        self, label, content, should_flag
+    ):
+        """Where the line falls between a fact and the reference's phrasing."""
+        source = (
+            "CARD COPY\n\nGRAND JURY PRIZE FOR DIRECTION\n"
+            "CASCADIA INTERNATIONAL FILM FESTIVAL\nBEST SOUND\n"
+            "CASCADIA INTERNATIONAL FILM FESTIVAL\n"
+        )
+        assert bool(find_extractive_spans(content, source)) is should_flag, label
 
     def test_a_quotation_does_not_weld_two_copied_fragments_together(self):
         """A span must not extend through a quotation.
