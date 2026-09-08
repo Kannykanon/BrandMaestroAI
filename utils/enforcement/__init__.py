@@ -25,6 +25,7 @@ from utils.enforcement.provenance import (
     find_altered_quotations,
     find_fabricated_dialogue,
     find_unbranded_emphasis_caps,
+    sanitize_unbranded_emphasis_caps,
     source_quotation_for_span,
     find_extractive_spans,
     find_ungrounded_contact_details,
@@ -58,4 +59,5 @@ __all__ = [
     "run_preflight_checks",
     "source_quotation_for_span",
     "sanitize_banned_punctuation",
+    "sanitize_unbranded_emphasis_caps",
 ]

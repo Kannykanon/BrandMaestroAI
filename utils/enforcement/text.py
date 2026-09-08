@@ -51,6 +51,11 @@ _CAPS_WORD_RE = re.compile(
 )
 
 
+def caps_word_pattern():
+    """The compiled all-caps word pattern, for callers that scan lines."""
+    return _CAPS_WORD_RE
+
+
 def inline_caps_words(text: str):
     """All-caps words appearing inside a line that also contains lowercase.
 
