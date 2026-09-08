@@ -15,20 +15,19 @@ Anything marked *(cut first)* goes if you are running long.
 Do these once. They are the difference between a demo that lands and one that stalls.
 
 1. **Log in and leave the tab open.** First page load pulls fonts from a CDN.
-2. **All four content types work.** Verified in one sweep on the live host, each
-   with a topic suited to it:
+2. **All four content types work.** Verified on the live host, each with a topic
+   suited to it:
 
-   | Model | Score | Round | Topic used |
-   |---|---|---|---|
-   | Press Release | 9.5 | 1 | the 14 April digital and disc release |
-   | Social Caption | 9.6 | 5 | release-week captions for the same |
-   | Talent Bio | 8.6 | 6 | a press-kit bio of Marta Silvestri |
-   | Trailer Copy | 6.8 | 6 | a thirty-second cutdown for the release |
+   | Model | Score | Round |
+   |---|---|---|
+   | Press Release | 9.8 | 3 |
+   | Social Caption | 8.4 | 6 |
+   | Talent Bio | 8.0 | 6 |
+   | Trailer Copy | 7.9 | 6 |
 
-   **Demo the Press Release Model.** It is the strongest on both counts: it
-   approves fastest and it reads most like the corpus. See "Known rough edges"
-   before choosing another — they all work, but two read choppier than the
-   brand does.
+   **Demo the Press Release Model.** Highest score, fastest to approve, and the
+   closest read to the corpus: 3.4 contractions per 100 words against a target of
+   3.0, 15.1-word sentences against 13.9, no exclamation marks.
 3. **Run one throwaway generation first.** The first generation for a content type builds
    the vector index; every one after that loads it. You want the judges watching the fast
    path, not the cold one.
@@ -223,49 +222,37 @@ plenty for evaluating it and means one person cannot spend anyone else's.
 
 ## Known rough edges — read this before you pick a content type
 
-All four approve. Nothing here will fail on camera. What differs is how closely
-each reads like Harbor Line.
+All four approve. Nothing here fails on camera.
 
-**Press Release — the one to demo.** 9.5 on the first round. 2.2 contractions per
-100 words against the corpus's 3.0, 13.8-word sentences against 13.9. Opens with
-the announcement, quotes the director and sound designer verbatim, closes on the
-credit block and boilerplate.
+**Press Release — the one to demo.** 9.8 on round three. Reads like the corpus:
+short declaratives, concrete numbers, quotes reproduced exactly.
 
-**Talent Bio — solid.** 8.6. Facts correct, and Silvestri's quote is reproduced
-exactly, contractions and all. Leans on em-dashes more than the corpus does, and
-renders "because the money's good" as "Her motivation is financial gain" — stiffer
-than the brand, but publishable.
+**Trailer Copy — worth showing if you have time.** 7.9. The best illustration of
+what the system actually does. It reproduces the award cards and the dialogue
+selects verbatim, because those are facts, and then writes its own cards —
+"THE SEA NEVER FORGETS", "PAYMENT IS TONNAGE. EVERY TONNE COUNTS", "THE WINDOW
+IS SHORT". None of those appear in the reference documents. It learned how this
+brand writes a card rather than which cards to use. One wrinkle: it renders the
+end tag as "NOBODY COMES UP UNTIL THE JOB IS FINISHED" where the reference has
+"the job's finished" — a card in capitals, not a misquotation, since nothing is
+attributed, but the contraction is lost.
 
-**Trailer Copy — correct, but telegraphic.** 6.8. The dialogue selects are now
-verbatim from the film, which is the point: an earlier version invented
-"WALE: How much time." and scored 8.1 for it. The surrounding prose reads as
-clipped fragments — "Submerged operation. Crew deploys. Elements challenge." —
-averaging 4.2 words a sentence against the corpus's 12.7. It also writes
-"Do NOT fail", which the capitals check permits because the brand's own card
-"THE HOLD IS NOT EMPTY" capitalises that word. Defensible by the rule, still a
-shout.
+**Social Caption — 8.4.** Sentences average 5.3 words against the corpus's 9.6,
+so it reads clipped, and 1.4 contractions per 100 words against 3.3.
 
-**Social Caption — highest score, weakest read.** 9.6, and the one I would not put
-on screen. It reaches for register the corpus never uses: "Secure SALVAGE",
-"Experience true craft", "Hear the difference firsthand", "This is the essence."
-Sentences average 5.6 words against the corpus's 9.6. It also renders Okpara's
-quote as unattributed prose — "Many assume underwater sound is muffled. It is
-not." — which is not a misquotation, because nothing is in quotation marks and
-nothing is attributed, but it loses the human voice the corpus gets from quoting
-him directly.
+**Talent Bio — 8.0.** Facts correct and the quote exact. Stiffer than the brand:
+it renders "because the money's good" as clinical description.
 
-**Why the scores do not track this.** Social scores highest and reads worst. Two
-mechanics are measured from the corpus and shown to the writer but never gated:
-contraction rate and sentence length. Generated copy runs 1.4-3.4 contractions
-per 100 words against targets of 3.0-3.4, and 4.2-13.8 words a sentence against
-9.6-13.9. Over-use is gated; under-use is not, so flat, clipped copy passes
-every deterministic check. That is the first thing to fix after submission, and
-it is the whole explanation for the choppiness above.
+**Why the scores do not track how well these read.** Two mechanics are measured
+from the corpus and shown to the writer but never gated: contraction rate and
+sentence length. Over-use is checked, under-use is not, so flat clipped copy
+passes every deterministic check. That is the first thing to fix after
+submission.
 
-**If a judge asks for something the corpus cannot support**, the pipeline will
-still return content, its score, and the passages it flagged — it does not
-crash. An unapproved generation means the enforcer declined to sign off, which
-is the human-in-the-loop step doing its job, not a failure to respond.
+**If a judge asks for something the corpus cannot support**, the pipeline still
+returns content, its score and the passages it flagged. An unapproved generation
+means the enforcer declined to sign off — the human-in-the-loop step doing its
+job, not a failure to respond.
 
 ## Questions you should expect
 
