@@ -50,6 +50,17 @@ _CAPS_WORD_RE = re.compile(
     r"(?<![A-Za-z])[A-Z][A-Z0-9]*(?:['&.-][A-Z0-9]+)*(?![A-Za-z])"
 )
 
+# At least three letters, matching card_line_regions and the measured all-caps
+# counter, which use the same floor. Counted after stripping punctuation so
+# "O'BRIEN" stays one word: putting the floor inside the pattern instead made it
+# match from the "B" and report "BRIEN".
+#
+# The floor matters more than it looks. Without it a standalone "A" at the start
+# of a sentence read as shouting, and the auto-fix could not help — "A".capitalize()
+# is "A", so nothing changed and the gate fired again every round. A press release
+# looped six times on a single indefinite article and ended unapproved.
+_MIN_CAPS_WORD_LETTERS = 3
+
 
 def caps_word_pattern():
     """The compiled all-caps word pattern, for callers that scan lines."""
@@ -70,7 +81,10 @@ def inline_caps_words(text: str):
         if not re.search(r"[a-z]", line):
             continue          # caps-only line: structural, not emphasis
         for m in _CAPS_WORD_RE.finditer(line):
-            out.append((m.group(0), line_match.start() + m.start()))
+            word = m.group(0)
+            if len(re.sub(r"[^A-Za-z]", "", word)) < _MIN_CAPS_WORD_LETTERS:
+                continue
+            out.append((word, line_match.start() + m.start()))
     return out
 
 
