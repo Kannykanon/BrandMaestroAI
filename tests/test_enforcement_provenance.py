@@ -8,7 +8,12 @@ the pipeline being broken.
 """
 import pytest
 
-from utils.enforcement import find_altered_quotations, find_extractive_spans
+from utils.enforcement import (
+    find_altered_quotations,
+    find_extractive_spans,
+    find_fabricated_dialogue,
+    find_unbranded_emphasis_caps,
+)
 
 
 # A miniature two-document corpus with the shapes that caused trouble: a
@@ -218,3 +223,71 @@ class TestExtractiveSpans:
         source = " ".join(vocabulary)
         content = " ".join(vocabulary[:n_words])
         assert bool(find_extractive_spans(content, source)) is should_flag
+
+
+class TestFabricatedDialogue:
+    """Trailer copy approved at 8.1 with lines no character in the film says."""
+
+    def test_invented_lines_are_flagged(self):
+        content = (
+            "WALE: How much time.\n"
+            "RENATA: What is inside.\n"
+            "SAM: Is she coming up.\n"
+        )
+        found = find_fabricated_dialogue(content, SOURCE)
+        assert {f["speaker"] for f in found} == {"WALE", "RENATA", "SAM"}
+
+    def test_real_lines_pass(self):
+        content = (
+            "WALE: Sixteen days. Then the weather turns and we're done whether "
+            "we're finished or not.\n"
+            "RENATA: There's something in the hold.\n"
+            "SAM (over comms, breathing hard): Wale. Wale, she's not coming up.\n"
+        )
+        assert find_fabricated_dialogue(content, SOURCE) == []
+
+    def test_label_lines_are_not_dialogue(self):
+        """"RELEASE DATE: 14 APRIL" has the shape of dialogue without being it.
+
+        Only speakers the source itself uses are checked, which is what keeps a
+        trailer sheet's label lines out of this gate.
+        """
+        content = "RELEASE DATE: 14 APRIL.\nHOLD CONTENTS: UNSEEN.\nFILM ACCLAIM: Grand Jury Prize.\n"
+        assert find_fabricated_dialogue(content, SOURCE) == []
+
+
+class TestUnbrandedEmphasisCaps:
+    """Social copy approved at 6.6 while shouting adjectives.
+
+    The measured all-caps rate was 5.9 per 100 words against the brand's 4.4 —
+    inside tolerance, and correctly silent. The count was right and every choice
+    was wrong, so the question is which words rather than how many.
+    """
+
+    @pytest.mark.parametrize("word", [
+        "EXCLUSIVE", "ACCLAIMED", "UNIQUE", "FIRST",
+    ])
+    def test_shouted_adjectives_are_flagged(self, word):
+        content = f"It features an {word} commentary track by the director."
+        assert [f["word"] for f in find_unbranded_emphasis_caps(content, SOURCE)] == [word]
+
+    @pytest.mark.parametrize("label,content", [
+        # The brand sets its own title in capitals, so the title is its
+        # convention rather than the model's emphasis.
+        ("the brand's own title", "SALVAGE arrives on digital and disc in April."),
+        # Trailing punctuation must not make a different word of it. With "."
+        # inside the character class, "SALVAGE." did not match the permitted
+        # "SALVAGE" and the title was flagged every time it ended a sentence —
+        # which blocked the press-release path for two whole revision rounds.
+        ("the title ending a sentence", "Experience SALVAGE."),
+        # Capitals on a line of their own are structural: a card, a heading, a
+        # label. The measured rate governs those.
+        ("a card line", "THE HOLD IS NOT EMPTY\nSALVAGE\n14 APRIL"),
+        ("a speaker label", "WALE: Sixteen days."),
+    ])
+    def test_brand_capitalisation_passes(self, label, content):
+        assert find_unbranded_emphasis_caps(content, SOURCE) == [], \
+            f"wrongly flagged the brand's own capitalisation: {label}"
+
+    def test_no_grounding_text_flags_nothing(self):
+        assert find_unbranded_emphasis_caps("An EXCLUSIVE offer.", "") == []
