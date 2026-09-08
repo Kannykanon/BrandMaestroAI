@@ -35,21 +35,6 @@ services:
   # Embedding Init (runs once before workers start)
   # ---------------------------------------------------------------------------
 
-  embedding_init:
-    build: .
-    user: root
-    command: >
-      sh -c "mkdir -p /tmp/fastembed_cache &&
-            chmod 777 /tmp/fastembed_cache &&
-            python -c \"from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-small-en-v1.5')\""
-    environment:
-      SECRET_KEY: ${SECRET_KEY}
-      FRONTEND_URL: ${FRONTEND_URL}
-      FASTEMBED_CACHE_PATH: /tmp/fastembed_cache
-    volumes:
-      - fastembed_cache:/tmp/fastembed_cache
-    restart: "no"
-
   # ---------------------------------------------------------------------------
   # Application
   # ---------------------------------------------------------------------------
@@ -66,17 +51,13 @@ services:
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY}
       FRONTEND_URL: ${FRONTEND_URL}
-      FASTEMBED_CACHE_PATH: /tmp/fastembed_cache
     volumes:
-      - fastembed_cache:/tmp/fastembed_cache
       - ./static:/app/static
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      embedding_init:
-        condition: service_completed_successfully
     restart: unless-stopped
 
   worker_generation:
@@ -92,16 +73,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY}
       FRONTEND_URL: ${FRONTEND_URL}
-      FASTEMBED_CACHE_PATH: /tmp/fastembed_cache
-    volumes:
-      - fastembed_cache:/tmp/fastembed_cache
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      embedding_init:
-        condition: service_completed_successfully
     restart: unless-stopped
 
   worker_feedback:
@@ -145,16 +121,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY}
       FRONTEND_URL: ${FRONTEND_URL}
-      FASTEMBED_CACHE_PATH: /tmp/fastembed_cache
-    volumes:
-      - fastembed_cache:/tmp/fastembed_cache
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      embedding_init:
-        condition: service_completed_successfully
     restart: unless-stopped
 
   flower:
@@ -172,4 +143,3 @@ services:
 
 volumes:
   postgres_data:
-  fastembed_cache:
