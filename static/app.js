@@ -308,6 +308,14 @@ async function triggerGeneration(e) {
                         continue;
                     }
 
+                    // The server emits a heartbeat while a node is mid-LLM-call.
+                    // Surfacing the elapsed seconds is the difference between a
+                    // pipeline that looks slow and one that looks broken.
+                    if (chunk.heartbeat !== undefined) {
+                        statusBadge.innerText = `WORKING ${chunk.heartbeat}s`;
+                        continue;
+                    }
+
                     // LangGraph returns chunks like {"node_name": {"content": "..."}}
                     // We need to unwrap the inner state update object
                     let stateUpdate = chunk;
