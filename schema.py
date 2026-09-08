@@ -1,11 +1,20 @@
 from pydantic import EmailStr, BaseModel, Field, field_validator
 from typing import Optional
 
+# Single source of truth for the content types the pipeline supports. The two
+# Field patterns below are built from it, and the document router validates
+# against it, so a type cannot be accepted for upload and then rejected — or
+# silently ignored — when the same user tries to clear it.
+CONTENT_TYPES = (
+    "blog", "social", "ad", "proposal",
+    "press_release", "trailer_copy", "talent_bio", "synopsis",
+)
+CONTENT_TYPE_PATTERN = f"^({'|'.join(CONTENT_TYPES)})$"
+
+
 class GenerateRequest(BaseModel):
     business_id: str
-    content_type: str = Field(
-        ..., pattern="^(blog|social|ad|proposal|press_release|trailer_copy|talent_bio|synopsis)$"
-    )
+    content_type: str = Field(..., pattern=CONTENT_TYPE_PATTERN)
     topic: str
     format_type: str
     user_id: Optional[int] = None
@@ -23,9 +32,7 @@ class FeedbackRequest(BaseModel):
 
 class DocumentUploadRequest(BaseModel):
     business_id: str
-    content_type: str = Field(
-        ..., pattern="^(blog|social|ad|proposal|press_release|trailer_copy|talent_bio|synopsis)$"
-    )
+    content_type: str = Field(..., pattern=CONTENT_TYPE_PATTERN)
     platform: Optional[str] = None      # e.g. "instagram", "linkedin"
     performance_metric: Optional[str] = None  # e.g. "highest_engagement"
 
@@ -59,6 +66,23 @@ class UserResponse(BaseModel):
     username: str
     email: str
     business_id: str
+
+    class Config:
+        from_attributes = True
+
+
+class TokenResponse(BaseModel):
+    """Response for the endpoints that mint a token.
+
+    /users/create previously returned the User row itself with no
+    response_model, so FastAPI serialised every column — including the argon2
+    password hash — into the registration response. Declaring the shape here
+    means the hash cannot be returned even if the endpoint keeps handing over
+    the ORM object.
+    """
+    access_token: str
+    token_type: str
+    user: Optional[UserResponse] = None
 
     class Config:
         from_attributes = True

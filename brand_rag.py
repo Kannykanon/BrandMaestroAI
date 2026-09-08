@@ -3,6 +3,7 @@ import logging
 import os
 import threading
 import time
+from contextlib import closing
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
@@ -155,11 +156,31 @@ class BrandRAG:
                 )
                 return
 
-        # Embed and insert only the new document
         from llama_index.core import Document
         index_entry = self._get_index()
+
+        # _get_index() may have just built the index from the database, and the
+        # upload that triggered this refresh is already a row there — so that
+        # build already embedded this document. Inserting it again would store a
+        # second copy of every one of its chunks. This check was previously done
+        # only against a cold cache, before the build.
+        if doc_hash in index_entry.doc_hashes:
+            logger.info(
+                "Document already present in the rebuilt index for "
+                "business_id=%s content_type=%s — skipping insert.",
+                self.business_id, self.content_type,
+            )
+            return
+
+        # Embed and insert only the new document
         index_entry.index.insert(Document(text=new_doc_content))
         index_entry.doc_hashes.add(doc_hash)
+
+        # The insert is written straight through to pgvector, so the record of
+        # what the table holds has to grow with it. Without this the next build
+        # would see a mismatch and re-embed every document to reach a state the
+        # table is already in.
+        self._record_indexed_hashes(index_entry.doc_hashes)
 
         logger.info(
             "Incremental refresh complete for business_id=%s content_type=%s",
@@ -190,9 +211,11 @@ class BrandRAG:
                     age, self.business_id, self.content_type,
                 )
 
-            # Track hashes of all docs going into the index
+            # Track hashes of all docs going into the index. They are handed to
+            # _build so it can tell an index that only needs loading from one
+            # that needs re-embedding.
             docs, doc_hashes = self._load_docs()
-            index = self._build(docs)
+            index = self._build(docs, doc_hashes)
             entry = _IndexEntry(index=index, doc_hashes=doc_hashes)
             self._cache[key] = entry
             return entry
@@ -209,29 +232,17 @@ class BrandRAG:
             self._llamaindex_embed = self.embedding.to_llamaindex()
         return self._llamaindex_embed
 
-    @retry(
-        retry=retry_if_exception_type(Exception),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        before_sleep=before_sleep_log(logger, logging.WARNING),
-        reraise=True,
-    )
-    def _build(self, docs):
-        """Build (or load) the VectorStoreIndex. Retried up to 3 times."""
-        from llama_index.core import VectorStoreIndex
-        from llama_index.core.node_parser import SimpleNodeParser
+    def _vector_store(self):
+        """The pgvector store backing this (business_id, content_type).
+
+        One table per business, content type and embedding dimension, so a
+        business's vectors are physically separated from every other tenant's
+        and an embedding-model change cannot mix dimensions in one table.
+        """
         from llama_index.vector_stores.postgres import PGVectorStore
 
-        
-
-        node_parser = SimpleNodeParser.from_defaults(
-            chunk_size=self.chunking_strategy.chunk_size,
-            chunk_overlap=self.chunking_strategy.chunk_overlap,
-            )
-        
-
         parsed = urlparse(self._postgres_uri)
-        vector_store = PGVectorStore.from_params(
+        return PGVectorStore.from_params(
             host=parsed.hostname,
             port=parsed.port or 5432,
             database=parsed.path.lstrip("/"),
@@ -248,11 +259,92 @@ class BrandRAG:
             },
         )
 
+    def purge(self) -> None:
+        """Delete every embedded chunk for this (business_id, content_type).
+
+        Dropping a row from brand_documents does not touch the vectors that
+        were derived from it, so without this a "deleted" document keeps being
+        retrieved and keeps steering generation. Called on the delete path;
+        the next query rebuilds the index from whatever documents remain.
+        """
+        self._vector_store().clear()
+        with self._cache_lock:
+            self._cache.pop(self._cache_key(), None)
+
+        # Drop the record of what was indexed too. A stale record describing a
+        # table that has just been emptied is exactly the state that would let
+        # a later build skip re-embedding and serve an empty index.
+        try:
+            from brand_metrics import _get_redis_client
+
+            _get_redis_client().delete(self._indexed_hashes_key())
+        except Exception as e:
+            logger.warning("Could not clear indexed-hash record: %s", e)
+
+        logger.info(
+            "Purged vector store for business_id=%s content_type=%s",
+            self.business_id, self.content_type,
+        )
+
+    def _indexed_hashes_key(self) -> str:
+        """Redis key recording which documents the persisted table holds.
+
+        Keyed by everything that changes the vectors — the business, the
+        content type, the embedding model and the chunking strategy — so a
+        model or chunking change is never mistaken for an up-to-date index.
+        """
+        b, c, model, chunking = self._cache_key()
+        return f"rag_indexed:{b}:{c}:{model}:{chunking}"
+
+    @retry(
+        retry=retry_if_exception_type(Exception),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True,
+    )
+    def _build(self, docs, doc_hashes=None):
+        """Build (or load) the VectorStoreIndex. Retried up to 3 times."""
+        from llama_index.core import StorageContext, VectorStoreIndex
+        from llama_index.core.node_parser import SimpleNodeParser
+
+        node_parser = SimpleNodeParser.from_defaults(
+            chunk_size=self.chunking_strategy.chunk_size,
+            chunk_overlap=self.chunking_strategy.chunk_overlap,
+            )
+
+        vector_store = self._vector_store()
+
+        # VectorStoreIndex.from_documents() takes a storage_context, NOT a
+        # vector_store. The previous code passed vector_store=..., which
+        # from_documents() accepts into **kwargs and ignores, so every index
+        # was built in the default in-memory SimpleVectorStore: embeddings
+        # were computed, held in one worker process, and dropped when that
+        # process rebuilt or restarted. The pgvector table was created and
+        # then stayed permanently empty.
+        storage_context = StorageContext.from_defaults(vector_store=vector_store)
+
         if not docs:
             logger.info(
                 "No source documents for business_id=%s content_type=%s; "
                 "loading existing vector store.",
                 self.business_id, self.content_type,
+            )
+            return VectorStoreIndex.from_vector_store(
+                vector_store=vector_store,
+                embed_model=self.llamaindex_embed,
+            )
+
+        # Now that vectors actually persist, an index can often be loaded
+        # instead of rebuilt. Re-embedding every document on each process
+        # start and each TTL expiry was the single largest avoidable cost in
+        # the pipeline; this skips it whenever the stored table already holds
+        # exactly the documents the database currently has.
+        if doc_hashes and self._persisted_index_is_current(doc_hashes):
+            logger.info(
+                "Vector store already current for business_id=%s content_type=%s "
+                "(%d document(s)) — loading without re-embedding.",
+                self.business_id, self.content_type, len(doc_hashes),
             )
             return VectorStoreIndex.from_vector_store(
                 vector_store=vector_store,
@@ -265,13 +357,97 @@ class BrandRAG:
             len(docs), self.business_id, self.content_type,
             self.chunking_strategy.__class__.__name__, self.embedding.embed_dim,
         )
-        return VectorStoreIndex.from_documents(
+
+        # A rebuild is a full snapshot of the documents currently in the
+        # database, so the table is cleared first — otherwise from_documents()
+        # would append a second copy of every chunk, and a deleted document's
+        # chunks would survive here even though its row is gone.
+        #
+        # Two processes rebuilding at once each clear-then-insert, so the
+        # settled state is still exactly one copy; only a query landing inside
+        # that window sees a partial index.
+        vector_store.clear()
+
+        index = VectorStoreIndex.from_documents(
             docs,
-            vector_store=vector_store,
+            storage_context=storage_context,
             embed_model=self.llamaindex_embed,
             transformations=[node_parser],
             show_progress=True,
         )
+
+        if doc_hashes:
+            self._record_indexed_hashes(doc_hashes)
+
+        return index
+
+    def _persisted_index_is_current(self, doc_hashes: set[str]) -> bool:
+        """True when the stored table holds exactly these documents.
+
+        Both conditions matter. The recorded hash set says the right documents
+        were indexed; the row count says the table was not since cleared or
+        dropped. Any Redis or database problem answers False, which only costs
+        a rebuild.
+        """
+        try:
+            from brand_metrics import _get_redis_client
+
+            recorded = _get_redis_client().smembers(self._indexed_hashes_key())
+            if set(recorded) != set(doc_hashes):
+                return False
+
+            return self._stored_row_count() > 0
+        except Exception as e:
+            logger.warning(
+                "Could not check persisted index for business_id=%s content_type=%s "
+                "(%s) — rebuilding.", self.business_id, self.content_type, e,
+            )
+            return False
+
+    def _record_indexed_hashes(self, doc_hashes: set[str]) -> None:
+        """Record which documents the freshly built table holds."""
+        try:
+            from brand_metrics import _get_redis_client
+
+            client = _get_redis_client()
+            key = self._indexed_hashes_key()
+            pipe = client.pipeline()
+            pipe.delete(key)
+            pipe.sadd(key, *doc_hashes)
+            pipe.execute()
+        except Exception as e:
+            # A missing record only means the next build re-embeds. The index
+            # itself is already written, so this must not fail the build.
+            logger.warning(
+                "Could not record indexed hashes for business_id=%s content_type=%s: %s",
+                self.business_id, self.content_type, e,
+            )
+
+    def _stored_row_count(self) -> int:
+        """Number of embedded chunks currently in this business's table."""
+        import psycopg2
+
+        table = (
+            f"data_vectors_{self._sanitize_table_name(self.business_id)}"
+            f"_{self._sanitize_table_name(self.content_type)}_{self.embedding.embed_dim}"
+        )
+        # The table name is assembled from sanitised components — the
+        # sanitiser reduces anything outside [a-z0-9_] to an underscore — so
+        # it cannot carry SQL. Identifiers cannot be bound as parameters.
+        #
+        # closing() is explicit because psycopg2's connection context manager
+        # ends the transaction but leaves the connection open, which would leak
+        # one per call from a long-lived worker.
+        with closing(psycopg2.connect(self._postgres_uri)) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
+                    "WHERE table_name = %s)", (table,),
+                )
+                if not cur.fetchone()[0]:
+                    return 0
+                cur.execute(f'SELECT count(*) FROM "{table}"')
+                return cur.fetchone()[0]
 
   
 

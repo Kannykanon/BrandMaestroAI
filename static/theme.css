@@ -1877,3 +1877,87 @@ body {
         padding: 32px 24px;
     }
 }
+
+/* --- Destructive actions --------------------------------------------------
+   The primary button is already red, so a destructive control cannot lean on
+   colour alone to distinguish itself. These read as outlined and quiet until
+   hovered, then commit to a solid red — deliberate, not decorative. */
+.btn-danger {
+    background-color: rgba(239, 68, 68, 0.10);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+}
+
+.btn-danger:hover:not(:disabled) {
+    background-color: var(--primary-red-hover);
+    border-color: var(--primary-red);
+    color: #ffffff;
+    box-shadow: var(--shadow-glow);
+}
+
+/* The per-row delete button sits beside the status badge, so it stays small
+   and colourless until the pointer is on it. */
+.doc-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.doc-actions .btn-danger {
+    background-color: transparent;
+    border-color: transparent;
+    color: var(--text-muted);
+    padding: 6px 8px;
+}
+
+.doc-actions .btn-danger:hover:not(:disabled) {
+    background-color: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: var(--primary-red);
+    box-shadow: none;
+}
+
+/* --- Danger zone ---------------------------------------------------------
+   Marked out with a warm left edge so it is visibly not part of the ordinary
+   upload flow above it. */
+.danger-zone {
+    border-color: rgba(239, 68, 68, 0.28) !important;
+    border-left: 3px solid var(--primary-red) !important;
+    background-image: linear-gradient(180deg, rgba(239, 68, 68, 0.05), transparent 160px) !important;
+}
+
+.danger-zone h2 {
+    color: #fca5a5;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.danger-zone h2 i {
+    font-size: 15px;
+}
+
+.danger-zone .card-subtitle {
+    max-width: 68ch;
+}
+
+.danger-zone .input-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.danger-zone .input-group {
+    min-width: 240px;
+}
+
+/* A neutral companion to .badge-accent, which was the only variant defined —
+   bare .badge sets typography but no colour, so it rendered as plain text.
+   The document Role column needs a badge that does not shout. */
+.badge-neutral {
+    background-color: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}

@@ -4,7 +4,7 @@ from typing import Annotated
 from sqlalchemy.orm import Session
 from database import get_db, User
 from auth import verify_password, create_access_token, hash_password
-from schema import UserCreate, UserResponse
+from schema import UserCreate, UserResponse, TokenResponse
 from limiter import limiter
 from utils import logger
 from starlette.requests import Request
@@ -25,7 +25,7 @@ async def get_me(db: Annotated[Session, Depends(get_db)], token: Annotated[str, 
     return user
 
 
-@router.post("/create", status_code=201)
+@router.post("/create", status_code=201, response_model=TokenResponse)
 @limiter.limit("2/minute")
 async def register_user(request: Request, user: UserCreate, db: Annotated[Session, Depends(get_db)]):
     try:
