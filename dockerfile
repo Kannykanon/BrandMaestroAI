@@ -10,7 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml .
 
-RUN pip install --no-cache-dir --prefix=/install .
+# Generous timeout and retries: the dependency set includes several large
+# wheels, and a single slow read from PyPI otherwise fails the whole build.
+RUN pip install --no-cache-dir --prefix=/install     --timeout 120 --retries 10 .
 
 # No embedding model is baked into the image. Retrieval embeddings run on
 # Gemini text-embedding-004 (see embedding_stategy.GoogleEmbedding), so there

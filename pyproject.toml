@@ -1,3 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# This is an application, not a library. The code is flat modules plus the
+# graph/, nodes/, prompts/, routers/ and utils/ packages, imported from the
+# working directory (PYTHONPATH=/app in the container) rather than installed
+# into site-packages.
+#
+# Without this, an installer looks for a package matching the project name and
+# fails with "No file/folder found for package langgraph-marketing-automation",
+# or setuptools auto-discovery finds several top-level packages and refuses to
+# guess. Declaring no packages makes `pip install .` do the one thing that is
+# actually wanted here: install the dependencies.
+[tool.setuptools]
+packages = []
+py-modules = []
+
 [project]
 name = "langgraph-marketing-automation"
 version = "0.1.0"
