@@ -17,6 +17,7 @@ from utils.enforcement.constants import (
     QUOTE_CANONICAL_COVERAGE,
 )
 from utils.enforcement.text import (
+    about_block_regions,
     card_line_regions,
     digits,
     inline_caps_words,
@@ -192,6 +193,39 @@ _FUNCTION_WORDS = {
 
 
 
+
+def _matching_about_regions(content: str, source: str):
+    """Content "About <company>" blocks that match one in the source.
+
+    The company's name and what it does are facts about the company, so the
+    standing block that closes a release may be reproduced. Matching against the
+    source's own block is what keeps that from becoming a hiding place: a word
+    cap alone did not, because a sixty-word paragraph of copied prose fits
+    comfortably inside the size of a real boilerplate.
+    """
+    source_blocks = [
+        set(_quote_words(source[a:b])) for a, b in about_block_regions(source)
+    ]
+    if not source_blocks:
+        return []
+
+    protected = []
+    for a, b in about_block_regions(content):
+        words = _quote_words(content[a:b])
+        if not words:
+            continue
+        wordset = set(words)
+        # Nearly all of this block's vocabulary has to come from the source's
+        # block. The genuine case is identical; copied prose under the same
+        # heading shares only the company name.
+        if any(
+            len(wordset & block) / len(wordset) >= 0.9
+            for block in source_blocks
+        ):
+            protected.append((a, b))
+    return protected
+
+
 def _name_words(source: str) -> frozenset:
     """Words the source capitalises in running text, lowercased.
 
@@ -321,7 +355,7 @@ def find_extractive_spans(content: str, source: str,
     # text, which settles it.
     name_words = _name_words(name_evidence if name_evidence is not None else source)
 
-    protected = verbatim_regions(content)
+    protected = verbatim_regions(content) + _matching_about_regions(content, source)
     blocked = [
         any(rs <= start and end <= re_ for rs, re_ in protected)
         for _, start, end in ctoks

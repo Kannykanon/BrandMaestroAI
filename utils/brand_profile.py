@@ -6,7 +6,10 @@ out of it. They live here rather than beside any one node because the
 Researcher, Writer and Enforcer all read the same document, and the Researcher
 was previously importing a private helper out of the Writer to do it.
 """
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 
 def extract_section(text: str, header: str) -> str:
@@ -217,3 +220,46 @@ def measured_mechanics_section(metrics: str) -> str | None:
         metrics, re.DOTALL | re.IGNORECASE,
     )
     return match.group(1) if match else None
+
+
+_NAME_EVIDENCE_CACHE: dict[str, str] = {}
+
+
+def brand_name_evidence(business_id: str) -> str:
+    """Every document this business has uploaded, across all content types.
+
+    Used only to decide which words belong to names. That is a property of the
+    brand, not of one content type, and asking within a single type gives the
+    wrong answer: a trailer sheet writes "GRAND JURY PRIZE FOR DIRECTION" and
+    "CASCADIA INTERNATIONAL FILM FESTIVAL" only in capitals, so nothing in the
+    trailer corpus shows they are names — the copying gate then counted both
+    awards as the writer's own wording and asked it to paraphrase an award. The
+    brand's press releases write them in running text, which settles it.
+
+    Cached per business for the life of the process. New documents change the
+    answer only by adding names, and a worker restart picks those up; being one
+    upload behind costs a rebuild at worst, never a false accusation.
+    """
+    cached = _NAME_EVIDENCE_CACHE.get(business_id)
+    if cached is not None:
+        return cached
+
+    try:
+        from database import get_db_session, BrandDocument
+
+        with get_db_session() as session:
+            rows = (
+                session.query(BrandDocument.file_content)
+                .filter(BrandDocument.business_id == business_id)
+                .filter(BrandDocument.file_content.isnot(None))
+                .all()
+            )
+        evidence = "\n\n".join(row[0] for row in rows if row[0])
+    except Exception as e:  # a missing evidence base must not fail enforcement
+        logger.warning(
+            "Could not load name evidence for business_id=%s: %s", business_id, e
+        )
+        evidence = ""
+
+    _NAME_EVIDENCE_CACHE[business_id] = evidence
+    return evidence
