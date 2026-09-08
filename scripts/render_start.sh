@@ -16,12 +16,19 @@
 set -e
 
 : "${PORT:=8000}"
-: "${CELERY_CONCURRENCY:=2}"
+: "${CELERY_CONCURRENCY:=1}"
 : "${CELERY_QUEUES:=generation,feedback,retraining,rag_refresh}"
+# Celery's default prefork pool runs a supervisor plus a forked child, so the
+# interpreter and every loaded library are paid for roughly twice. `solo`
+# executes tasks in the main process instead: one interpreter, no fork, which
+# matters when the API and the worker share a 512MB instance. It processes one
+# task at a time, which is what concurrency=1 already meant here.
+: "${CELERY_POOL:=solo}"
 
-echo "[render_start] starting celery worker (queues=${CELERY_QUEUES} concurrency=${CELERY_CONCURRENCY})"
+echo "[render_start] starting celery worker (queues=${CELERY_QUEUES} pool=${CELERY_POOL} concurrency=${CELERY_CONCURRENCY})"
 celery -A celery_task worker \
     --queues "${CELERY_QUEUES}" \
+    --pool "${CELERY_POOL}" \
     --concurrency "${CELERY_CONCURRENCY}" \
     --loglevel info &
 CELERY_PID=$!
