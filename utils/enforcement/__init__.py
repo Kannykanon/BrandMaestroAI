@@ -22,6 +22,7 @@ from utils.enforcement.mechanics import check_measured_mechanics
 from utils.enforcement.placeholders import find_unfilled_placeholders
 from utils.enforcement.preflight import run_preflight_checks
 from utils.enforcement.provenance import (
+    find_altered_quotations,
     find_extractive_spans,
     find_ungrounded_contact_details,
     find_unverified_quote_attributions,
@@ -41,6 +42,7 @@ __all__ = [
     "MECHANICS_TOLERANCE",
     "MIN_PHONE_DIGITS",
     "check_measured_mechanics",
+    "find_altered_quotations",
     "find_excerpt",
     "find_extractive_spans",
     "find_unfilled_placeholders",

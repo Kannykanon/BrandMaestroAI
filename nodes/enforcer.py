@@ -15,6 +15,7 @@ from utils.brand_profile import extract_permitted_claims
 from utils.enforcement import (
     MAX_ITERATIONS,
     MAX_VERBATIM_SPAN_WORDS,
+    find_altered_quotations,
     find_extractive_spans,
     find_ungrounded_contact_details,
     find_unverified_quote_attributions,
@@ -116,6 +117,55 @@ def enforcer_node(state: GraphState) -> GraphState:
             "material shows how it directs enquiries (for example, naming a team "
             "rather than an individual), follow that. If it does not, leave the "
             "detail out entirely. Do not substitute a placeholder either."
+        )
+        return {
+            **state,
+            "approved": False,
+            "score": 0.0,
+            "style_match": 0.0,
+            "tone_match": 0.0,
+            "structure_match": 0.0,
+            "signature_match": 0.0,
+            "feedback": feedback,
+            "flagged_passages": "\n".join(flagged_lines),
+            "creative_angle": "unknown",
+        }
+
+    # 1a-1b. Altered-quotation gate. Same class again: a verifiable real-world
+    # detail changed. Inventing a quote is caught above; this catches the
+    # subtler version, where a real quote is restyled into the brand's voice
+    # while still sitting inside quotation marks and attributed to a real
+    # person. Observed in social copy, which turned a sound designer's "It
+    # isn't. It's loud, and it's close" into "It is not. It is loud. It is
+    # close." Returns early: a misquotation is a factual error about a named
+    # human being, not a style deduction to be waved past at max iterations.
+    altered_quotes = find_altered_quotations(content, grounding_text)
+    if altered_quotes:
+        logger.warning(
+            "ALTERED QUOTATION(S) at iteration %d: %s",
+            iteration, [q["quoted"][:60] for q in altered_quotes],
+        )
+        feedback = (
+            "ALTERED QUOTATION — this draft changes words inside quotation marks. "
+            "A quotation is a claim about what somebody actually said, so it is "
+            "reproduced exactly or not at all. Brand voice applies to your own "
+            "prose, never to the words of the people you are quoting:\n"
+        )
+        flagged_lines = []
+        for q in altered_quotes:
+            feedback += (
+                f"  - you wrote: \"{q['quoted']}\"\n"
+                f"    the source says: \"{q['source']}\"\n"
+            )
+            flagged_lines.append(
+                f"\"{q['quoted']}\" — altered quotation; the source says \"{q['source']}\""
+            )
+        feedback += (
+            "\nRestore the source wording exactly, including its contractions and "
+            "punctuation. If you want a shorter quote, cut it at a word boundary "
+            "and keep what remains verbatim. If you want the point in the brand's "
+            "own voice, take it out of quotation marks and out of the "
+            "attribution, and state it as the brand's own sentence."
         )
         return {
             **state,

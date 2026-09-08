@@ -22,6 +22,39 @@ def quoted_regions(text: str):
     ]
 
 
+# Script-format dialogue: a speaker in capitals, an optional parenthetical
+# direction, a colon, then the line. Matches "WALE: Sixteen days." and
+# "SAM (over comms, breathing hard): Wale, she's not coming up."
+#
+# The speaker part allows no lowercase, so section headings that happen to
+# contain a colon ("Duration 0:94") and label lines that use a dash rather than
+# a colon ("INSTAGRAM — teaser drop") are not mistaken for dialogue.
+_SCRIPT_LINE_RE = re.compile(
+    r"^[A-Z][A-Z0-9 .'\-]{0,30}(?:\([^)\n]{0,60}\))?:[ \t]*(\S.*)$",
+    re.MULTILINE,
+)
+
+
+def script_dialogue_regions(text: str):
+    """Character ranges of the spoken part of script-format dialogue lines.
+
+    A line of dialogue on a trailer copy sheet is a quotation of the film. It
+    cannot be paraphrased — an actor said those words — so it belongs with
+    quoted text: exempt from the extractive-copying check, and protected from
+    alteration by the quotation-fidelity check.
+    """
+    return [(m.start(1), m.end(1)) for m in _SCRIPT_LINE_RE.finditer(text)]
+
+
+def verbatim_regions(text: str):
+    """Character ranges that are legitimately reproduced word for word.
+
+    Quotations and script dialogue. Both assert that somebody said exactly
+    this, so both are the brand's to copy and nobody's to reword.
+    """
+    return quoted_regions(text) + script_dialogue_regions(text)
+
+
 def digits(text: str) -> str:
     return re.sub(r"\D", "", text)
 
