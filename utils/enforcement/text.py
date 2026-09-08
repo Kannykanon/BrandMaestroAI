@@ -46,7 +46,9 @@ def script_dialogue_lines(text: str):
     return out
 
 
-_CAPS_WORD_RE = re.compile(r"(?<![A-Za-z])[A-Z][A-Z0-9'&.-]{2,}(?![A-Za-z])")
+_CAPS_WORD_RE = re.compile(
+    r"(?<![A-Za-z])[A-Z][A-Z0-9]*(?:['&.-][A-Z0-9]+)*(?![A-Za-z])"
+)
 
 
 def inline_caps_words(text: str):
