@@ -260,7 +260,8 @@ def _authored_word_count(content: str, ctoks, i: int, j: int,
 
 def find_extractive_spans(content: str, source: str,
                            max_span: int = MAX_VERBATIM_SPAN_WORDS,
-                           limit: int = 5) -> list[dict]:
+                           limit: int = 5,
+                           name_evidence: str = None) -> list[dict]:
     """Runs of more than `max_span` consecutive words copied verbatim from source.
 
     Catches the failure mode where the writer summarises its research instead of
@@ -311,7 +312,14 @@ def find_extractive_spans(content: str, source: str,
     # Words the source itself capitalises in running text: name components.
     # Needed to judge a wholly capitalised span, where the draft's own casing
     # carries no information.
-    name_words = _name_words(source)
+    # Drawn from the widest brand text available, not just the text being
+    # compared against. A trailer sheet writes "GRAND JURY PRIZE FOR
+    # DIRECTION" and "CASCADIA INTERNATIONAL FILM FESTIVAL" only in capitals,
+    # so within that one content type there is no evidence they are names and
+    # both awards read as authored wording — the gate then asked the writer to
+    # paraphrase an award. The brand's other documents write them in running
+    # text, which settles it.
+    name_words = _name_words(name_evidence if name_evidence is not None else source)
 
     protected = verbatim_regions(content)
     blocked = [

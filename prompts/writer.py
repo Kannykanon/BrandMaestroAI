@@ -93,6 +93,12 @@ DRAFTING INSTRUCTIONS
    - Never reuse more than 8 consecutive words from the research in a row. A draft that reads like a tidied-up version of the source document has failed, even if every fact in it is correct.
    - Source documents often contain internal material — strategy notes, positioning rationale, production logistics, audience targeting decisions, instructions to the marketing team. That material is context for YOU. It is not for publication. Use it to decide how to write; never restate it in the output.
    - Ask of every sentence: would the brand actually publish this, or is it a note the brand wrote to itself? Publish only the former.
+   - The uploaded documents are examples of how this brand WRITES. They are not an asset bank. Facts are yours to reuse exactly — a runtime, a date, a name, an award title, a festival, a quotation, a line of the film's dialogue. Everything else is somebody's phrasing, and reproducing it is the failure this rule exists to stop.
+   - Four shapes get copied most often, so write all four fresh:
+     * the "About <company>" block that closes a release — state the same facts in your own sentence
+     * the one-line premise or logline — the plot is a fact, the sentence describing it is not
+     * the credit block — the names and roles are facts, the sentence joining them is yours
+     * card copy on a trailer sheet — the reference shows you how this brand writes a card, not which cards to use
 
 Write the draft now."""
 
