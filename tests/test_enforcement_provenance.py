@@ -360,5 +360,27 @@ class TestUnbrandedEmphasisCaps:
         assert find_unbranded_emphasis_caps(content, SOURCE) == [], \
             f"wrongly flagged the brand's own capitalisation: {label}"
 
+    @pytest.mark.parametrize("label,content", [
+        # Both of these were real loops. A gate that flags something the
+        # auto-fix cannot change re-fires every round and the generation ends
+        # at MAX_ITERATIONS scoring zero — which is worse than not having the
+        # gate, because it also looks like the pipeline is broken.
+        ("a standalone indefinite article", "A commentary track arrives in April."),
+        ("the brand's title ending a sentence", "Experience SALVAGE."),
+    ])
+    def test_nothing_is_flagged_that_the_auto_fix_cannot_change(self, label, content):
+        from utils.enforcement import sanitize_unbranded_emphasis_caps
+
+        findings = find_unbranded_emphasis_caps(content, SOURCE)
+        if not findings:
+            return
+        fixed, changes = sanitize_unbranded_emphasis_caps(content, SOURCE)
+        assert changes and fixed != content, (
+            f"{label}: flagged but unfixable, so the loop cannot terminate"
+        )
+        assert find_unbranded_emphasis_caps(fixed, SOURCE) == [], (
+            f"{label}: still flagged after the auto-fix ran"
+        )
+
     def test_no_grounding_text_flags_nothing(self):
         assert find_unbranded_emphasis_caps("An EXCLUSIVE offer.", "") == []
