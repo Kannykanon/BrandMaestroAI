@@ -20,14 +20,14 @@ Do these once. They are the difference between a demo that lands and one that st
 
    | Model | Score | Round |
    |---|---|---|
-   | Press Release | 9.8 | 3 |
+   | Press Release | 9.6 | 2 |
+   | Trailer Copy | 9.6 | 5 |
    | Social Caption | 8.4 | 6 |
    | Talent Bio | 8.0 | 6 |
-   | Trailer Copy | 7.9 | 6 |
 
-   **Demo the Press Release Model.** Highest score, fastest to approve, and the
-   closest read to the corpus: 3.4 contractions per 100 words against a target of
-   3.0, 15.1-word sentences against 13.9, no exclamation marks.
+   **Demo the Press Release Model.** Approves in two rounds and reads closest to
+   the corpus: 2.9 contractions per 100 words against a target of 3.0, 13.3-word
+   sentences against 13.9, no exclamation marks.
 3. **Run one throwaway generation first.** The first generation for a content type builds
    the vector index; every one after that loads it. You want the judges watching the fast
    path, not the cold one.
@@ -222,37 +222,53 @@ plenty for evaluating it and means one person cannot spend anyone else's.
 
 ## Known rough edges — read this before you pick a content type
 
-All four approve. Nothing here fails on camera.
+All four approve. Nothing here fails on camera. What differs is how closely each
+reads like the brand.
 
-**Press Release — the one to demo.** 9.8 on round three. Reads like the corpus:
-short declaratives, concrete numbers, quotes reproduced exactly.
+**Press Release — the one to demo.** 9.6 on round two, and the mechanics land
+almost exactly on the corpus.
 
-**Trailer Copy — worth showing if you have time.** 7.9. The best illustration of
-what the system actually does. It reproduces the award cards and the dialogue
-selects verbatim, because those are facts, and then writes its own cards —
-"THE SEA NEVER FORGETS", "PAYMENT IS TONNAGE. EVERY TONNE COUNTS", "THE WINDOW
-IS SHORT". None of those appear in the reference documents. It learned how this
-brand writes a card rather than which cards to use. One wrinkle: it renders the
-end tag as "NOBODY COMES UP UNTIL THE JOB IS FINISHED" where the reference has
-"the job's finished" — a card in capitals, not a misquotation, since nothing is
-attributed, but the contraction is lost.
+**Trailer Copy — 9.6, and the best illustration of the idea.** It reproduces the
+award cards, because an award is a fact, and writes its own cards: "PAYMENT:
+TONNAGE", "THE HOLD. OCCUPIED", "THE DEEPEST SECRET". Nothing in it is lifted
+from the reference — the copying check reports zero spans.
 
-**Social Caption — 8.4.** Sentences average 5.3 words against the corpus's 9.6,
-so it reads clipped, and 1.4 contractions per 100 words against 3.3.
+But look at the dialogue before you put it on screen. Asked not to reuse the
+reference's lines, the writer paraphrases them minimally instead of writing new
+ones, and the cheapest edit available is to expand a contraction:
 
-**Talent Bio — 8.0.** Facts correct and the quote exact. Stiffer than the brand:
-it renders "because the money's good" as clinical description.
+    reference   WALE: Sixteen days. Then the weather turns and we're done
+                whether we're finished or not.
+    generated   WALE: Sixteen days. Then the weather turns. We are done.
 
-**Why the scores do not track how well these read.** Two mechanics are measured
-from the corpus and shown to the writer but never gated: contraction rate and
-sentence length. Over-use is checked, under-use is not, so flat clipped copy
-passes every deterministic check. That is the first thing to fix after
-submission.
+    reference   SAM: What happens if we're not finished.
+    generated   SAM: What happens if we are not finished.
+
+The draft measures 0.0 contractions per 100 words against a corpus rate of 3.4.
+It satisfied provenance by degrading voice, and scored 9.6 for it.
+
+**Social Caption — 8.4.** 5.3-word sentences against 9.6, and 1.4 contractions
+against 3.3. Clipped.
+
+**Talent Bio — 8.0.** Facts and quotes correct; stiffer than the brand.
+
+**The one thing behind all three weak readings.** Contraction rate and sentence
+length are measured from the corpus and shown to the writer, but only checked
+against over-use. Under-use passes every deterministic gate, so flat, clipped,
+de-contracted copy scores well. In trailer copy it is worse than an oversight:
+the copying gate actively rewards de-contraction, because expanding "we're" is
+the shortest route out of a flagged span.
+
+Fixing it means a two-sided check on those two rates. It is the first thing to do
+after submission, and it was deliberately not done before: a new gate costs a
+revision round, several paths already use all six, and one gate added under time
+pressure today produced a false positive that blocked the press release for two
+rounds.
 
 **If a judge asks for something the corpus cannot support**, the pipeline still
 returns content, its score and the passages it flagged. An unapproved generation
-means the enforcer declined to sign off — the human-in-the-loop step doing its
-job, not a failure to respond.
+means the enforcer declined to sign off — the human-in-the-loop step working, not
+a failure to respond.
 
 ## Questions you should expect
 
