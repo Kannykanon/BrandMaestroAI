@@ -17,6 +17,7 @@ from utils.enforcement import (
     MAX_VERBATIM_SPAN_WORDS,
     find_altered_quotations,
     find_extractive_spans,
+    source_quotation_for_span,
     find_ungrounded_contact_details,
     find_unverified_quote_attributions,
     run_preflight_checks,
@@ -207,26 +208,63 @@ def enforcer_node(state: GraphState) -> GraphState:
             "EXTRACTIVE COPYING at iteration %d — %d span(s), longest %d words",
             iteration, len(extractive_spans), extractive_spans[0]["length"],
         )
+        # A copied span that is a source quotation needs the opposite
+        # instruction from a copied span of prose. Reproducing somebody's words
+        # exactly is correct; doing it without quotation marks is what makes it
+        # a defect, and the remedy is punctuation.
+        #
+        # Told only to "keep the fact, discard the wording", the writer
+        # paraphrased the quotation into quotation marks — at which point the
+        # hallucination check rejected it for not matching the source, so the
+        # next round restored the wording and dropped the marks again. The
+        # press-release path spent all six rounds alternating between those two
+        # states and ended unapproved, because the one resolution that satisfies
+        # both gates was the thing this feedback forbade.
+        quoted_spans, prose_spans = [], []
+        for span in extractive_spans:
+            source_quote = source_quotation_for_span(span["text"], research_text)
+            (quoted_spans if source_quote else prose_spans).append((span, source_quote))
+
         feedback = (
             "EXTRACTIVE COPYING DETECTED — this draft reproduces its source material "
-            "verbatim instead of re-expressing it in the brand's voice. Passages of "
-            f"more than {MAX_VERBATIM_SPAN_WORDS} consecutive words are copied from the "
-            "research:\n"
+            f"verbatim. Passages of more than {MAX_VERBATIM_SPAN_WORDS} consecutive "
+            "words are copied from the research:\n"
         )
         flagged_lines = []
-        for span in extractive_spans:
-            feedback += f"  - ({span['length']} words) \"{span['text']}\"\n"
-            flagged_lines.append(
-                f"\"{span['text']}\" — {span['length']} consecutive words copied from source"
+
+        if quoted_spans:
+            feedback += (
+                "\nThese passages are QUOTATIONS from the source, reproduced without "
+                "quotation marks. Do NOT reword them — a quotation has to match what "
+                "the person said. Put each one back inside quotation marks and attribute "
+                "it to the speaker the source attributes it to, or remove it entirely:\n"
             )
-        feedback += (
-            "\nRewrite each passage: keep the FACT, discard the source's wording and "
-            "sentence shape, and state it the way this brand would state it. Source "
-            "documents are briefing material, not copy to be pasted. If a passage is "
-            "internal planning detail (strategy notes, production logistics, positioning "
-            "rationale) rather than something the brand would publish, drop it entirely "
-            "instead of rephrasing it."
-        )
+            for span, source_quote in quoted_spans:
+                feedback += f"  - ({span['length']} words) \"{span['text']}\"\n"
+                feedback += f"    the source quotes this as: \"{source_quote}\"\n"
+                flagged_lines.append(
+                    f"\"{span['text']}\" — a source quotation reproduced without "
+                    f"quotation marks; restore the marks and the attribution"
+                )
+
+        if prose_spans:
+            feedback += (
+                "\nThese passages are the source's own prose, not anybody's quoted "
+                "words:\n"
+            )
+            for span, _ in prose_spans:
+                feedback += f"  - ({span['length']} words) \"{span['text']}\"\n"
+                flagged_lines.append(
+                    f"\"{span['text']}\" — {span['length']} consecutive words copied from source"
+                )
+            feedback += (
+                "\nRewrite each of those: keep the FACT, discard the source's wording and "
+                "sentence shape, and state it the way this brand would state it. Source "
+                "documents are briefing material, not copy to be pasted. If a passage is "
+                "internal planning detail (strategy notes, production logistics, positioning "
+                "rationale) rather than something the brand would publish, drop it entirely "
+                "instead of rephrasing it."
+            )
         return {
             **state,
             "approved": False,

@@ -46,13 +46,37 @@ def script_dialogue_regions(text: str):
     return [(m.start(1), m.end(1)) for m in _SCRIPT_LINE_RE.finditer(text)]
 
 
+# A line whose letters are all capitals, with at least one word of three or
+# more letters. On a trailer copy sheet this is card copy — the text that goes
+# on screen.
+_CARD_LINE_RE = re.compile(
+    r"^[^a-z\n]*[A-Z]{3,}[^a-z\n]*$",
+    re.MULTILINE,
+)
+
+
+def card_line_regions(text: str):
+    """Character ranges of all-capitals card lines.
+
+    Card copy is a fixed asset, like a company's boilerplate: "THE HOLD IS NOT
+    EMPTY" is the card, and a trailer sheet that paraphrases it is describing a
+    different trailer. Exempt from the extractive-copying check for the same
+    reason boilerplate is.
+
+    This does not license a draft to be nothing but capitals — the measured
+    all-caps rate is checked separately, against the brand's own.
+    """
+    return [(m.start(), m.end()) for m in _CARD_LINE_RE.finditer(text)]
+
+
 def verbatim_regions(text: str):
     """Character ranges that are legitimately reproduced word for word.
 
-    Quotations and script dialogue. Both assert that somebody said exactly
-    this, so both are the brand's to copy and nobody's to reword.
+    Quotations, script dialogue and card copy. Each is a fixed asset — someone's
+    exact words, or text that appears on screen — so each is the brand's to
+    reproduce and nobody's to reword.
     """
-    return quoted_regions(text) + script_dialogue_regions(text)
+    return quoted_regions(text) + script_dialogue_regions(text) + card_line_regions(text)
 
 
 def digits(text: str) -> str:
