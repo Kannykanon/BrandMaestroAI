@@ -20,16 +20,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-REQUIRED_ENV_VARS = ["GOOGLE_API_KEY", "POSTGRES_URI", "REDIS_URL", "PARALLEL_API_KEY"]
+# Required regardless of which Gemini backend is in use.
+REQUIRED_ENV_VARS = ["POSTGRES_URI", "REDIS_URL", "PARALLEL_API_KEY"]
+
+# The credential requirement depends on the backend, so it cannot be a fixed
+# list. On ai_studio an API key is the credential. On vertex_ai there is no key
+# at all: authentication is Application Default Credentials, which come from a
+# service account attached to the host (Compute Engine, Cloud Run) or from a
+# key file named by GOOGLE_APPLICATION_CREDENTIALS. Demanding GOOGLE_API_KEY
+# there fails startup on a correctly configured host.
+REQUIRED_ENV_VARS_BY_PROVIDER = {
+    "ai_studio": ["GOOGLE_API_KEY"],
+    "vertex_ai": ["PROJECT_ID"],
+}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from database import engine, init_db
 
-    missing = [var for var in REQUIRED_ENV_VARS if not os.getenv(var)]
+    from model import LLM_PROVIDER
+
+    required = REQUIRED_ENV_VARS + REQUIRED_ENV_VARS_BY_PROVIDER.get(LLM_PROVIDER, [])
+    missing = [var for var in required if not os.getenv(var)]
     if missing:
-        raise RuntimeError(f"Missing required env vars: {missing}")
+        raise RuntimeError(
+            f"Missing required env vars for LLM_PROVIDER={LLM_PROVIDER}: {missing}"
+        )
+    logger.info("Startup config OK (LLM_PROVIDER=%s)", LLM_PROVIDER)
 
     app.state.db_engine = engine
     init_db()
