@@ -18,8 +18,11 @@ from utils.enforcement.constants import (
     QUOTE_CANONICAL_COVERAGE,
 )
 from utils.enforcement.text import (
+    card_line_regions,
     digits,
+    inline_caps_words,
     quoted_regions,
+    script_dialogue_lines,
     script_dialogue_regions,
     tokens_with_offsets,
     verbatim_regions,
@@ -647,3 +650,118 @@ def source_quotation_for_span(span_text: str, grounding_text: str) -> str | None
         if _contains_subsequence(cand_words, words):
             return display
     return None
+
+
+def find_fabricated_dialogue(content: str, grounding_text: str,
+                             limit: int = 5) -> list[dict]:
+    """Script dialogue attributed to a real character that they never said.
+
+    Distinct from an altered quotation, which is a recognisable rewrite of a
+    source line and gets the source wording back. This is invention: trailer
+    copy that approved at 8.1 while containing
+
+        WALE: How much time.
+        RENATA: What is inside.
+        SAM: Is she coming up.
+
+    None of which appear anywhere in the film's dialogue. Nothing resembled a
+    source line closely enough for the alteration check to see it, and putting
+    words in a named character's mouth is not something a distributor can ship.
+
+    Only lines attributed to a speaker the source itself uses are checked. A
+    trailer sheet's label lines ("RELEASE DATE: 14 APRIL") share the shape of
+    dialogue without being dialogue, and the brand's own cast list is what
+    separates them.
+    """
+    if not grounding_text.strip():
+        return []
+
+    source_lines = script_dialogue_lines(grounding_text)
+    if not source_lines:
+        return []
+
+    known_speakers = {speaker.upper() for speaker, *_ in source_lines}
+    merged, individual = _source_quotation_groups(grounding_text)
+
+    # The source's own dialogue at every length. The quotation candidates above
+    # drop passages shorter than four words, which is right for judging whether
+    # a quote was altered and wrong here: "RENATA: Long enough." is two words of
+    # real dialogue, and without it the line was reported as invented.
+    candidates = merged + individual + [
+        (_quote_words(line), line.strip())
+        for _speaker, line, _a, _b in source_lines
+        if _quote_words(line)
+    ]
+
+    findings, seen = [], set()
+    for speaker, line, _start, _end in script_dialogue_lines(content):
+        if speaker.upper() not in known_speakers:
+            continue
+        words = _quote_words(line)
+        if len(words) < 2:
+            continue
+        if any(_contains_subsequence(src_words, words) for src_words, _ in candidates):
+            continue  # said, verbatim
+
+        # Close to something in the source is an alteration, which
+        # find_altered_quotations reports with the correct wording. Only report
+        # what resembles nothing, to avoid two findings for one passage.
+        best = max(
+            (SequenceMatcher(None, " ".join(words), " ".join(w)).ratio()
+             for w, _ in candidates),
+            default=0.0,
+        )
+        if best >= QUOTE_ALTERATION_SIMILARITY:
+            continue
+
+        key = f"{speaker.upper()}|{' '.join(words)}"
+        if key in seen:
+            continue
+        seen.add(key)
+        findings.append({"speaker": speaker, "line": line.strip()})
+
+    return findings[:limit]
+
+
+def find_unbranded_emphasis_caps(content: str, grounding_text: str,
+                                 limit: int = 8) -> list[dict]:
+    """Words shouted in capitals mid-sentence that the brand never capitalises.
+
+    The measured all-caps rate cannot see this. Harbor Line's social copy runs
+    4.4 all-caps words per 100, and a draft that wrote
+
+        SALVAGE won the GRAND Jury Prize ... an EXCLUSIVE commentary track ...
+        Experience its ACCLAIMED sound design
+
+    measured 5.9 — comfortably inside tolerance, and approved. The rate was
+    right and every choice was wrong: the brand's capitals are its title and its
+    card lines, never an adjective it wants to lean on.
+
+    So the question is not how many but which. A word the brand itself sets in
+    capitals somewhere in its own material is that brand's convention; a word it
+    never does is the model reaching for emphasis. Words on a capitals-only line
+    are exempt, because there the capitals are structural — a card, a heading, a
+    label — and the brand's rate check governs those.
+    """
+    if not grounding_text.strip():
+        return []
+
+    permitted = {word.upper() for word, _ in inline_caps_words(grounding_text)}
+    permitted |= {
+        grounding_text[a:b].upper()
+        for a, b in card_line_regions(grounding_text)
+    }
+    # Individual words of a card line count too: a title that only ever appears
+    # on a card of its own is still the brand's own capitalisation.
+    for a, b in card_line_regions(grounding_text):
+        permitted |= {w.upper() for w in re.findall(r"[A-Za-z0-9'&.-]+", grounding_text[a:b])}
+
+    findings, seen = [], set()
+    for word, _offset in inline_caps_words(content):
+        upper = word.upper()
+        if upper in permitted or upper in seen:
+            continue
+        seen.add(upper)
+        findings.append({"word": word})
+
+    return findings[:limit]
