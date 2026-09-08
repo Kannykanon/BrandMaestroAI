@@ -15,10 +15,20 @@ Anything marked *(cut first)* goes if you are running long.
 Do these once. They are the difference between a demo that lands and one that stalls.
 
 1. **Log in and leave the tab open.** First page load pulls fonts from a CDN.
-2. **Demo the Press Release Model.** It is the verified path: on the topic below it comes
-   back **approved at 9.0/10 in two enforcer iterations**, with 2.5 contractions per 100
-   words against the corpus's 3.0 and a 13.8-word average sentence against 13.9. See
-   "Known rough edges" before you consider demoing a different content type.
+2. **All four content types work.** Verified in one sweep on the live host, each
+   with a topic suited to it:
+
+   | Model | Score | Round | Topic used |
+   |---|---|---|---|
+   | Press Release | 9.5 | 1 | the 14 April digital and disc release |
+   | Social Caption | 9.6 | 5 | release-week captions for the same |
+   | Talent Bio | 8.6 | 6 | a press-kit bio of Marta Silvestri |
+   | Trailer Copy | 6.8 | 6 | a thirty-second cutdown for the release |
+
+   **Demo the Press Release Model.** It is the strongest on both counts: it
+   approves fastest and it reads most like the corpus. See "Known rough edges"
+   before choosing another — they all work, but two read choppier than the
+   brand does.
 3. **Run one throwaway generation first.** The first generation for a content type builds
    the vector index; every one after that loads it. You want the judges watching the fast
    path, not the cold one.
@@ -97,16 +107,27 @@ the voice profile.
 > about 14 words a sentence; their social copy runs 3.3 at 9.6 words. Those are measurements,
 > and the draft has to match them within tolerance.
 >
-> On top of that it blocks things a language model does by default and a publicist can't ship:
-> unfilled placeholders, invented press contacts, fabricated quotes, and passages copied too
-> closely from the source material. Verbatim spans over eight words get flagged and rewritten."
+> On top of that it blocks things a language model does by default and a publicist can't ship.
+> Unfilled placeholders. Invented press contacts. Fabricated quotes — and the subtler version,
+> a real quote restyled into the brand's voice, which is a misquotation of a real person.
+> Invented film dialogue. Passages copied too closely from the source. Words shouted in
+> capitals the brand never capitalises."
 
 **On screen:** the Enforcer's console output — the iteration count and score.
 
-**What the verified run actually did**, and it is a better story than "it passed":
-iteration 1 was rejected for reproducing 16 consecutive words of the festival's jury
-citation outside quotation marks. The writer paraphrased that one passage. Iteration 2
-approved at 9.0. That is the loop doing its job on a real violation, not a formality.
+**Two things worth showing rather than just claiming.**
+
+The gates catch real defects, not formalities. Trailer copy once approved at 8.1 while
+containing "WALE: How much time." — a line no character in the film says. It is now
+rejected, and the approved version's dialogue is verbatim from the script. Social copy
+once turned a sound designer's "It isn't. It's loud, and it's close" into "It is not. It
+is loud. It is close." — inside quotation marks, attributed to him by name. That is a
+factual error about a real person, and it now cannot ship.
+
+Some checks fix rather than reject. Banned punctuation and unbranded capitals are
+corrected in place, because lowercasing a word is mechanical and a revision round is
+probabilistic. Bouncing the draft for shouted capitals never converged: the writer
+produced a fresh set of words each round with the constraint in front of it.
 
 **If asked "how do you know it isn't just copying?"** — the extractive-copying gate measures
 4-gram overlap against the source corpus. It came down from 23.5% to 3.2% when that gate went
@@ -183,45 +204,49 @@ claim prompt caching. The tradeoff is documented deliberately.
 
 ## Known rough edges — read this before you pick a content type
 
-Verified on the live host today, same topic each time.
+All four approve. Nothing here will fail on camera. What differs is how closely
+each reads like Harbor Line.
 
-**Press Release Model (`blog`) — demo this one.** Approved at 9.0/10 in two enforcer
-iterations. 2.5 contractions per 100 words against the corpus's 3.0, 13.8-word average
-sentence against 13.9, no exclamation marks. Reads like the corpus: opens with the
-announcement, quotes the director and the sound designer, closes with the credit block and
-the standing boilerplate. Takes a few minutes and several heartbeats.
+**Press Release — the one to demo.** 9.5 on the first round. 2.2 contractions per
+100 words against the corpus's 3.0, 13.8-word sentences against 13.9. Opens with
+the announcement, quotes the director and sound designer verbatim, closes on the
+credit block and boilerplate.
 
-**Social Caption Model (`social`) — do not demo live.** It approves (8.1/10 on the second
-enforcer iteration), so it will not visibly fail on camera. It is still wrong in three ways,
-and the first is not a matter of taste:
+**Talent Bio — solid.** 8.6. Facts correct, and Silvestri's quote is reproduced
+exactly, contractions and all. Leans on em-dashes more than the corpus does, and
+renders "because the money's good" as "Her motivation is financial gain" — stiffer
+than the brand, but publishable.
 
-- **It misquotes people.** The corpus has Okpara saying *"It isn't. It's loud, and it's
-  close, and it's mostly your own body."* Social output renders that as *"It is not. It is
-  loud. It is close. It is mostly your own body."* — a real person's words, changed. The
-  press-release path gets this right and keeps the contractions inside the quotation. Don't
-  put a misquotation on camera.
-- **0.8 contractions per 100 words against the corpus's 3.3**, which is far enough outside
-  tolerance that the mechanics gate arguably should have caught it. The same de-contracting
-  habit driving the misquote.
-- **No platform labels, and hype the corpus never uses.** All three social documents are
-  organised entirely around `INSTAGRAM —` / `X —` / `LINKEDIN —` blocks; the output has none
-  of them, and it closes with "Experience SALVAGE. Hear the acclaimed sound design. Dive into
-  the commentary."
+**Trailer Copy — correct, but telegraphic.** 6.8. The dialogue selects are now
+verbatim from the film, which is the point: an earlier version invented
+"WALE: How much time." and scored 8.1 for it. The surrounding prose reads as
+clipped fragments — "Submerged operation. Crew deploys. Elements challenge." —
+averaging 4.2 words a sentence against the corpus's 12.7. It also writes
+"Do NOT fail", which the capitals check permits because the brand's own card
+"THE HOLD IS NOT EMPTY" capitalises that word. Defensible by the rule, still a
+shout.
 
-An earlier run, before the copying-gate fixes, ended unapproved at 5.0 through a genuine
-rule collision worth knowing about: the Brand Brain had inferred "announce a decision, then
-give the audience-facing reason" from the corpus, the writer wrote "We decided to release
-SALVAGE on digital and disc on 14 April…", and the internal-material gate rejected "We
-decided" as something the brand told itself rather than told its audience. 7.9 down to 5.0
-because the enforcer's own instruction produced the violation. It did not recur on the
-latest run, but both rules are still live and they still disagree.
+**Social Caption — highest score, weakest read.** 9.6, and the one I would not put
+on screen. It reaches for register the corpus never uses: "Secure SALVAGE",
+"Experience true craft", "Hear the difference firsthand", "This is the essence."
+Sentences average 5.6 words against the corpus's 9.6. It also renders Okpara's
+quote as unattributed prose — "Many assume underwater sound is muffled. It is
+not." — which is not a misquotation, because nothing is in quotation marks and
+nothing is attributed, but it loses the human voice the corpus gets from quoting
+him directly.
 
-**Trailer Copy Model (`ad`) and Talent Bio Model (`proposal`) — untested end to end.**
-The corpora are loaded and the brains are synthesised, but no generation has been run
-through either. Do not put them on camera without trying them first.
+**Why the scores do not track this.** Social scores highest and reads worst. Two
+mechanics are measured from the corpus and shown to the writer but never gated:
+contraction rate and sentence length. Generated copy runs 1.4-3.4 contractions
+per 100 words against targets of 3.0-3.4, and 4.2-13.8 words a sentence against
+9.6-13.9. Over-use is gated; under-use is not, so flat, clipped copy passes
+every deterministic check. That is the first thing to fix after submission, and
+it is the whole explanation for the choppiness above.
 
-If you want a second content type on screen, run it a few times beforehand and use a
-recording of a good one.
+**If a judge asks for something the corpus cannot support**, the pipeline will
+still return content, its score, and the passages it flagged — it does not
+crash. An unapproved generation means the enforcer declined to sign off, which
+is the human-in-the-loop step doing its job, not a failure to respond.
 
 ## Questions you should expect
 
