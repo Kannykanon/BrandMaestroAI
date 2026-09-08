@@ -7,13 +7,23 @@ details, or source text reproduced instead of rewritten.
 import logging
 import re
 from collections import Counter
+from difflib import SequenceMatcher
 
 from utils.enforcement.constants import (
     MAX_VERBATIM_SPAN_WORDS,
     MIN_AUTHORED_SPAN_WORDS,
     MIN_PHONE_DIGITS,
+    MIN_QUOTED_PASSAGE_CHARS,
+    QUOTE_ALTERATION_SIMILARITY,
+    QUOTE_CANONICAL_COVERAGE,
 )
-from utils.enforcement.text import digits, quoted_regions, tokens_with_offsets
+from utils.enforcement.text import (
+    digits,
+    quoted_regions,
+    script_dialogue_regions,
+    tokens_with_offsets,
+    verbatim_regions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -251,23 +261,40 @@ def find_extractive_spans(content: str, source: str,
     )
     src_ngrams = {ng for ng, c in counts.items() if c == 1}
 
-    quoted = quoted_regions(content)
     words = [t for t, _, _ in ctoks]
 
-    def inside_quote(a, b):
-        return any(qs <= a and b <= qe for qs, qe in quoted)
+    # Tokens inside a quotation or a line of script dialogue are excluded from
+    # matching outright, rather than a span being exempted afterwards only if it
+    # happens to sit entirely within one.
+    #
+    # The old test — span start and end both inside one quoted region — missed
+    # the common shape, where a span merely *passes through* a quotation. The
+    # quotation's own words are in the source, so the extension walk crossed it
+    # and welded the fragments on either side into one enormous span: a talent
+    # bio was reported as 62 consecutive copied words, most of them a quotation
+    # it was right to reproduce, with two genuinely copied clauses buried at the
+    # ends. Unsplittable feedback like that cannot be acted on.
+    protected = verbatim_regions(content)
+    blocked = [
+        any(rs <= start and end <= re_ for rs, re_ in protected)
+        for _, start, end in ctoks
+    ]
 
     spans, i = [], 0
     while i <= len(words) - n:
-        if tuple(words[i:i + n]) in src_ngrams:
+        if blocked[i]:
+            i += 1
+            continue
+        if tuple(words[i:i + n]) in src_ngrams and not any(blocked[i:i + n]):
             j = i + n
-            while j < len(words) and tuple(words[j - n + 1:j + 1]) in src_ngrams:
+            while (
+                j < len(words)
+                and not blocked[j]
+                and tuple(words[j - n + 1:j + 1]) in src_ngrams
+            ):
                 j += 1
             start, end = ctoks[i][1], ctoks[j - 1][2]
-            if (
-                not inside_quote(start, end)
-                and _authored_word_count(content, ctoks, i, j) >= MIN_AUTHORED_SPAN_WORDS
-            ):
+            if _authored_word_count(content, ctoks, i, j) >= MIN_AUTHORED_SPAN_WORDS:
                 spans.append({"length": j - i, "text": content[start:end]})
             i = j
         else:
@@ -275,3 +302,328 @@ def find_extractive_spans(content: str, source: str,
 
     spans.sort(key=lambda s: -s["length"])
     return spans[:limit]
+
+
+
+
+# ---------------------------------------------------------------------------
+# Quotation fidelity
+# ---------------------------------------------------------------------------
+
+# Only passages long enough for an alteration to mean something. A three-word
+# quoted fragment is a term of art, not a claim about what somebody said.
+_QUOTED_PASSAGE_RE = re.compile(
+    r'"([^"]{%d,600})"|“([^”]{%d,600})”'
+    % (MIN_QUOTED_PASSAGE_CHARS, MIN_QUOTED_PASSAGE_CHARS)
+)
+
+# Any quoted region, however short — used to reconstruct what the source
+# actually quoted, where a fragment can be one half of a split quotation.
+_ANY_QUOTED_RE = re.compile(r'"([^"]{1,600})"|“([^”]{1,600})”')
+
+# Typographic variants that carry no meaning here. A curly apostrophe where the
+# source had a straight one is not an altered quote, and flagging it would train
+# the writer to "fix" something already correct.
+_TYPOGRAPHIC_EQUIVALENTS = {
+    "’": "'", "‘": "'", "ʼ": "'",
+    "—": "-", "–": "-", "−": "-",
+    "…": "...",
+    " ": " ",
+}
+
+_QUOTE_WORD_RE = re.compile(r"[\w']+")
+
+# A source quotation broken around its attribution — `"...muffled," said
+# Okpara. "It isn't...` — is one quotation, and copy that reproduces it whole
+# has not merged two separate statements. Quoted regions closer together than
+# this are treated as one quotation for matching.
+_ATTRIBUTION_GAP_CHARS = 70
+
+
+def _normalise_typography(text: str) -> str:
+    for src, dst in _TYPOGRAPHIC_EQUIVALENTS.items():
+        text = text.replace(src, dst)
+    return text
+
+
+def _quote_words(text: str) -> list[str]:
+    """Words of a quotation, ignoring case and punctuation.
+
+    Comparison happens on words because that is what a quotation asserts. A
+    period moved outside the closing mark, or a comma the source placed
+    differently, is a typesetting difference; "it is not" where the speaker said
+    "it isn't" is a different sentence.
+    """
+    return _QUOTE_WORD_RE.findall(_normalise_typography(text).lower())
+
+
+def _source_quotation_groups(grounding_text: str):
+    """Quotations in the source, as (merged, individual) candidate lists.
+
+    Each entry is (words, display_text), so a finding can show the wording the
+    writer should have used.
+
+    Both lists are needed. Merged groups let copy that reproduces a split
+    quotation whole — dropping only the attribution between its halves — match
+    exactly. Individual regions let a short altered quote be recognised: matched
+    only against the long merged group it belongs to, an eight-word rewrite is
+    diluted by forty words of unaltered text and scores below the threshold.
+    """
+    regions = []
+    for m in _ANY_QUOTED_RE.finditer(grounding_text):
+        body = m.group(1) if m.group(1) is not None else m.group(2)
+        regions.append((m.start(), m.end(), body))
+
+    groups: list[list[tuple[int, int, str]]] = []
+    for region in regions:
+        if groups and region[0] - groups[-1][-1][1] <= _ATTRIBUTION_GAP_CHARS:
+            groups[-1].append(region)
+        else:
+            groups.append([region])
+
+    merged = []
+    for group in groups:
+        display = " ".join(part[2].strip() for part in group)
+        words = _quote_words(display)
+        if words:
+            merged.append((words, re.sub(r"\s+", " ", display).strip()))
+
+    individual = []
+    for _, _, body in regions:
+        words = _quote_words(body)
+        if len(words) >= 4:      # too short to judge an alteration against
+            individual.append((words, re.sub(r"\s+", " ", body).strip()))
+
+    # Script dialogue is a quotation of the film. A trailer copy sheet's
+    # dialogue selects are the actors' lines, so they are matched the same way:
+    # reproduced exactly or flagged.
+    for start, end in script_dialogue_regions(grounding_text):
+        line = grounding_text[start:end]
+        words = _quote_words(line)
+        if len(words) >= 4:
+            entry = (words, re.sub(r"\s+", " ", line).strip())
+            merged.append(entry)
+            individual.append(entry)
+
+    return merged, individual
+
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _sentence_candidates(quotation_entries) -> list[str]:
+    """Individual sentences of the source quotations.
+
+    A quote can be altered in one sentence and exact in the rest. Matched only
+    as a whole, that alteration is averaged away by the untouched remainder, so
+    the sentence is the unit that finds it.
+    """
+    out = []
+    for _, display in quotation_entries:
+        for sentence in _SENTENCE_SPLIT_RE.split(display):
+            words = _quote_words(sentence)
+            if len(words) >= 5:
+                out.append(re.sub(r"\s+", " ", sentence).strip())
+    return out
+
+
+def _contains_subsequence(haystack: list[str], needle: list[str]) -> bool:
+    if not needle or len(needle) > len(haystack):
+        return False
+    first = needle[0]
+    span = len(needle)
+    for i in range(len(haystack) - span + 1):
+        if haystack[i] == first and haystack[i:i + span] == needle:
+            return True
+    return False
+
+
+# Expanding contractions gives a form in which "It isn't" and "It is not" are
+# the same word sequence. Comparing on it isolates the alteration this gate was
+# built for: a quotation restyled into the brand's register, which is a change
+# of wording and nothing else.
+#
+# The apostrophe-s case is ambiguous — possessive or "is" — but both sides are
+# expanded identically, so an ambiguity can only make two passages compare as
+# equal, never as different. It cannot produce a false accusation.
+_CONTRACTION_SUFFIXES = (
+    ("n't", "not"), ("'re", "are"), ("'ve", "have"), ("'ll", "will"),
+    ("'d", "would"), ("'m", "am"), ("'s", "is"),
+)
+
+
+def _canonical_words(words: list[str]) -> list[str]:
+    """Word sequence with contractions expanded, for contraction-blind compare."""
+    out = []
+    for word in words:
+        for suffix, expansion in _CONTRACTION_SUFFIXES:
+            if word.endswith(suffix) and len(word) > len(suffix):
+                stem = word[: -len(suffix)]
+                # "won't" and "can't" do not expand by stripping the suffix.
+                if suffix == "n't" and stem in ("wo", "ca", "sha"):
+                    stem = {"wo": "will", "ca": "can", "sha": "shall"}[stem]
+                out.extend([stem, expansion])
+                break
+        else:
+            out.append(word)
+    return out
+
+
+def _best_covering_candidate(candidates, words: list[str], min_coverage: float):
+    """Candidate that accounts, in order, for nearly all of `words`.
+
+    Coverage rather than similarity, because a quotation is often only part of a
+    longer source one. Comparing a twenty-word excerpt against the thirty-word
+    quotation it came from scores badly on similarity for a reason that has
+    nothing to do with fidelity — the source simply continues. What matters is
+    whether everything in the draft is accounted for by the source.
+
+    Ties go to the shortest candidate, so the wording reported back is the tight
+    quotation rather than a whole merged block of dialogue.
+    """
+    best = None
+    for cand_words, display in candidates:
+        matcher = SequenceMatcher(None, words, cand_words, autojunk=False)
+        matched = sum(block.size for block in matcher.get_matching_blocks())
+        coverage = matched / len(words) if words else 0.0
+        if coverage < min_coverage:
+            continue
+        if best is None or len(cand_words) < len(best[0]):
+            best = (cand_words, display, coverage)
+    return best
+
+
+def find_altered_quotations(content: str, grounding_text: str,
+                            min_similarity: float = QUOTE_ALTERATION_SIMILARITY,
+                            limit: int = 5) -> list[dict]:
+    """Quoted passages that nearly match a source quotation but are not it.
+
+    Putting words inside quotation marks and attributing them is a claim that
+    they are that person's words. Changing them is a misquotation — a factual
+    error about a real person, not a style slip — and it is the one defect here
+    that would embarrass a publicist in front of the person quoted.
+
+    The writer produces these while doing what it was asked: matching brand
+    voice. Given a house style, it restyles the quotations too.
+
+        source:    "It isn't. It's loud, and it's close, and it's mostly your
+                    own body."
+        generated: "It is not. It is loud. It is close. It is mostly your own
+                    body."
+
+    Wording and punctuation both changed, inside quotation marks, attributed to
+    a named sound designer.
+
+    Reproducing a quotation exactly passes, and so does quoting part of one,
+    which is normal practice: a passage whose words appear in order inside a
+    source quotation is accepted. Only a passage recognisably close to a source
+    quotation without matching it is flagged, and the finding carries the
+    correct wording so the writer can restore it rather than guess.
+
+    A quoted passage resembling nothing in the source is not this failure. It is
+    either invented, which find_unverified_quote_attributions covers, or it is
+    ordinary quoted phrasing the brand chose itself.
+    """
+    if not grounding_text.strip():
+        return []
+
+    merged, individual = _source_quotation_groups(grounding_text)
+    if not merged:
+        return []
+    sentence_pool = _sentence_candidates(merged)
+
+    # Passages in this draft that assert somebody's exact words: quoted text,
+    # and script dialogue where the draft is a trailer copy sheet.
+    candidates = [
+        (m.group(1) if m.group(1) is not None else m.group(2))
+        for m in _QUOTED_PASSAGE_RE.finditer(content)
+    ]
+    candidates += [content[a:b] for a, b in script_dialogue_regions(content)]
+
+    findings, seen = [], set()
+    for body in candidates:
+        words = _quote_words(body)
+        if len(words) < 4:
+            continue
+
+        # Exact, whole or partial: the words appear in order in some source
+        # quotation. Nothing has been altered.
+        # Exact, whole or partial: the words appear in order inside some source
+        # quotation. Checked against merged groups too, so reproducing a split
+        # quotation without its attribution still counts as exact.
+        if any(_contains_subsequence(src_words, words) for src_words, _ in merged):
+            continue
+
+        key = " ".join(words)
+        if key in seen:
+            continue
+
+        # Faithful once contractions are expanded, but not as written: the
+        # quotation was contracted or de-contracted and nothing else. Caught
+        # deterministically rather than by similarity, because the restyled form
+        # often breaks one sentence into several short ones — "It isn't. It's
+        # loud, and it's close" becoming "It is not. It is loud. It is close." —
+        # which drags the whole-passage ratio below any sane threshold and leaves
+        # every fragment too short to judge on its own.
+        canonical = _canonical_words(words)
+        canonical_candidates = [
+            (_canonical_words(cand_words), display)
+            for cand_words, display in merged + individual
+        ]
+        match = _best_covering_candidate(
+            canonical_candidates, canonical, QUOTE_CANONICAL_COVERAGE
+        )
+        if match is not None:
+            seen.add(key)
+            findings.append({
+                "quoted": re.sub(r"\s+", " ", body).strip(),
+                "source": match[1],
+                "similarity": round(match[2], 3),
+            })
+            continue
+
+        best_display, best_ratio = None, 0.0
+        for src_words, display in merged + individual:
+            ratio = SequenceMatcher(None, key, " ".join(src_words)).ratio()
+            if ratio > best_ratio:
+                best_display, best_ratio = display, ratio
+
+        if best_display is not None and best_ratio >= min_similarity:
+            seen.add(key)
+            findings.append({
+                "quoted": re.sub(r"\s+", " ", body).strip(),
+                "source": best_display,
+                "similarity": round(best_ratio, 3),
+            })
+            continue
+
+        # The whole passage did not resemble any one source quotation closely
+        # enough, which happens when only part of it was altered. Check each
+        # sentence, so a single reworded sentence inside an otherwise faithful
+        # quote is still found.
+        for sentence in _SENTENCE_SPLIT_RE.split(body):
+            s_words = _quote_words(sentence)
+            if len(s_words) < 5:
+                continue
+            if any(_contains_subsequence(src_words, s_words) for src_words, _ in merged):
+                continue
+
+            s_key = " ".join(s_words)
+            if s_key in seen:
+                continue
+
+            s_best, s_ratio = None, 0.0
+            for candidate in sentence_pool:
+                ratio = SequenceMatcher(None, s_key, " ".join(_quote_words(candidate))).ratio()
+                if ratio > s_ratio:
+                    s_best, s_ratio = candidate, ratio
+
+            if s_best is not None and s_ratio >= min_similarity:
+                seen.add(s_key)
+                findings.append({
+                    "quoted": re.sub(r"\s+", " ", sentence).strip(),
+                    "source": s_best,
+                    "similarity": round(s_ratio, 3),
+                })
+
+    return findings[:limit]

@@ -44,3 +44,19 @@ BRACKET_CONVENTION_MIN_RATE = 0.3
 
 
 MIN_PHONE_DIGITS = 9
+
+
+# A quoted passage this similar to a source quotation, without matching it, is
+# an altered version of that quotation rather than unrelated phrasing. Set high
+# enough that only a recognisable rewrite of a specific quote trips it.
+QUOTE_ALTERATION_SIMILARITY = 0.72
+
+# Shorter quoted fragments are terms of art rather than claims about what
+# somebody said, so alterations below this length are not worth chasing.
+MIN_QUOTED_PASSAGE_CHARS = 25
+
+# With contractions expanded, a quoted passage this fully accounted for by a
+# source quotation — in order — is that quotation restyled, not a different
+# statement. High, because the whole point is that only the contractions and a
+# stray connective have moved.
+QUOTE_CANONICAL_COVERAGE = 0.92
