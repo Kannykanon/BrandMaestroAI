@@ -14,6 +14,12 @@ import os
 # coincidence rate and the length of a typical signature phrase.
 MAX_VERBATIM_SPAN_WORDS = 8
 
+# A verbatim span needs at least this many words the writer actually chose
+# before it counts as copying. Capitalised name components and function words
+# do not count: an award title or festival name cannot be paraphrased, so a
+# long span made almost entirely of them is a fact rather than lifted phrasing.
+MIN_AUTHORED_SPAN_WORDS = 3
+
 
 # Writer/Enforcer revision rounds. Tunable without a code change so the ceiling
 # can be raised when a content type needs more passes — but note that extra

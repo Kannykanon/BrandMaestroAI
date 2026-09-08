@@ -8,7 +8,11 @@ import logging
 import re
 from collections import Counter
 
-from utils.enforcement.constants import MAX_VERBATIM_SPAN_WORDS, MIN_PHONE_DIGITS
+from utils.enforcement.constants import (
+    MAX_VERBATIM_SPAN_WORDS,
+    MIN_AUTHORED_SPAN_WORDS,
+    MIN_PHONE_DIGITS,
+)
 from utils.enforcement.text import digits, quoted_regions, tokens_with_offsets
 
 logger = logging.getLogger(__name__)
@@ -161,6 +165,51 @@ def find_unverified_quote_attributions(content: str, grounding_text: str) -> lis
     return findings
 
 
+# English grammar words, nothing domain- or brand-specific. Used only to work
+# out how much of a verbatim span is language the writer actually chose.
+_FUNCTION_WORDS = {
+    "a", "an", "the", "and", "or", "but", "of", "in", "on", "at", "to", "for",
+    "from", "by", "with", "as", "is", "are", "was", "were", "be", "been", "it",
+    "its", "this", "that", "these", "those", "he", "she", "they", "him", "her",
+    "them", "his", "their", "which", "who", "whom", "also", "not", "no", "than",
+    "then", "there", "here", "up", "out", "over", "after", "before", "during",
+    "between", "into", "onto", "about", "has", "have", "had", "will", "would",
+    "s", "t",
+}
+
+
+def _authored_word_count(content: str, ctoks, i: int, j: int) -> int:
+    """How many words in content[i:j] the writer genuinely chose.
+
+    A proper-noun chain is a fact, not phrasing. Nobody can rewrite "the
+    Cascadia International Film Festival" without getting the name wrong, and
+    film publicity is full of long fixed strings — award titles, festival names,
+    production companies, guild credits. A perfectly correct sentence in this
+    domain can therefore share fifteen consecutive words with its source while
+    containing almost no authored prose:
+
+        "won the Grand Jury Prize for Direction at the Cascadia
+         International Film Festival"
+
+    Thirteen words, one of which ("won") is a choice. Flagging that as copying
+    asks the writer to paraphrase an award, which it cannot do correctly, so the
+    revision loop spends every iteration on it and the generation ends at
+    MAX_ITERATIONS with a score of zero.
+
+    Capitalised tokens are discounted as parts of names, and function words are
+    discounted as grammar. What remains is what a different writer could
+    legitimately have phrased differently.
+    """
+    authored = 0
+    for lowered, start, end in ctoks[i:j]:
+        if content[start:end][:1].isupper():
+            continue                      # part of a name
+        if lowered in _FUNCTION_WORDS:
+            continue                      # grammar, not phrasing
+        authored += 1
+    return authored
+
+
 def find_extractive_spans(content: str, source: str,
                            max_span: int = MAX_VERBATIM_SPAN_WORDS,
                            limit: int = 5) -> list[dict]:
@@ -215,7 +264,10 @@ def find_extractive_spans(content: str, source: str,
             while j < len(words) and tuple(words[j - n + 1:j + 1]) in src_ngrams:
                 j += 1
             start, end = ctoks[i][1], ctoks[j - 1][2]
-            if not inside_quote(start, end):
+            if (
+                not inside_quote(start, end)
+                and _authored_word_count(content, ctoks, i, j) >= MIN_AUTHORED_SPAN_WORDS
+            ):
                 spans.append({"length": j - i, "text": content[start:end]})
             i = j
         else:
