@@ -23,6 +23,8 @@ from utils.enforcement.placeholders import find_unfilled_placeholders
 from utils.enforcement.preflight import run_preflight_checks
 from utils.enforcement.provenance import (
     find_altered_quotations,
+    find_fabricated_dialogue,
+    find_unbranded_emphasis_caps,
     source_quotation_for_span,
     find_extractive_spans,
     find_ungrounded_contact_details,
@@ -45,6 +47,8 @@ __all__ = [
     "check_measured_mechanics",
     "find_altered_quotations",
     "find_excerpt",
+    "find_fabricated_dialogue",
+    "find_unbranded_emphasis_caps",
     "find_extractive_spans",
     "find_unfilled_placeholders",
     "find_ungrounded_contact_details",

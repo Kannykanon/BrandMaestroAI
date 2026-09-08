@@ -35,6 +35,38 @@ _SCRIPT_LINE_RE = re.compile(
 )
 
 
+def script_dialogue_lines(text: str):
+    """(speaker, line, start, end) for each script-format dialogue line."""
+    out = []
+    for m in _SCRIPT_LINE_RE.finditer(text):
+        speaker = m.group(0)[: m.group(0).index(":")].strip()
+        # Drop any parenthetical direction from the speaker label.
+        speaker = re.sub(r"\s*\([^)]*\)\s*$", "", speaker).strip()
+        out.append((speaker, m.group(1), m.start(1), m.end(1)))
+    return out
+
+
+_CAPS_WORD_RE = re.compile(r"(?<![A-Za-z])[A-Z][A-Z0-9'&.-]{2,}(?![A-Za-z])")
+
+
+def inline_caps_words(text: str):
+    """All-caps words appearing inside a line that also contains lowercase.
+
+    A word in capitals on a line of its own is structural — a card, a heading, a
+    label — and the brand's own conventions govern it. A word in capitals in the
+    middle of a sentence is emphasis, and whether the brand does that is a
+    separate question from how many capitals it uses overall.
+    """
+    out = []
+    for line_match in re.finditer(r"^.*$", text, re.MULTILINE):
+        line = line_match.group(0)
+        if not re.search(r"[a-z]", line):
+            continue          # caps-only line: structural, not emphasis
+        for m in _CAPS_WORD_RE.finditer(line):
+            out.append((m.group(0), line_match.start() + m.start()))
+    return out
+
+
 def script_dialogue_regions(text: str):
     """Character ranges of the spoken part of script-format dialogue lines.
 
