@@ -6,6 +6,7 @@ details, or source text reproduced instead of rewritten.
 """
 import logging
 import re
+from collections import Counter
 
 from utils.enforcement.constants import MAX_VERBATIM_SPAN_WORDS, MIN_PHONE_DIGITS
 from utils.enforcement.text import digits, quoted_regions, tokens_with_offsets
@@ -169,6 +170,10 @@ def find_extractive_spans(content: str, source: str,
     writing from it — reproducing the source's phrasing (and, with it, whatever
     internal material the source happened to contain) rather than re-expressing
     the facts in the brand's own voice.
+
+    Two kinds of verbatim reuse are legitimate and exempt: direct quotations,
+    which have to match their source, and language the brand repeats across its
+    own documents, which is standing copy rather than lifted research.
     """
     ctoks = tokens_with_offsets(content)
     stoks = [t for t, _, _ in tokens_with_offsets(source)]
@@ -176,7 +181,27 @@ def find_extractive_spans(content: str, source: str,
     if len(ctoks) < n or len(stoks) < n:
         return []
 
-    src_ngrams = {tuple(stoks[i:i + n]) for i in range(len(stoks) - n + 1)}
+    # Only n-grams that appear ONCE in the source count as copying.
+    #
+    # An n-gram the brand repeats across its own retrieved documents is standing
+    # language it reuses on purpose — the "About <company>" boilerplate that
+    # closes every press release, a recurring logline, a tagline, a rights
+    # statement. Reproducing that verbatim is correct, and required: a
+    # distributor's boilerplate is not supposed to be paraphrased differently in
+    # each release.
+    #
+    # Without this the gate flagged Harbor Line's own boilerplate as plagiarism
+    # of itself, sent the draft back for it, and burned every revision iteration
+    # on a violation the writer could not legitimately fix — ending at
+    # MAX_ITERATIONS with a score of zero on otherwise publishable copy.
+    #
+    # A distinctive passage lifted from one source document still appears once,
+    # so the failure this gate exists for is unaffected.
+    counts = Counter(
+        tuple(stoks[i:i + n]) for i in range(len(stoks) - n + 1)
+    )
+    src_ngrams = {ng for ng, c in counts.items() if c == 1}
+
     quoted = quoted_regions(content)
     words = [t for t, _, _ in ctoks]
 

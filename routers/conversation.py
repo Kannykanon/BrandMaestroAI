@@ -1,4 +1,5 @@
 import json
+import os
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Annotated
@@ -93,9 +94,19 @@ async def generate_stream(
         yield json.dumps({"generation_id": generation_id}) + "\n"
 
         from celery_task import get_async_redis
+        from redis.exceptions import (
+            ConnectionError as RedisConnectionError,
+            TimeoutError as RedisTimeoutError,
+        )
+
         stream_redis = get_async_redis()
         start = time.monotonic()
-        MAX_STREAM_SECONDS = 300
+
+        # An enforcer iteration is a full LLM round trip, and the press-release
+        # path can run several. 300s cut the stream off mid-pipeline, so the
+        # client saw the researcher's output and then a clean end of response.
+        MAX_STREAM_SECONDS = int(os.getenv("MAX_STREAM_SECONDS", "900"))
+        BLPOP_SECONDS = 5
 
         try:
             while True:
@@ -105,13 +116,36 @@ async def generate_stream(
                     logger.warning("Stream timed out generation_id=%s", generation_id)
                     break
 
-                chunk = await stream_redis.blpop(f"stream:{generation_id}", timeout=10)  # type: ignore[misc]
+                try:
+                    chunk = await stream_redis.blpop(
+                        f"stream:{generation_id}", timeout=BLPOP_SECONDS
+                    )  # type: ignore[misc]
+                except (RedisTimeoutError, RedisConnectionError) as e:
+                    # Not an error condition. No node has published yet, which
+                    # is the normal state while a writer or enforcer LLM call is
+                    # in flight — those take far longer than one BLPOP window.
+                    # Uncaught, this propagated out of the generator and ended
+                    # the response, so every generation appeared to stop after
+                    # the researcher.
+                    logger.debug(
+                        "No stream data yet for generation_id=%s (%s)",
+                        generation_id, e.__class__.__name__,
+                    )
+                    chunk = None
 
                 if chunk is None:
                     with get_db_session() as session:
                         record = session.get(Generation, generation_id)
                         if record and record.status in ("completed", "failed", "timeout"):
                             break
+
+                    # Keeps the connection demonstrably alive across a long node.
+                    # Without it a reverse proxy can drop an apparently idle
+                    # response, and a watching user cannot tell a slow enforcer
+                    # from a hung one.
+                    yield json.dumps(
+                        {"heartbeat": round(time.monotonic() - start)}
+                    ) + "\n"
                     continue
 
                 yield chunk[1] + "\n"
