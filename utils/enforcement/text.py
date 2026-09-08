@@ -108,13 +108,69 @@ def card_line_regions(text: str):
     return [(m.start(), m.end()) for m in _CARD_LINE_RE.finditer(text)]
 
 
+# The trailing "About <company>" block that closes a press release. The heading
+# names the company, so the pattern is a convention rather than anything
+# specific to one brand: "About" followed by a capitalised name, on its own line,
+# optionally wrapped in markdown emphasis.
+_ABOUT_HEADING_RE = re.compile(
+    r"^[*_#\s]*About\s+[A-Z][^\n]{0,80}$",
+    re.MULTILINE,
+)
+
+# Enough for a company description and no more, so the exemption cannot be used
+# to shelter arbitrary copied text under an "About" heading.
+# A real boilerplate paragraph is thirty to fifty words. Kept close to that:
+# at 140 an entire page of copied prose fitted under the heading and went
+# unflagged, which turned the exemption into a hiding place.
+_ABOUT_BLOCK_MAX_WORDS = 70
+
+
+def about_block_regions(text: str):
+    """Character ranges of a trailing "About <company>" boilerplate block.
+
+    The company's name and what it does — its territories, how many titles a
+    year — are facts about the company, and a release that omits them is
+    missing something it is supposed to carry. Treated as factual standing
+    content rather than phrasing to be reinvented on each release.
+
+    Bounded: the block ends at the release-end marker, at a heading that starts
+    something else, or after _ABOUT_BLOCK_MAX_WORDS.
+    """
+    regions = []
+    for heading in _ABOUT_HEADING_RE.finditer(text):
+        start = heading.start()
+        end = len(text)
+        words = 0
+        for line in re.finditer(r"^.*$", text[heading.end():], re.MULTILINE):
+            absolute = heading.end() + line.end()
+            stripped = line.group(0).strip()
+            if stripped in ("###", "-30-", "END", "ENDS"):
+                break
+            if stripped and _ABOUT_HEADING_RE.match(line.group(0)):
+                break
+            # Checked before extending, not after. A boilerplate paragraph is
+            # usually a single unwrapped line, so counting the line and then
+            # testing the cap admitted the whole paragraph however long it was —
+            # which let a page of copied prose sit under the heading untouched.
+            if words + len(stripped.split()) > _ABOUT_BLOCK_MAX_WORDS:
+                break
+            words += len(stripped.split())
+            end = absolute
+        regions.append((start, end))
+    return regions
+
+
 def verbatim_regions(text: str):
     """Character ranges that are legitimately reproduced word for word.
 
-    Quotations and script dialogue only. Both are facts — a record of what a
-    named person or character actually said — and a fact may be reproduced
-    exactly. Everything else in an uploaded document is phrasing the Brand Brain
-    learns a voice from, not copy to be reused.
+    Quotations and script dialogue. Both are facts — a record of what a named
+    person or character said — and a fact may be reproduced exactly. Everything
+    else in an uploaded document is phrasing the Brand Brain learns a voice from,
+    not copy to be reused.
+
+    The trailing "About <company>" block is also a fact, but it is protected in
+    find_extractive_spans instead: it has to be checked against the source's own
+    About block, or the heading becomes a place to hide copied prose.
 
     Card copy was exempt here and is not any more. "THE HOLD IS NOT EMPTY" is
     writing, not a fact: the uploaded documents are voice references rather than

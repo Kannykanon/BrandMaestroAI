@@ -11,7 +11,7 @@ import logging
 from graph.state import GraphState
 from model import LLMSingleton
 from prompts.enforcer import ENFORCER_HUMAN_DIRECTIVE, ENFORCER_PROMPT
-from utils.brand_profile import extract_permitted_claims
+from utils.brand_profile import brand_name_evidence, extract_permitted_claims
 from utils.enforcement import (
     MAX_ITERATIONS,
     MAX_VERBATIM_SPAN_WORDS,
@@ -312,10 +312,13 @@ def enforcer_node(state: GraphState) -> GraphState:
     # against the brand brain — reusing the brand's signature constructions is
     # the point of the product, reproducing its source documents is not.
     research_text = state.get("research", "") or ""
-    # grounding_text carries the brand brief and the topic as well as the
-    # research, so it is the better evidence for which words are names.
+    # Which words are names is a property of the brand, so the evidence is
+    # every document this business has uploaded — not this content type's
+    # research, which for trailer copy contains the award names only in
+    # capitals and so shows nothing about them being names at all.
+    name_evidence = brand_name_evidence(state["business_id"]) + "\n\n" + grounding_text
     extractive_spans = find_extractive_spans(
-        content, research_text, name_evidence=grounding_text
+        content, research_text, name_evidence=name_evidence
     )
     if extractive_spans:
         logger.warning(

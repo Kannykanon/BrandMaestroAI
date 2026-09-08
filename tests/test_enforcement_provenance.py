@@ -185,24 +185,45 @@ class TestExtractiveSpans:
         assert not find_extractive_spans(content, SOURCE), \
             f"wrongly flagged a fact: {label}"
 
-    def test_repeated_brand_phrasing_is_still_copying(self):
-        """Boilerplate the brand repeats is phrasing, not a fact.
+    def test_the_about_block_is_a_company_fact(self):
+        """The standing "About <company>" block may be reproduced.
 
-        An earlier version exempted any n-gram the source repeated, reasoning
-        that an "About <company>" block closing every release is standing copy to
-        be reused. That was wrong about what the uploaded documents are: they are
-        references the Brand Brain learns a voice from, not product documents or
-        an asset bank to paste out of. Repetition makes a phrase characteristic
-        of how this brand writes, which is a reason to learn the pattern — not a
-        licence to reproduce the sentence.
+        The company's name and what it does — its territories, how many titles
+        a year — are facts about the company, so a release carries them as
+        written. This is a product decision rather than an inference: asked
+        directly, the owner said the block is a fact and should be used in new
+        content where relevant.
+
+        Everything else stays strict. An earlier version exempted ANY phrasing
+        the source repeated, which is what this replaces.
         """
         content = (
-            "About Harbor Line Pictures\n\nHarbor Line Pictures acquires and "
-            "distributes narrative features in North America, the United Kingdom "
-            "and Ireland. The company releases between six and nine films a year."
+            "About Harbor Line Pictures\n\nHarbor Line Pictures acquires "
+            "and distributes narrative features in North America, the United "
+            "Kingdom and Ireland. The company releases between six and nine "
+            "films a year.\n\n###\n"
         )
-        assert find_extractive_spans(content, SOURCE), \
-            "reproduced boilerplate was not flagged"
+        assert find_extractive_spans(content, SOURCE) == [], (
+            "the company's own About block should not be reported as copying"
+        )
+
+    def test_the_about_heading_is_not_a_hiding_place(self):
+        """Copied prose under an About heading is still copied prose.
+
+        A word cap alone did not settle this: sixty words of lifted
+        description fits comfortably inside the size of a real boilerplate
+        paragraph. The block is protected only when its vocabulary matches the
+        source's own About block, which the genuine case does exactly and a
+        smuggled paragraph does not.
+        """
+        content = (
+            "About Harbor Line Pictures\n\nThe production built its tank "
+            "at a former shipyard in Ardrossan and dressed a wreck interior "
+            "inside it.\n"
+        )
+        assert find_extractive_spans(content, SOURCE), (
+            "copied prose under an About heading was not flagged"
+        )
 
     def test_card_copy_is_phrasing_not_fact(self):
         """"THE HOLD IS NOT EMPTY" is writing, so a new sheet earns its own.
