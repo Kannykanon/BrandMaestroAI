@@ -77,10 +77,15 @@ def inline_caps_words(text: str):
 def script_dialogue_regions(text: str):
     """Character ranges of the spoken part of script-format dialogue lines.
 
-    A line of dialogue on a trailer copy sheet is a quotation of the film. It
-    cannot be paraphrased — an actor said those words — so it belongs with
-    quoted text: exempt from the extractive-copying check, and protected from
-    alteration by the quotation-fidelity check.
+    NOT exempt from the extractive-copying check. Dialogue in an uploaded
+    document is the reference author's writing, and the writing is the one thing
+    the system is supposed to learn from rather than reuse: feed it a director's
+    scripts and ask for a new script, and a line lifted from one of them is
+    plagiarism, not a fact. Facts about the new subject come from the research.
+
+    Retained because the fidelity and fabrication checks locate dialogue lines,
+    and because a trailer sheet's own dialogue section needs recognising as
+    structure.
     """
     return [(m.start(1), m.end(1)) for m in _SCRIPT_LINE_RE.finditer(text)]
 
@@ -163,20 +168,22 @@ def about_block_regions(text: str):
 def verbatim_regions(text: str):
     """Character ranges that are legitimately reproduced word for word.
 
-    Quotations and script dialogue. Both are facts — a record of what a named
-    person or character said — and a fact may be reproduced exactly. Everything
-    else in an uploaded document is phrasing the Brand Brain learns a voice from,
-    not copy to be reused.
+    Quotations only, and even that is narrow: a statement attributed to a named
+    person is a record of what they said.
 
-    The trailing "About <company>" block is also a fact, but it is protected in
-    find_extractive_spans instead: it has to be checked against the source's own
-    About block, or the heading becomes a place to hide copied prose.
+    Script dialogue is NOT here. A character's line is the reference author's
+    writing — the thing the Brand Brain exists to learn the shape of, not to
+    hand back. Upload a director's scripts, ask for a new one, and a line from
+    the old script is plagiarism however faithfully it is reproduced.
 
-    Card copy was exempt here and is not any more. "THE HOLD IS NOT EMPTY" is
-    writing, not a fact: the uploaded documents are voice references rather than
-    an asset bank, so a new trailer sheet has to arrive at its own cards.
+    Card copy is not here either, for the same reason: "THE HOLD IS NOT EMPTY"
+    is writing, so a new sheet arrives at its own cards.
+
+    The trailing "About <company>" block is a fact about the company and is
+    protected in find_extractive_spans, where it can be checked against the
+    source's own block rather than trusted to a heading.
     """
-    return quoted_regions(text) + script_dialogue_regions(text)
+    return quoted_regions(text)
 
 
 def digits(text: str) -> str:

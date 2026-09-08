@@ -11,7 +11,6 @@ import pytest
 from utils.enforcement import (
     find_altered_quotations,
     find_extractive_spans,
-    find_fabricated_dialogue,
     find_unbranded_emphasis_caps,
 )
 
@@ -87,10 +86,6 @@ class TestAlteredQuotations:
             'Okpara said: "People assume underwater sound is muffled. It is not. '
             "It's loud, and it's close, and it's mostly your own body.\"",
         ),
-        (
-            "script dialogue de-contracted",
-            "RENATA: There is something in the hold.",
-        ),
     ])
     def test_alterations_are_flagged(self, label, content):
         findings = find_altered_quotations(content, SOURCE)
@@ -130,11 +125,6 @@ class TestAlteredQuotations:
             "phrasing the brand chose itself",
             'The distributor called it "a film about the price of a day\'s work at depth."',
         ),
-        (
-            "script dialogue reproduced exactly",
-            "RENATA: There's something in the hold.\n"
-            "SAM (over comms, breathing hard): Wale. Wale, she's not coming up.",
-        ),
     ])
     def test_faithful_quotations_pass(self, label, content):
         assert not find_altered_quotations(content, SOURCE), \
@@ -172,13 +162,6 @@ class TestExtractiveSpans:
             "a quotation, which has to match",
             'Okpara said: "It isn\'t. It\'s loud, and it\'s close, and it\'s mostly '
             'your own body."',
-        ),
-        (
-            # Same argument: what a character says in the film is a fact about
-            # the film.
-            "script dialogue",
-            "WALE: Sixteen days. Then the weather turns and we're done whether "
-            "we're finished or not.",
         ),
     ])
     def test_facts_may_be_reproduced(self, label, content):
@@ -299,35 +282,49 @@ class TestExtractiveSpans:
         assert bool(find_extractive_spans(content, source)) is should_flag
 
 
-class TestFabricatedDialogue:
-    """Trailer copy approved at 8.1 with lines no character in the film says."""
+class TestDialogueIsWritingNotFact:
+    """A character's line in a reference is the reference author's writing.
 
-    def test_invented_lines_are_flagged(self):
-        content = (
-            "WALE: How much time.\n"
-            "RENATA: What is inside.\n"
-            "SAM: Is she coming up.\n"
-        )
-        found = find_fabricated_dialogue(content, SOURCE)
-        assert {f["speaker"] for f in found} == {"WALE", "RENATA", "SAM"}
+    This system exists to learn how someone writes and then write something new.
+    Feed it a director's scripts and ask for a script on another subject, and a
+    line from one of those scripts is plagiarism however faithfully it is
+    reproduced. Facts about the new subject come from the research, not from the
+    style references.
 
-    def test_real_lines_pass(self):
+    So dialogue is not exempt from the copying check, there is nothing for a
+    fidelity check to protect, and inventing dialogue is the product rather than
+    a hallucination. All three followed from the same correction.
+    """
+
+    def test_reference_dialogue_may_not_be_reused(self):
         content = (
             "WALE: Sixteen days. Then the weather turns and we're done whether "
-            "we're finished or not.\n"
-            "RENATA: There's something in the hold.\n"
-            "SAM (over comms, breathing hard): Wale. Wale, she's not coming up.\n"
+            "we're finished or not."
         )
-        assert find_fabricated_dialogue(content, SOURCE) == []
+        assert find_extractive_spans(content, SOURCE),             "a line lifted from a reference script was not flagged"
 
-    def test_label_lines_are_not_dialogue(self):
-        """"RELEASE DATE: 14 APRIL" has the shape of dialogue without being it.
+    def test_invented_dialogue_is_allowed(self):
+        """Writing lines nobody has said is the point, not a defect."""
+        content = (
+            "WALE: How much time have we got.\n"
+            "RENATA: Less than the forecast says.\n"
+        )
+        assert find_extractive_spans(content, SOURCE) == [], (
+            "invented dialogue was treated as copying"
+        )
+        assert find_altered_quotations(content, SOURCE) == [], (
+            "invented dialogue was treated as an altered quotation"
+        )
 
-        Only speakers the source itself uses are checked, which is what keeps a
-        trailer sheet's label lines out of this gate.
+    def test_dialogue_is_not_held_to_quotation_fidelity(self):
+        """Otherwise the two checks contradict each other.
+
+        Dialogue may not be reused, so a fidelity check demanding it be
+        reproduced exactly would leave the writer alternating between rewriting
+        the line and restoring it until the rounds ran out.
         """
-        content = "RELEASE DATE: 14 APRIL.\nHOLD CONTENTS: UNSEEN.\nFILM ACCLAIM: Grand Jury Prize.\n"
-        assert find_fabricated_dialogue(content, SOURCE) == []
+        content = "RENATA: There is something in the hold."
+        assert find_altered_quotations(content, SOURCE) == [],             "dialogue was still being held to quotation fidelity"
 
 
 class TestUnbrandedEmphasisCaps:
