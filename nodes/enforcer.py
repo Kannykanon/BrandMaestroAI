@@ -312,7 +312,11 @@ def enforcer_node(state: GraphState) -> GraphState:
     # against the brand brain — reusing the brand's signature constructions is
     # the point of the product, reproducing its source documents is not.
     research_text = state.get("research", "") or ""
-    extractive_spans = find_extractive_spans(content, research_text)
+    # grounding_text carries the brand brief and the topic as well as the
+    # research, so it is the better evidence for which words are names.
+    extractive_spans = find_extractive_spans(
+        content, research_text, name_evidence=grounding_text
+    )
     if extractive_spans:
         logger.warning(
             "EXTRACTIVE COPYING at iteration %d — %d span(s), longest %d words",
