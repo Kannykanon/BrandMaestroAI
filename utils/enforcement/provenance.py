@@ -6,7 +6,6 @@ details, or source text reproduced instead of rewritten.
 """
 import logging
 import re
-from collections import Counter
 from difflib import SequenceMatcher
 
 from utils.enforcement.constants import (
@@ -192,7 +191,27 @@ _FUNCTION_WORDS = {
 }
 
 
-def _authored_word_count(content: str, ctoks, i: int, j: int) -> int:
+
+def _name_words(source: str) -> frozenset:
+    """Words the source capitalises in running text, lowercased.
+
+    Evidence rather than a guess about which words belong to a name. A word the
+    source writes as "Cascadia" is part of one; a word it writes as "contract"
+    is not. Tokens the source only ever sets in full capitals are skipped, since
+    those carry the same styling ambiguity being resolved here.
+    """
+    names = set()
+    for match in re.finditer(r"[A-Za-z][A-Za-z0-9'&.-]*", source):
+        word = match.group(0)
+        if word.isupper():
+            continue                      # a card or a shout; not evidence
+        if word[:1].isupper():
+            names.add(word.lower())
+    return frozenset(names)
+
+
+def _authored_word_count(content: str, ctoks, i: int, j: int,
+                         name_words: frozenset = frozenset()) -> int:
     """How many words in content[i:j] the writer genuinely chose.
 
     A proper-noun chain is a fact, not phrasing. Nobody can rewrite "the
@@ -214,10 +233,25 @@ def _authored_word_count(content: str, ctoks, i: int, j: int) -> int:
     discounted as grammar. What remains is what a different writer could
     legitimately have phrased differently.
     """
+    span = content[ctoks[i][1]:ctoks[j - 1][2]]
+    all_caps_span = not any(ch.islower() for ch in span)
+
     authored = 0
     for lowered, start, end in ctoks[i:j]:
-        if content[start:end][:1].isupper():
+        word = content[start:end]
+
+        if all_caps_span:
+            # In a wholly capitalised span — a trailer card, a headline —
+            # capitalisation is styling and says nothing about whether a word is
+            # a name, so every word would be discounted and no card could ever be
+            # reported as copied. The source's own casing settles it: a word it
+            # writes capitalised in running text is part of a name, and one it
+            # writes lowercase is a word somebody chose.
+            if lowered in name_words:
+                continue
+        elif word[:1].isupper():
             continue                      # part of a name
+
         if lowered in _FUNCTION_WORDS:
             continue                      # grammar, not phrasing
         authored += 1
@@ -244,26 +278,22 @@ def find_extractive_spans(content: str, source: str,
     if len(ctoks) < n or len(stoks) < n:
         return []
 
-    # Only n-grams that appear ONCE in the source count as copying.
+    # Every n-gram in the source counts, however often the source repeats it.
     #
-    # An n-gram the brand repeats across its own retrieved documents is standing
-    # language it reuses on purpose — the "About <company>" boilerplate that
-    # closes every press release, a recurring logline, a tagline, a rights
-    # statement. Reproducing that verbatim is correct, and required: a
-    # distributor's boilerplate is not supposed to be paraphrased differently in
-    # each release.
+    # This deliberately does NOT exempt language the brand repeats across its own
+    # documents. An earlier version did, on the reasoning that an "About <company>"
+    # block closing every press release is standing copy to be reused. That was
+    # wrong about what the uploaded documents are: they are references the Brand
+    # Brain learns a voice from, not product documents or an asset bank to paste
+    # out of. Repetition across them makes a phrase characteristic of the brand's
+    # writing, which is a reason to learn the pattern, not a licence to reproduce
+    # the sentence.
     #
-    # Without this the gate flagged Harbor Line's own boilerplate as plagiarism
-    # of itself, sent the draft back for it, and burned every revision iteration
-    # on a violation the writer could not legitimately fix — ending at
-    # MAX_ITERATIONS with a score of zero on otherwise publishable copy.
-    #
-    # A distinctive passage lifted from one source document still appears once,
-    # so the failure this gate exists for is unaffected.
-    counts = Counter(
-        tuple(stoks[i:i + n]) for i in range(len(stoks) - n + 1)
-    )
-    src_ngrams = {ng for ng, c in counts.items() if c == 1}
+    # Facts are the exception, and they are handled by authored-word counting
+    # below rather than by an exemption here: "108 minutes" and "the Cascadia
+    # International Film Festival" survive because they carry almost no authored
+    # wording, while a sentence carrying the same fact does not.
+    src_ngrams = {tuple(stoks[i:i + n]) for i in range(len(stoks) - n + 1)}
 
     words = [t for t, _, _ in ctoks]
 
@@ -278,6 +308,11 @@ def find_extractive_spans(content: str, source: str,
     # bio was reported as 62 consecutive copied words, most of them a quotation
     # it was right to reproduce, with two genuinely copied clauses buried at the
     # ends. Unsplittable feedback like that cannot be acted on.
+    # Words the source itself capitalises in running text: name components.
+    # Needed to judge a wholly capitalised span, where the draft's own casing
+    # carries no information.
+    name_words = _name_words(source)
+
     protected = verbatim_regions(content)
     blocked = [
         any(rs <= start and end <= re_ for rs, re_ in protected)
@@ -298,7 +333,9 @@ def find_extractive_spans(content: str, source: str,
             ):
                 j += 1
             start, end = ctoks[i][1], ctoks[j - 1][2]
-            if _authored_word_count(content, ctoks, i, j) >= MIN_AUTHORED_SPAN_WORDS:
+            if _authored_word_count(
+                content, ctoks, i, j, name_words
+            ) >= MIN_AUTHORED_SPAN_WORDS:
                 spans.append({"length": j - i, "text": content[start:end]})
             i = j
         else:

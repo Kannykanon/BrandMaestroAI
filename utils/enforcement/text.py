@@ -111,11 +111,16 @@ def card_line_regions(text: str):
 def verbatim_regions(text: str):
     """Character ranges that are legitimately reproduced word for word.
 
-    Quotations, script dialogue and card copy. Each is a fixed asset — someone's
-    exact words, or text that appears on screen — so each is the brand's to
-    reproduce and nobody's to reword.
+    Quotations and script dialogue only. Both are facts — a record of what a
+    named person or character actually said — and a fact may be reproduced
+    exactly. Everything else in an uploaded document is phrasing the Brand Brain
+    learns a voice from, not copy to be reused.
+
+    Card copy was exempt here and is not any more. "THE HOLD IS NOT EMPTY" is
+    writing, not a fact: the uploaded documents are voice references rather than
+    an asset bank, so a new trailer sheet has to arrive at its own cards.
     """
-    return quoted_regions(text) + script_dialogue_regions(text) + card_line_regions(text)
+    return quoted_regions(text) + script_dialogue_regions(text)
 
 
 def digits(text: str) -> str:
