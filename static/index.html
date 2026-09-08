@@ -11,7 +11,7 @@
     <!-- FontAwesome for Premium Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Stylesheet -->
-    <link rel="stylesheet" href="/static/theme.css">
+    <link rel="stylesheet" href="/theme.css?v=2">
         <!-- Markdown Parser -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -38,8 +38,13 @@
                     <li><i class="fa-solid fa-check"></i> Ads &middot; Blogs &middot; Proposals &middot; Emails</li>
                 </ul>
             </div>
+            <!-- The product shot carries the left panel. It previously had no
+                 src and display:none, so the lower half of this screen was
+                 blank. -->
             <div class="auth-dashboard-preview">
-                <img id="auth-preview-img" alt="BrandMaestro AI Dashboard" style="display:none; width:100%; border-radius:10px; box-shadow:0 20px 50px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.08);">
+                <img id="auth-preview-img" src="/images/hero_dashboard.png"
+                     alt="The BrandMaestro AI dashboard, showing a generated caption set scored against a brand profile"
+                     fetchpriority="high" decoding="async">
             </div>
         </div>
 
@@ -500,6 +505,6 @@
     </div>
 
     <!-- Script imports -->
-    <script src="/static/app.js"></script>
+    <script src="/app.js?v=2"></script>
 </body>
 </html>

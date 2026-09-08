@@ -6,9 +6,22 @@
     --bg-card-hover: #171720;
     --bg-input: #1a1a23;
     
-    --border-color: rgba(239, 68, 68, 0.12);
-    --border-hover: rgba(239, 68, 68, 0.25);
-    --border-focus: rgba(239, 68, 68, 0.5);
+    /* Borders do two different jobs and were both doing neither well at 12%
+       alpha of a mid-red: too faint to separate surfaces, too warm to read as
+       neutral. Structural edges are now a neutral white at low alpha so panels
+       actually delineate; the red is kept for interaction states, where it
+       means something. */
+    --border-color: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.14);
+    --border-hover: rgba(239, 68, 68, 0.35);
+    --border-focus: rgba(239, 68, 68, 0.6);
+
+    /* Elevation. Everything sat on one plane before, so nothing looked
+       clickable and cards blended into the page. */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+    --shadow-glow: 0 0 0 1px rgba(239, 68, 68, 0.35), 0 8px 24px rgba(239, 68, 68, 0.18);
     
     --text-primary: #f3f4f6;
     --text-secondary: #9ca3af;
@@ -1529,5 +1542,338 @@ input:checked + .slider:before {
     
     .patterns-grid {
         grid-template-columns: 1fr;
+    }
+}
+
+
+/* ===========================================================================
+   VISUAL REFINEMENT LAYER
+   ---------------------------------------------------------------------------
+   Appended last so it overrides the base rules above without rewriting them.
+   The layout and palette were already sound; what the page lacked was depth,
+   typographic contrast, and any sign that surfaces sit at different heights.
+   Every selector below matches a class that actually appears in index.html.
+   =========================================================================== */
+
+/* --- Page ground ----------------------------------------------------------
+   A single flat colour behind everything is the main reason the app reads as
+   flat. Two faint, fixed pools of light give the page a direction. */
+body {
+    background-color: var(--bg-main);
+    background-image:
+        radial-gradient(ellipse 900px 600px at 12% -8%, rgba(239, 68, 68, 0.07), transparent 60%),
+        radial-gradient(ellipse 700px 500px at 95% 8%, rgba(120, 60, 200, 0.05), transparent 60%);
+    background-attachment: fixed;
+}
+
+/* --- Type scale -----------------------------------------------------------
+   Almost everything sat at 13-14px, so nothing led the eye. */
+.auth-panel-headline {
+    font-size: clamp(34px, 4vw, 46px);
+    line-height: 1.08;
+    letter-spacing: -1.4px;
+    /* Stops short of pure red so the tail of the headline reads as emphasis
+       rather than as a warning. */
+    background: linear-gradient(135deg, #ffffff 0%, #ffffff 58%, #ffb0b0 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.auth-panel-sub {
+    font-size: 15px;
+    line-height: 1.7;
+    color: rgba(255, 255, 255, 0.6);
+    max-width: 44ch;
+}
+
+.page-title-area h1 {
+    font-size: 32px;
+    letter-spacing: -0.9px;
+}
+
+.page-title-area .subtitle {
+    font-size: 14.5px;
+    color: var(--text-muted);
+}
+
+.card-header h2,
+.output-header h2 {
+    letter-spacing: -0.3px;
+}
+
+/* Labels above fields now read as labels, not as more body copy. */
+.input-group label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+/* --- The product shot -----------------------------------------------------
+   Slight perspective and a warm underglow, so it reads as a screenshot of
+   something real rather than a pasted rectangle. */
+.auth-dashboard-preview {
+    perspective: 1400px;
+}
+
+.auth-dashboard-preview img {
+    display: block;
+    width: 100%;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow:
+        0 30px 60px -12px rgba(0, 0, 0, 0.75),
+        0 0 70px -24px rgba(239, 68, 68, 0.45);
+    transform: perspective(1400px) rotateX(5deg) rotateY(-7deg) scale(1.02);
+    transform-origin: bottom center;
+    transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.auth-dashboard-preview img:hover {
+    transform: perspective(1400px) rotateX(1deg) rotateY(-2deg) scale(1.04);
+}
+
+/* A second pool of light, offset from the existing ::before, so the left
+   panel is lit from two corners instead of washed evenly. */
+.auth-panel-left::after {
+    content: "";
+    position: absolute;
+    right: -180px;
+    bottom: -160px;
+    width: 520px;
+    height: 520px;
+    background: radial-gradient(circle, rgba(239, 68, 68, 0.10) 0%, transparent 70%);
+    pointer-events: none;
+}
+
+/* --- Surfaces -------------------------------------------------------------
+   Cards now sit above the page instead of in it: a stronger edge, a real
+   shadow, and a top-edge sheen that suggests a light source above. */
+.content-card,
+.stat-card,
+.feedback-card,
+.output-card,
+.secondary-card,
+.memory-header-card,
+.approved-patterns-card,
+.rejected-patterns-card {
+    border-color: var(--border-color);
+    box-shadow: var(--shadow-lg);
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 140px);
+}
+
+.stat-card,
+.format-card {
+    transition: var(--transition-smooth);
+}
+
+/* Only the interactive surfaces lift. Static cards staying put is what makes
+   the lift mean something. */
+.stat-card:hover,
+.format-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-lg);
+}
+
+.format-card.active,
+.format-card.selected {
+    border-color: var(--primary-red);
+    background-color: rgba(239, 68, 68, 0.08);
+    box-shadow: var(--shadow-glow);
+}
+
+.upload-dropzone:hover {
+    border-color: var(--border-hover);
+    background-color: rgba(239, 68, 68, 0.04);
+}
+
+/* --- Chrome --------------------------------------------------------------- */
+.sidebar {
+    background-image: linear-gradient(180deg, rgba(239, 68, 68, 0.05), transparent 220px);
+    box-shadow: 1px 0 0 rgba(255, 255, 255, 0.03), 8px 0 24px rgba(0, 0, 0, 0.35);
+}
+
+/* The header rule was a hairline across the full width. Fading it out at the
+   right stops it cutting the page in half. */
+.top-header {
+    border-bottom: none;
+    background-image: linear-gradient(90deg, var(--border-strong), transparent 85%);
+    background-repeat: no-repeat;
+    background-size: 100% 1px;
+    background-position: bottom left;
+    padding-bottom: 24px;
+}
+
+/* --- Navigation -----------------------------------------------------------
+   The active item used an inset box-shadow, which the hover background then
+   competed with. A real marker bar plus a directional wash is unambiguous. */
+.nav-item {
+    position: relative;
+    overflow: hidden;
+}
+
+.nav-item.active {
+    background-image: linear-gradient(90deg, rgba(239, 68, 68, 0.18), rgba(239, 68, 68, 0.02));
+    box-shadow: none;
+}
+
+.nav-item.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 62%;
+    border-radius: 0 3px 3px 0;
+    background: var(--primary-red);
+    box-shadow: 0 0 12px var(--primary-red);
+}
+
+.nav-item:hover:not(.active) {
+    background-color: rgba(255, 255, 255, 0.04);
+    color: var(--text-primary);
+    transform: translateX(2px);
+}
+
+/* --- Auth tabs -----------------------------------------------------------
+   The underline was a flat 2px border. A gradient bar that sits on the tab
+   row's own rule reads as a moving indicator. */
+.auth-tab {
+    position: relative;
+}
+
+.auth-tab.active {
+    color: #ffffff;
+    border-bottom-color: transparent;
+}
+
+.auth-tab.active::after {
+    content: "";
+    position: absolute;
+    left: 12%;
+    right: 12%;
+    bottom: -2px;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--primary-red), var(--accent-red-light));
+    box-shadow: 0 0 10px var(--primary-red-glow);
+}
+
+/* --- Buttons -------------------------------------------------------------
+   The base rules already gradient the primary button; these add the missing
+   states so a disabled control cannot look pressable. */
+.btn-primary {
+    border-color: rgba(255, 255, 255, 0.12);
+    font-weight: 600;
+}
+
+.btn-primary:hover:not(:disabled) {
+    box-shadow: var(--shadow-glow);
+}
+
+.btn:disabled,
+.btn[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+/* --- Inputs ---------------------------------------------------------------
+   Focus was a colour change alone, which is easy to miss and thin for
+   keyboard users. */
+.input-group input:focus,
+.input-group select:focus,
+.input-group textarea:focus,
+.business-id-field input:focus {
+    outline: none;
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+/* --- Feature list ---------------------------------------------------------
+   A bare green tick disappeared against the panel; a filled dot reads as a
+   checked item at a glance. */
+.auth-feature-list li {
+    font-size: 14.5px;
+    color: rgba(255, 255, 255, 0.78);
+}
+
+.auth-feature-list li i {
+    background-color: rgba(16, 185, 129, 0.14);
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 10px;
+}
+
+/* --- Empty states --------------------------------------------------------
+   These are the first thing a judge sees on a fresh account, so they should
+   not look like a rendering failure. */
+.empty-state {
+    border: 1px dashed var(--border-color);
+    border-radius: var(--border-radius-lg);
+    background-color: rgba(255, 255, 255, 0.015);
+    padding: 36px 24px;
+}
+
+/* --- Scrollbars ----------------------------------------------------------
+   The default light scrollbar is the loudest thing on a dark page. */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    border: 2px solid var(--bg-main);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* --- Motion --------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+    .auth-dashboard-preview img {
+        transform: none;
+    }
+}
+
+/* --- Narrow screens -------------------------------------------------------
+   The split auth screen crushed the form on a laptop in a demo window. Below
+   1000px the marketing panel steps aside so the form is what you see. */
+@media (max-width: 1000px) {
+    .auth-panel-left {
+        display: none;
+    }
+    .auth-panel-right {
+        width: 100%;
+        padding: 32px 24px;
     }
 }
