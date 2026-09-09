@@ -74,6 +74,15 @@ class MetricPort(ABC):
         ...
 
 
+def _syllables(word: str) -> int:
+    """Rough syllable count: vowel groups, minimum one.
+
+    Good enough to separate "nap" from "gratification", which is all it is
+    for. A real dictionary lookup would cost a dependency for no gain here.
+    """
+    return max(1, len(re.findall(r"[aeiouy]+", word.lower())))
+
+
 _redis_pool = None
 _redis_pool_lock = Lock()
 
@@ -374,6 +383,24 @@ class BrandMetricsSQL(MetricPort):
         "\U00002B00-\U00002BFF\U0001F1E6-\U0001F1FF]"
     )
 
+    # Register markers.
+    #
+    # This block counted punctuation, capitals and sentence length, none of
+    # which say whether a brand writes plainly or corporately — and register is
+    # the most recognisable part of a voice. A documentary distributor whose
+    # corpus runs 0.89 nominalisations per 100 words produced copy at 6.17 ("a
+    # diagnostic failure to prioritize the integrity of effort over immediate,
+    # superficial gratification"), and every check passed it, because none of
+    # them look at word choice.
+    #
+    # Nominalising suffixes are the clearest countable marker of the drift. The
+    # corpus reaches for business, insurance, decision, temptation; the drift
+    # reaches for gratification, superficiality, humiliation, velocity.
+    _NOMINALISATION_RE = re.compile(
+        r"\b\w{4,}(?:tion|sion|ment|ity|ance|ence|ness|ism|ivity)\b", re.I
+    )
+    _CONTRACTION_RE = re.compile(r"\b\w+['’](?:t|s|re|ve|ll|d|m)\b", re.I)
+
     def _measure_corpus_mechanics(self) -> str:
         """Count surface mechanics directly from this brand's own documents.
 
@@ -438,6 +465,16 @@ class BrandMetricsSQL(MetricPort):
             f"- uppercase_letter_ratio: "
             f"{round(sum(1 for c in letters if c.isupper()) / max(len(letters), 1), 2)}\n"
             f"- mean_words_per_sentence: {round(len(words) / max(len(sentences), 1), 1)}\n"
+            # Register. These four decide whether the copy sounds like this
+            # brand or like a consultancy, and nothing above them does.
+            f"- nominalisations_per_100_words: "
+            f"{per100(len(self._NOMINALISATION_RE.findall(corpus)))}\n"
+            f"- four_plus_syllable_words_per_100_words: "
+            f"{per100(sum(1 for w in words if _syllables(w) >= 4))}\n"
+            f"- mean_word_length: "
+            f"{round(sum(len(w) for w in words) / max(len(words), 1), 2)}\n"
+            f"- contractions_per_100_words: "
+            f"{per100(len(self._CONTRACTION_RE.findall(corpus)))}\n"
             # Some content types legitimately use bracketed slots as a
             # convention — an ad script carries "[DATE]", a caption archive
             # tags each entry with "[Launch post]". A press release does not.

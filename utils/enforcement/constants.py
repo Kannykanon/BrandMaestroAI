@@ -37,6 +37,18 @@ MECHANICS_TOLERANCE = 1.8
 # Rates below this are too small for a ratio to mean anything on a short draft.
 MECHANICS_MIN_RATE = 0.5
 
+# And a ratio is meaningless on a handful of events however high the rate.
+# A brand at 0.84 nominalisations per 100 words predicts about 3 in a
+# 400-word piece; finding 7 is 2x the rate and ordinary variance. One of
+# the brand's own documents failed its own corpus that way, on six words
+# that were not abstractions at all — audience, citation, competition,
+# decompression, direction, sentence.
+#
+# So a failure needs the ratio AND this many occurrences more than the
+# brand's rate predicts. Every existing check clears it comfortably when it
+# fires for real: the all-caps case that mattered ran 18 over.
+MECHANICS_MIN_EXCESS = 5
+
 
 # Below this corpus rate, the brand does not use bracketed slots at all, so any
 # in a draft are unfilled template text rather than house style.
