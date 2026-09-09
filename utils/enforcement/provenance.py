@@ -58,6 +58,34 @@ _ATTRIBUTION_THEN_QUOTE = re.compile(
 )
 
 
+# A quotation credited to an unnamed role. The name patterns above require
+# capitalised words, so "our head of distribution said" and "as our lead
+# storyteller often reminds us" matched nothing at all — which is why exempting
+# role attributions looked harmless. It was not: it left invented words
+# attributable to a job title, and a press release shipped a quotation nobody had
+# said, credited to "our lead storyteller".
+_ROLE_ALTERNATION = "|".join(sorted(_ROLE_INDICATOR_WORDS, key=len, reverse=True))
+_ROLE_PHRASE = (
+    r"(?:our|the|its|his|her|their)\s+(?:[a-z]+\s+){0,2}"
+    r"(?:" + _ROLE_ALTERNATION + r")(?:\s+(?:of\s+)?[a-z]+){0,2}"
+)
+# Wider than the name-attribution verbs: a role gets credited with "reminds us",
+# "tells us", "puts it" as readily as with "said".
+_ROLE_VERBS = (
+    r"(?:said|says|stated|states|explains|explained|noted|notes|added|adds|"
+    r"remarked|shared|reminds|tells|told|observes|observed|argues|insists|puts it)"
+)
+_ROLE_THEN_QUOTE = re.compile(
+    _ROLE_PHRASE + r"(?:\s+[a-z]+){0,2}\s*,?\s*" + _ROLE_VERBS
+    + r'[^"\n]{0,20}"([^"]{15,400})"',
+    re.IGNORECASE,
+)
+_QUOTE_THEN_ROLE = re.compile(
+    r'"([^"]{15,400})"\s*,?\s*' + _ROLE_VERBS + r"\s+" + _ROLE_PHRASE,
+    re.IGNORECASE,
+)
+
+
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _URL_RE = re.compile(r"(?:https?://|www\.)[^\s<>\"')\]]+", re.IGNORECASE)
 _BARE_DOMAIN_RE = re.compile(
@@ -156,6 +184,21 @@ def find_unverified_quote_attributions(content: str, grounding_text: str) -> lis
     findings = []
     seen = set()
 
+    # A quotation credited to an unnamed role: the name is fine, the words are
+    # what need checking.
+    for pattern in (_ROLE_THEN_QUOTE, _QUOTE_THEN_ROLE):
+        for m in pattern.finditer(content):
+            quote = m.group(1).strip()
+            key = f"role::{quote.lower()}"
+            if key in seen or _quote_is_grounded(quote, grounding_text):
+                continue
+            seen.add(key)
+            findings.append({
+                "who": "an unnamed role",
+                "quote": quote,
+                "kind": "invented_quote",
+            })
+
     for pattern, quote_group, who_group in (
         (_QUOTE_THEN_ATTRIBUTION, 1, 2),
         (_ATTRIBUTION_THEN_QUOTE, 2, 1),
@@ -169,14 +212,45 @@ def find_unverified_quote_attributions(content: str, grounding_text: str) -> lis
             if key in seen:
                 continue
             words = re.findall(r"[a-z']+", key)
-            if any(w in _ROLE_INDICATOR_WORDS for w in words):
-                continue  # unnamed role attribution — a normal brand pattern
+            is_role = any(w in _ROLE_INDICATOR_WORDS for w in words)
+
+            if is_role:
+                # An unnamed role attribution is a normal brand pattern, so the
+                # name is not the problem. The words are: this exempted the whole
+                # attribution and let an invented quotation through under a role
+                # title. A press release shipped
+                #
+                #   As our lead storyteller often reminds us, "The real lesson
+                #   isn't about speed, but about direction and unwavering
+                #   commitment."
+                #
+                # which nobody said and which appears in no document. Blocking
+                # invented names while permitting invented words is half a check.
+                if _quote_is_grounded(quote, grounding_text):
+                    continue
+                seen.add(key)
+                findings.append({"who": who, "quote": quote, "kind": "invented_quote"})
+                continue
+
             if key in grounding_lower:
                 continue  # this name genuinely appears in the source material
             seen.add(key)
-            findings.append({"who": who, "quote": quote})
+            findings.append({"who": who, "quote": quote, "kind": "invented_name"})
 
     return findings
+
+
+def _quote_is_grounded(quote: str, grounding_text: str) -> bool:
+    """Does this quotation's wording actually appear in the source material?
+
+    Word-sequence containment rather than a string compare, so a quote survives
+    re-typeset apostrophes and collapsed whitespace. Anything the source does not
+    contain was written by the model, whoever it is credited to.
+    """
+    words = _quote_words(quote)
+    if len(words) < 4:
+        return True          # too short to judge; not worth a false accusation
+    return _contains_subsequence(_quote_words(grounding_text), words)
 
 
 # English grammar words, nothing domain- or brand-specific. Used only to work

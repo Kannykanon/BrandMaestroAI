@@ -7,7 +7,22 @@ failure and passes every qualitative rule.
 import re
 
 from utils.brand_profile import measured_mechanics_section
-from utils.enforcement.constants import MECHANICS_MIN_RATE, MECHANICS_TOLERANCE
+from utils.enforcement.constants import (
+    MECHANICS_MIN_EXCESS,
+    MECHANICS_MIN_RATE,
+    MECHANICS_TOLERANCE,
+)
+
+# Kept in step with brand_metrics, which counts the same two properties over the
+# corpus. Both sides have to agree or the comparison is meaningless.
+_NOMINALISATION_RE = re.compile(
+    r"\b\w{4,}(?:tion|sion|ment|ity|ance|ence|ness|ism|ivity)\b", re.I
+)
+
+
+def _syllables(word: str) -> int:
+    """Rough syllable count: vowel groups, minimum one."""
+    return max(1, len(re.findall(r"[aeiouy]+", word.lower())))
 
 
 def check_measured_mechanics(content: str, metrics: str) -> list[dict]:
@@ -35,6 +50,21 @@ def check_measured_mechanics(content: str, metrics: str) -> list[dict]:
         "all_caps_words_per_100_words": rate(
             sum(1 for w in words if len(w) > 2 and w.isupper())
         ),
+        # Register. Everything above is punctuation and capitals; none of it
+        # notices a brand's plain voice being rewritten as consultancy prose.
+        # A distributor whose corpus runs 0.89 nominalisations per 100 words
+        # produced copy at 6.17 — nearly seven times its own rate — and passed
+        # every check here, because none of them looked at word choice.
+        #
+        # Same direction as the rules above: over-use fails. Writing more
+        # abstractly than the brand does is a voice failure in exactly the way
+        # shouting three times as often is.
+        "nominalisations_per_100_words": rate(
+            len(_NOMINALISATION_RE.findall(content))
+        ),
+        "four_plus_syllable_words_per_100_words": rate(
+            sum(1 for w in words if _syllables(w) >= 4)
+        ),
     }
 
     failures = []
@@ -45,6 +75,12 @@ def check_measured_mechanics(content: str, metrics: str) -> list[dict]:
             continue
         if target < MECHANICS_MIN_RATE or actual <= max(target * MECHANICS_TOLERANCE,
                                                         MECHANICS_MIN_RATE):
+            continue
+        # The ratio is over tolerance; check it rests on enough events to mean
+        # something. Rate times length gives what the brand's own habit predicts
+        # for a draft this long, and the excess over that is what has to be real.
+        expected = target * len(words) / 100.0
+        if (actual * len(words) / 100.0) - expected < MECHANICS_MIN_EXCESS:
             continue
         label = key.replace("_per_100_words", "").replace("_", " ")
         # A rate has a numerator and a denominator, and "use it less" only
