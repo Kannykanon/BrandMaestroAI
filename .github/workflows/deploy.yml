@@ -3,7 +3,7 @@ name: Deploy BrandMaestro AI
 on:
   push:
     branches:
-      - best-branch
+      - main
 
 jobs:
   deploy:
@@ -13,14 +13,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Deploy to EC2
+      # The EC2_* secret names are historical — the host is the Compute Engine
+      # instance `brandmaestro` in us-central1-a. Renaming them here would
+      # break the workflow unless the repository secrets were renamed in the
+      # same change, so they stay as they are.
+      - name: Deploy to the VM
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
           script: |
+            # Fail on the first bad command. Without this a failed git pull
+            # still ran the compose step and the job reported success, so a
+            # deploy that shipped nothing was indistinguishable from one that
+            # worked.
+            set -e
             cd /home/ubuntu/brandmaestro
-            git pull origin best-branch
-            docker build -t brandmaestro-app .
-            docker compose up -d --force-recreate api worker_generation worker_feedback worker_retraining worker_rag flower
+            git pull origin main
+            # --build is what makes this a deploy rather than a restart.
+            #
+            # The compose services declare `build: .` and no `image:`, so
+            # compose builds and runs an image it names itself. The previous
+            # step here was a standalone `docker build -t brandmaestro-app .`,
+            # which produced a tag nothing in docker-compose.yml refers to, and
+            # `up --force-recreate` without --build recreates containers from
+            # the image compose already had. So every service came back from
+            # the last image compose itself built: new containers, old code.
+            docker compose up -d --build --force-recreate \
+              api worker_generation worker_feedback worker_retraining worker_rag flower
