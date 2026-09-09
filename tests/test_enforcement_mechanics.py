@@ -106,6 +106,56 @@ class TestSmallSampleNoise:
             "a sustained excess must still fail"
         )
 
+    def test_short_content_is_still_measured(self):
+        """
+        A trailer is about 150 words, and a flat excess floor of 5 switched this
+        check off at that length: the draft below ran 4.6x the brand's
+        nominalisation rate and cleared every gate at 8.8/10, because 6
+        occurrences against a predicted 1.3 fell less than one word short of the
+        floor. Verbatim from the generation that exposed it.
+        """
+        trailer = (
+            "the Tortoise and the Hare: You thought you knew the story. "
+            "The classic moral of the Tortoise and the Hare often misses a deeper "
+            "truth behind the finish line. We challenge this common perception: "
+            "the real race isn't about speed, but self-mastery. "
+            "One competitor was blessed with great natural swiftness; the other "
+            "possessed a firm inner resolve. Our narrative dissects the hare's "
+            "undoing, revealing it as a direct consequence of his profound hubris "
+            "and akrasia. His constant distraction proved a greater obstacle than "
+            "any rival. Common wisdom dictates raw speed guarantees victory. This "
+            "film validates the tortoise's steady discipline and consistent effort "
+            "as the true metrics for success. This isn't merely a race of physical "
+            "prowess. It's a profound exploration of character. True victory is "
+            "forged through internal strength, not just external pace. This new "
+            "film reveals the overlooked lessons of focus versus distraction, and "
+            "it's arriving soon. Deeper truths. Real insights."
+        )
+        words = len(trailer.split())
+        assert 140 < words < 175, f"fixture drifted to {words} words"
+        failures = check_measured_mechanics(trailer, PLAIN_BRAND)
+        assert any("nominalisation" in f["message"] for f in failures), (
+            "register drift went unmeasured on trailer-length content"
+        )
+
+    def test_the_short_sample_bar_scales_with_the_prediction(self):
+        """
+        The floor and the scaled bar have to disagree in the right direction: the
+        bar must be looser than a flat 5 on short drafts and tighter on long
+        ones, or one of the two cases regresses.
+        """
+        long_plain = "the boat is small and the water is cold and we go out at dawn "
+        # Same three-abstraction opening, in a draft long enough that the brand's
+        # own rate predicts about as many. Ordinary variance, must stay quiet.
+        near_rate = (
+            "The jury citation named the competition and the direction. "
+            "She had a decompression injury. The audience stayed for the sentence. "
+            + long_plain * 28
+        )
+        assert check_measured_mechanics(near_rate, PLAIN_BRAND) == [], (
+            "a long draft close to the brand's own rate must not fail"
+        )
+
 
 class TestExistingChecksStillWork:
     @pytest.mark.parametrize("label,draft,expect", [
