@@ -5,53 +5,75 @@ on:
     branches:
       - main
 
+# The instance has enable-oslogin=TRUE. OS Login authenticates a Google
+# identity through PAM/NSS and ignores both ~/.ssh/authorized_keys and the
+# instance ssh-keys metadata, so the previous appleboy/ssh-action step — which
+# presents a raw private key for a fixed username — could never authenticate.
+# It failed at the SSH connect on every run, before the deploy script it
+# carried ever ran, which is why fixing that script twice changed nothing.
+# Authenticate as a service account and let gcloud register an ephemeral
+# OS Login key for the duration of the job instead.
+env:
+  PROJECT: brandmaestroai
+  INSTANCE: brandmaestro
+  ZONE: us-central1-a
+  # The account that owns the checkout. git has to run as this user: the
+  # deploying service account has sudo but not ownership, and letting root
+  # write here would leave root-owned objects in .git that the owner could no
+  # longer update.
+  OWNER: aniekanudo476_gmail_com
+  # Absolute, not ~. The service account's OS Login home is /home/sa_<numeric
+  # id>, which is not where the checkout lives, so ~ resolves to an empty
+  # directory that has never held this repository.
+  DEPLOY_PATH: /home/aniekanudo476_gmail_com/brandmaestro
+  HEALTH_URL: https://brandmaestro.ddnsfree.com/health
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      # The EC2_* secret names are historical — the host is the Compute Engine
-      # instance `brandmaestro` in us-central1-a. Renaming them here would
-      # break the workflow unless the repository secrets were renamed in the
-      # same change, so they stay as they are.
-      - name: Deploy to the VM
-        uses: appleboy/ssh-action@v1.0.0
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_KEY }}
-          script: |
-            # Fail on the first bad command. Without this a failed git pull
-            # still ran the compose step and the job reported success, so a
-            # deploy that shipped nothing was indistinguishable from one that
-            # worked.
-            set -e
-            # ~ , not a hardcoded /home/ubuntu: the VM's login user is the
-            # account the SSH key belongs to and its home is named after that
-            # account, so the old absolute path did not exist and the deploy
-            # died on this line before doing anything.
-            cd ~/brandmaestro
-            # fetch + reset, not pull. The box had drifted 40 commits behind
-            # origin carrying ~3000 lines of uncommitted copies of newer files
-            # — someone had copied files up instead of committing — and a pull
-            # refuses to overwrite local modifications, so it could never have
-            # recovered on its own. A deploy target holds no local edits by
-            # definition: git is the source of truth and the box is a copy of
-            # it. Anything not tracked (.env and the credentials in it) is
-            # gitignored and survives this untouched.
-            git fetch origin main
-            git reset --hard origin/main
-            # --build is what makes this a deploy rather than a restart.
-            #
-            # The compose services declare `build: .` and no `image:`, so
-            # compose builds and runs an image it names itself. The previous
-            # step here was a standalone `docker build -t brandmaestro-app .`,
-            # which produced a tag nothing in docker-compose.yml refers to, and
-            # `up --force-recreate` without --build recreates containers from
-            # the image compose already had. So every service came back from
-            # the last image compose itself built: new containers, old code.
-            docker compose up -d --build --force-recreate \
-              api worker_generation worker_feedback worker_retraining worker_rag flower
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to the VM
+        run: |
+          set -euo pipefail
+          gcloud compute ssh "$INSTANCE" \
+            --zone="$ZONE" \
+            --project="$PROJECT" \
+            --quiet \
+            --command="set -e
+              sudo -u $OWNER git -C $DEPLOY_PATH fetch origin main
+              sudo -u $OWNER git -C $DEPLOY_PATH reset --hard origin/main
+              cd $DEPLOY_PATH
+              # sudo because OS Login accounts are not in the docker group.
+              # --build is what makes this a deploy rather than a restart: the
+              # services declare \`build: .\` and no \`image:\`, so without it
+              # compose recreates containers from the image it already had.
+              sudo docker compose up -d --build --force-recreate \
+                api worker_generation worker_feedback worker_retraining worker_rag flower"
+
+      - name: Wait for the app to come back
+        run: |
+          set -euo pipefail
+          # The API takes ~15s from container start to "Application startup
+          # complete", and Caddy answers 502 for that whole window. Without
+          # this the job goes green while the site is still down, and a deploy
+          # that broke startup would look identical to one that worked.
+          for attempt in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$HEALTH_URL" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "healthy after ${attempt} attempt(s)"
+              exit 0
+            fi
+            echo "attempt ${attempt}: HTTP ${code}"
+            sleep 5
+          done
+          echo "never returned 200 ; deploy is not healthy"
+          exit 1
