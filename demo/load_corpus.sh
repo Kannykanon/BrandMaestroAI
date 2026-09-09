@@ -8,7 +8,6 @@
 # The account is created if it does not exist, then logged into either way.
 # Two roles, two channels, and never both:
 #
-#   corpus/<type>/       -> doc_role=voice     -> the Brand Brain (how to write)
 #   corpus/reference/    -> doc_role=reference -> RAG retrieval (what to write)
 #
 # A voice document is never indexed for retrieval. If it were, the writer would
@@ -56,11 +55,10 @@ upload_dir() {
     local dir="$1" content_type="$2"
     for f in "$CORPUS/$dir"/*.txt; do
         printf '    %-46s -> %s\n' "$(basename "$f")" "$content_type"
-        curl -s -X POST "$BASE/documents/top-performing" \
+        curl -s -X POST "$BASE/documents/brand-voice" \
           -H "Authorization: Bearer $TOKEN" \
           -F "business_id=$BUSINESS_ID" \
           -F "content_type=$content_type" \
-          -F "doc_role=voice" \
           -F "file=@$f" > /dev/null
     done
 }
@@ -69,11 +67,10 @@ upload_reference() {
     local content_type="$1"
     for f in "$CORPUS/reference"/*.txt; do
         printf '    %-46s -> %s (reference)\n' "$(basename "$f")" "$content_type"
-        curl -s -X POST "$BASE/documents/top-performing" \
+        curl -s -X POST "$BASE/documents/product" \
           -H "Authorization: Bearer $TOKEN" \
           -F "business_id=$BUSINESS_ID" \
           -F "content_type=$content_type" \
-          -F "doc_role=reference" \
           -F "file=@$f" > /dev/null
     done
 }

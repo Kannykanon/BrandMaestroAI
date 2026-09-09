@@ -30,6 +30,63 @@ def _upload_idempotency_key(business_id: str, content_type: str,
     return f"upload:{business_id}:{content_type}:{create_idempotency_key(file_content)}"
 
 
+# Two kinds of document enter this system by two different paths, and which
+# path a file takes is not a detail the caller should have to encode in a form
+# field on a shared endpoint.
+#
+#   /brand-voice  a previously published, best-performing piece. Read whole,
+#                 through long context, into the Brand Brain: how this brand
+#                 writes. Never indexed for retrieval - handing the writer its
+#                 own style references as material makes it reproduce them.
+#
+#   /product      a product sheet, press kit or fact sheet. Chunked and indexed
+#                 for RAG: what the brand is writing about. Held out of the
+#                 Brand Brain so press-kit register does not leak into voice.
+#
+# /top-performing remains as the original combined endpoint, taking doc_role,
+# so existing clients and scripts keep working.
+
+
+@router.post("/brand-voice", response_model=TaskResponse)
+@limiter.limit("20/minute")
+async def upload_brand_voice(
+        request: Request,
+        db: Annotated[Session, Depends(get_db)],
+        current_user: Annotated[object, Depends(get_current_user)],
+        business_id: str = Form(...),
+        content_type: str = Form(...),
+        platform: Optional[str] = Form(None),
+        performance_metric: Optional[str] = Form(None),
+        file: UploadFile = File(...)
+):
+    """Previously published work, extracted into the Brand Brain."""
+    return await _ingest_document(
+        request=request, db=db, current_user=current_user,
+        business_id=business_id, content_type=content_type, platform=platform,
+        performance_metric=performance_metric, doc_role="voice", file=file,
+    )
+
+
+@router.post("/product", response_model=TaskResponse)
+@limiter.limit("20/minute")
+async def upload_product_document(
+        request: Request,
+        db: Annotated[Session, Depends(get_db)],
+        current_user: Annotated[object, Depends(get_current_user)],
+        business_id: str = Form(...),
+        content_type: str = Form(...),
+        platform: Optional[str] = Form(None),
+        performance_metric: Optional[str] = Form(None),
+        file: UploadFile = File(...)
+):
+    """Product and fact material, indexed for RAG retrieval."""
+    return await _ingest_document(
+        request=request, db=db, current_user=current_user,
+        business_id=business_id, content_type=content_type, platform=platform,
+        performance_metric=performance_metric, doc_role="reference", file=file,
+    )
+
+
 @router.post("/top-performing", response_model=TaskResponse)
 @limiter.limit("20/minute")
 async def upload(
@@ -42,6 +99,19 @@ async def upload(
         performance_metric: Optional[str] = Form(None),
         doc_role: str = Form("voice"),
         file: UploadFile = File(...)
+):
+    """Combined endpoint kept for existing callers; prefer the two above."""
+    return await _ingest_document(
+        request=request, db=db, current_user=current_user,
+        business_id=business_id, content_type=content_type, platform=platform,
+        performance_metric=performance_metric, doc_role=doc_role, file=file,
+    )
+
+
+async def _ingest_document(
+        *, request: Request, db: Session, current_user, business_id: str,
+        content_type: str, platform: Optional[str],
+        performance_metric: Optional[str], doc_role: str, file: UploadFile
 ):
     from celery_task import refresh_rag, extract_metrics
     from database import BrandDocument, DOC_ROLES, DOC_ROLE_VOICE

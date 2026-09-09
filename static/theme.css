@@ -2058,3 +2058,51 @@ body {
     font-size: 11px;
     color: var(--text-secondary);
 }
+
+
+/* Research source selector */
+.research-mode-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.research-mode-option {
+    flex: 1;
+    cursor: pointer;
+}
+
+.research-mode-option input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.research-mode-option span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 8px;
+    font-size: 12px;
+    text-align: center;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    color: var(--text-secondary);
+    transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.research-mode-option:hover span {
+    color: #e5e7eb;
+}
+
+.research-mode-option input:checked + span {
+    border-color: var(--primary-red);
+    color: #fff;
+    background-color: rgba(239, 68, 68, 0.08);
+}
+
+.research-mode-option input:focus-visible + span {
+    outline: 2px solid var(--primary-red);
+    outline-offset: 2px;
+}
