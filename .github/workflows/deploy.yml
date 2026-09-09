@@ -29,8 +29,21 @@ jobs:
             # deploy that shipped nothing was indistinguishable from one that
             # worked.
             set -e
-            cd /home/ubuntu/brandmaestro
-            git pull origin main
+            # ~ , not a hardcoded /home/ubuntu: the VM's login user is the
+            # account the SSH key belongs to and its home is named after that
+            # account, so the old absolute path did not exist and the deploy
+            # died on this line before doing anything.
+            cd ~/brandmaestro
+            # fetch + reset, not pull. The box had drifted 40 commits behind
+            # origin carrying ~3000 lines of uncommitted copies of newer files
+            # — someone had copied files up instead of committing — and a pull
+            # refuses to overwrite local modifications, so it could never have
+            # recovered on its own. A deploy target holds no local edits by
+            # definition: git is the source of truth and the box is a copy of
+            # it. Anything not tracked (.env and the credentials in it) is
+            # gitignored and survives this untouched.
+            git fetch origin main
+            git reset --hard origin/main
             # --build is what makes this a deploy rather than a restart.
             #
             # The compose services declare `build: .` and no `image:`, so
