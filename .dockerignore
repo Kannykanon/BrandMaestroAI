@@ -1,4 +1,5 @@
 .venv
+key.json
 venv
 env
 __pycache__
