@@ -208,6 +208,7 @@ def generate_content(
     format_type: str,
     user_id: int = None,
     use_search: bool = True,
+    research_mode: str = "both",
     human_feedback: str = "",
     regeneration_depth: int = 0
 ):
@@ -222,6 +223,7 @@ def generate_content(
             format_type=format_type,
             user_id=user_id,
             use_search=use_search,
+            research_mode=research_mode,
             human_feedback=human_feedback,
             regeneration_depth=regeneration_depth,
             research="",
@@ -337,7 +339,7 @@ async def _run_graph(graph_flow, initial_state):
 
         trace_callbacks = get_trace_callbacks(
             graph_flow,
-            tags=[content_type, "web_search" if initial_state.get("use_search") else "rag"],
+            tags=[content_type, f"research:{initial_state.get('research_mode', 'both')}"],
         )
 
         async for chunk in graph_flow.astream(initial_state, config={"callbacks": trace_callbacks}):
