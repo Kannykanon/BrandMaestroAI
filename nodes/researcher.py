@@ -4,7 +4,7 @@ from model import LLMSingleton
 from search import SearchPort
 from prompts.researcher import RESEARCH_SUMMARY, PUBLISHABLE_FACTS_FILTER
 from graph.state import GraphState
-from utils.brand_profile import extract_section
+from utils.brand_profile import extract_section, extract_brand_name
 from utils.documents import has_reference_documents
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ def researcher_node(state: GraphState, search: SearchPort) -> GraphState:
 
     # Extract brief brand context for research filtering (#7)
     brand_context = "No brand context available — summarize neutrally."
+    brand_name = ""
     try:
         metrics = analyzer.get_context()
         if metrics:
@@ -52,6 +53,7 @@ def researcher_node(state: GraphState, search: SearchPort) -> GraphState:
             parts = [p for p in [overview, value_hierarchy, diagnostic] if p]
             if parts:
                 brand_context = " ".join(parts)[:500]  # Cap at 500 chars
+            brand_name = extract_brand_name(metrics)
     except Exception as e:
         logger.warning("Failed to extract brand context for research: %s", e)
 
@@ -101,7 +103,17 @@ def researcher_node(state: GraphState, search: SearchPort) -> GraphState:
     external = ""
     if state.get("use_search", False):
         try:
-            raw_results = search.search(query=topic, max_results=5)
+            # Scope the query to the brand. The topic alone is the user's
+            # phrasing of an internal subject, and a title that collides with
+            # a common noun sends the search somewhere else entirely: "SALVAGE
+            # national release date" returned clinical papers on salvage
+            # therapy, and the pipeline wrote a press release for the American
+            # Urological Association. The brand name is the one token that
+            # disambiguates which SALVAGE is meant.
+            scoped_query = f"{brand_name} {topic}".strip() if brand_name else topic
+            if scoped_query != topic:
+                logger.info("Search query scoped to brand: %r", scoped_query)
+            raw_results = search.search(query=scoped_query, max_results=5)
             external = LLMSingleton.get().invoke(
                 RESEARCH_SUMMARY.format(
                     topic=topic,
