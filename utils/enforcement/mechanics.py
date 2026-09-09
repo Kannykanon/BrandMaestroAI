@@ -4,10 +4,12 @@ The punctuation rules catch a mark a brand never uses. This catches a mark the
 brand does use being used several times as often, which is its own voice
 failure and passes every qualitative rule.
 """
+import math
 import re
 
 from utils.brand_profile import measured_mechanics_section
 from utils.enforcement.constants import (
+    MECHANICS_EXCESS_SIGMAS,
     MECHANICS_MIN_EXCESS,
     MECHANICS_MIN_RATE,
     MECHANICS_TOLERANCE,
@@ -79,8 +81,12 @@ def check_measured_mechanics(content: str, metrics: str) -> list[dict]:
         # The ratio is over tolerance; check it rests on enough events to mean
         # something. Rate times length gives what the brand's own habit predicts
         # for a draft this long, and the excess over that is what has to be real.
+        # The bar scales with the square root of the prediction, so it stays
+        # strict on long drafts without switching itself off on short ones.
         expected = target * len(words) / 100.0
-        if (actual * len(words) / 100.0) - expected < MECHANICS_MIN_EXCESS:
+        excess = (actual * len(words) / 100.0) - expected
+        if excess < max(MECHANICS_MIN_EXCESS,
+                        MECHANICS_EXCESS_SIGMAS * math.sqrt(expected)):
             continue
         label = key.replace("_per_100_words", "").replace("_", " ")
         # A rate has a numerator and a denominator, and "use it less" only

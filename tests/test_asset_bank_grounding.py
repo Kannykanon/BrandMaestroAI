@@ -11,6 +11,7 @@ from brand_metrics import (
     _FACT_BEARING_FIELDS,
     _TOPIC_COUPLED_FIELDS,
     _ground_asset_bank,
+    _strip_lifted_quotations,
     _normalise_for_grounding,
     _keep_voice_signal_only,
 )
@@ -218,3 +219,90 @@ class TestNormalisation:
 
     def test_folds_curly_quotes_and_dashes(self):
         assert _normalise_for_grounding("“We’ve” — yes") == '"we\'ve" - yes'
+
+
+class TestStripLiftedQuotations:
+    """
+    The extraction prompt asks the pattern fields to describe the move, not the
+    words. A quotation that is genuinely a template is signal; one copied out of
+    the draft is a verbatim seed planted in the brain.
+    """
+
+    DRAFT = (
+        "Our narrative dissects the hare's undoing, revealing it as a direct "
+        "consequence of his profound hubris and akrasia. True victory is forged "
+        "through internal strength, not just external pace."
+    )
+
+    def test_removes_a_phrase_copied_out_of_the_draft(self):
+        profile = {"signature_constructions": [
+            "describes character flaws as direct consequences of internal states: "
+            "'revealing it as a direct consequence of his profound hubris and akrasia.'"
+        ]}
+        cleaned, removed = _strip_lifted_quotations(profile, self.DRAFT)
+        assert len(removed) == 1
+        kept = cleaned["signature_constructions"][0]
+        assert "hubris" not in kept
+        assert kept == "describes character flaws as direct consequences of internal states"
+
+    def test_keeps_an_abstract_template(self):
+        profile = {"intellectual_patterns": {
+            "reframing_moves": "often using an 'X isn't Y, it's Z' structure."
+        }}
+        cleaned, removed = _strip_lifted_quotations(profile, self.DRAFT)
+        assert removed == []
+        assert "X isn't Y, it's Z" in cleaned["intellectual_patterns"]["reframing_moves"]
+
+    def test_typography_does_not_let_a_lift_through(self):
+        profile = {"signature_constructions": [
+            "closes on \u201cTrue victory is forged through internal strength\u201d"
+        ]}
+        cleaned, removed = _strip_lifted_quotations(profile, self.DRAFT)
+        assert len(removed) == 1
+        assert "internal strength" not in cleaned["signature_constructions"][0]
+
+    def test_short_quotations_are_left_alone(self):
+        """Two or three quoted words are a label, not a lifted sentence."""
+        profile = {"style": {"pronoun_pattern": "uses 'we' as subject"}}
+        cleaned, removed = _strip_lifted_quotations(profile, "we we we")
+        assert removed == []
+        assert cleaned["style"]["pronoun_pattern"] == "uses 'we' as subject"
+
+    def test_walks_nested_lists_and_dicts(self):
+        profile = {"intellectual_patterns": {"thinking_templates": [
+            "opens plainly",
+            "then 'True victory is forged through internal strength'",
+        ]}}
+        cleaned, removed = _strip_lifted_quotations(profile, self.DRAFT)
+        assert len(removed) == 1
+        assert cleaned["intellectual_patterns"]["thinking_templates"][0] == "opens plainly"
+
+    def test_non_string_values_survive(self):
+        profile = {"style": {"formality": 0.8, "flag": True, "missing": None}}
+        cleaned, removed = _strip_lifted_quotations(profile, self.DRAFT)
+        assert cleaned["style"] == {"formality": 0.8, "flag": True, "missing": None}
+        assert removed == []
+
+    def test_does_not_mutate_the_input(self):
+        profile = {"signature_constructions": [
+            "x: 'revealing it as a direct consequence of his profound hubris and akrasia.'"
+        ]}
+        _strip_lifted_quotations(profile, self.DRAFT)
+        assert "hubris" in profile["signature_constructions"][0]
+
+    def test_removing_a_quote_does_not_leave_a_dangling_article(self):
+        """
+        The live artefact: stripping the quote out of this left "framing it as
+        missing a or overlooking profound lessons", and that is what the
+        synthesis LLM had to read.
+        """
+        profile = {"intellectual_patterns": {"diagnostic_style":
+            "framing it as missing a 'deeper truth' or overlooking profound lessons."
+        }}
+        cleaned, removed = _strip_lifted_quotations(
+            profile, "The classic moral often misses a deeper truth behind the line."
+        )
+        assert len(removed) == 1
+        text = cleaned["intellectual_patterns"]["diagnostic_style"]
+        assert text == "framing it as missing or overlooking profound lessons."
+        assert " a or " not in text

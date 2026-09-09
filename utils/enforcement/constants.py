@@ -44,10 +44,31 @@ MECHANICS_MIN_RATE = 0.5
 # that were not abstractions at all — audience, citation, competition,
 # decompression, direction, sentence.
 #
-# So a failure needs the ratio AND this many occurrences more than the
-# brand's rate predicts. Every existing check clears it comfortably when it
-# fires for real: the all-caps case that mattered ran 18 over.
-MECHANICS_MIN_EXCESS = 5
+# So a failure needs the ratio AND an excess over the brand's predicted count
+# that is too large to be variance. How large that is depends on the prediction,
+# which is why this is only a floor: the real threshold scales with it (see
+# MECHANICS_EXCESS_SIGMAS).
+#
+# A flat floor cannot do the job alone. At 5 it silently switched the register
+# check off for short content: a 153-word trailer against a 0.85 corpus rate
+# predicts 1.3 abstractions and contained 6 — 4.6x the brand's rate, plainly a
+# voice failure — and the excess of 4.7 missed the floor by less than a single
+# word. Trailers run about this length, so for that content type the check did
+# not exist. The floor's remaining job is only to stop one stray occurrence in a
+# very short draft from firing.
+MECHANICS_MIN_EXCESS = 2
+
+# The excess also has to clear this many standard deviations of the count the
+# brand's own rate predicts. Occurrences of a habit are counts, so their
+# variance goes with the square root of the prediction — meaning the bar rises
+# for long drafts, where a few extra words prove nothing, and falls for short
+# ones, where they are all the evidence there is.
+#
+# Two sigmas separates the two cases that matter. The brand's own document that
+# failed its own corpus predicted 3.6 and had 7, an excess of 3.4 against a bar
+# of 3.8 — correctly quiet. The trailer predicted 1.3 and had 6, an excess of
+# 4.7 against a bar of 2.3 — correctly flagged.
+MECHANICS_EXCESS_SIGMAS = 2.0
 
 
 # Below this corpus rate, the brand does not use bracketed slots at all, so any
