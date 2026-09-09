@@ -11,7 +11,11 @@ import logging
 from graph.state import GraphState
 from model import LLMSingleton
 from prompts.enforcer import ENFORCER_HUMAN_DIRECTIVE, ENFORCER_PROMPT
-from utils.brand_profile import brand_name_evidence, extract_permitted_claims
+from utils.brand_profile import (
+    brand_brain_is_usable,
+    brand_name_evidence,
+    extract_permitted_claims,
+)
 from utils.enforcement import (
     MAX_ITERATIONS,
     MAX_VERBATIM_SPAN_WORDS,
@@ -55,6 +59,70 @@ def enforcer_node(state: GraphState) -> GraphState:
     metrics        = analyzer.get_context()
     iteration      = state.get("iteration", 1)
     max_iterations = MAX_ITERATIONS
+
+    # -1. No Brand Brain, no verdict.
+    #
+    # Checked in code, ahead of everything else, for the same reason the
+    # hallucination and publishability verdicts are re-applied in code below:
+    # an APPROVAL RULE is not an enforcement mechanism. Asked to score a draft
+    # against an empty brand context, the model said so and returned 1.0 twice —
+    # and then, on the identical empty input, returned 8.8 and approved. The
+    # scoring model is the wrong place for a structural precondition, because
+    # its answer to one is a sample rather than a decision.
+    #
+    # Nothing below this line works without a brain either. The writer has
+    # already fallen through to its generic "first-person plural, be direct"
+    # fallback, so the draft is written in the system's default voice rather
+    # than the brand's; run_preflight_checks finds no PUNCTUATION HABITS and
+    # checks nothing; check_measured_mechanics finds no MEASURED MECHANICS and
+    # returns no failures; and find_unfilled_placeholders has no measured
+    # bracket rate, so it cannot tell a template slot from a house convention
+    # and stays quiet. Observed live: a trailer shipped at 8.8/10 containing a
+    # literal "[Movie Title]", written at 2.7x the brand's own four-syllable
+    # rate and with none of its contractions, because all four gates were off
+    # at once and the only thing still running was a model with nothing to
+    # compare against.
+    #
+    # This is not a content defect, so it is not sent back to the writer: no
+    # revision can supply a missing brain. The iteration counter is advanced to
+    # the ceiling so the graph routes straight to the deployer and the run ends
+    # with an honest score instead of spending two more rounds of LLM calls on
+    # a state the writer cannot change. It records approved=False and 0.0, which
+    # the max-iteration force-approval below cannot reach, because that only
+    # ever rescues a quality shortfall.
+    if not brand_brain_is_usable(metrics):
+        logger.error(
+            "NO BRAND BRAIN for business_id=%s content_type=%s — refusing to "
+            "score. The brand context is empty, so every deterministic gate is "
+            "inert and the draft was written from the writer's generic "
+            "fallback, not this brand's voice.",
+            state.get("business_id"), state.get("content_type"),
+        )
+        return {
+            **state,
+            "approved": False,
+            "score": 0.0,
+            "style_match": 0.0,
+            "tone_match": 0.0,
+            "structure_match": 0.0,
+            "signature_match": 0.0,
+            "feedback": (
+                "NO BRAND BRAIN — there is no voice profile for "
+                f"content type '{state.get('content_type')}', so this draft "
+                "cannot be scored against the brand and was not written from "
+                "it either. This is a setup problem, not a writing problem, and no "
+                "revision will fix it. Upload this brand's previously "
+                "successful content for THIS content type with doc_role=voice, "
+                "wait for extraction and synthesis to finish, then generate "
+                "again. A brain is built per (business, content type): "
+                "documents uploaded under a different content type do not "
+                "carry over."
+            ),
+            "flagged_passages": "No specific passages flagged.",
+            "violation_history": with_violation("no brand brain"),
+            "creative_angle": "unknown",
+            "iteration": max_iterations,
+        }
 
     # 0. Deterministically fix simple banned punctuation before anything else
     # looks at the content, rather than flagging it and hoping a revision
