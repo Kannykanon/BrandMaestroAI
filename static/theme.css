@@ -2084,6 +2084,8 @@ body {
     justify-content: center;
     gap: 6px;
     padding: 10px 8px;
+    height: 100%;
+    white-space: nowrap;
     font-size: 12px;
     text-align: center;
     border: 1px solid var(--border-color);
