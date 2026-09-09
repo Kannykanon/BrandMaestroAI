@@ -12,12 +12,17 @@ logger = logging.getLogger(__name__)
 MAX_REGENERATION_DEPTH = 3
 
 
-def promote_to_brand_metrics(generation_id: str) -> None:
+def handle_review_outcome(generation_id: str) -> None:
     """
     Called by process_feedback after human feedback is saved.
     - Approved: no action needed — generation already saved to DB
     - Rejected: re-trigger full generation with human feedback injected,
       preserving the original research mode and bounding the loop depth
+
+    Named promote_to_brand_metrics until it was noticed that it has never
+    promoted anything to brand_metrics. Nothing writes a generation into the
+    Brand Brain any more, and a name claiming otherwise invites someone to go
+    looking for a path that should not exist.
     """
     from celery_task import generate_content
 
@@ -76,4 +81,4 @@ def promote_to_brand_metrics(generation_id: str) -> None:
         )
 
     except SQLAlchemyError as e:
-        logger.error("DB error in promote_to_brand_metrics generation_id=%s: %s", generation_id, e)
+        logger.error("DB error in handle_review_outcome generation_id=%s: %s", generation_id, e)
