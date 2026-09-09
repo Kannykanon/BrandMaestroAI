@@ -146,6 +146,10 @@
                     <i class="fa-solid fa-file-arrow-up"></i>
                     <span>Brand Documents</span>
                 </button>
+                <button class="nav-item" onclick="switchPanel('brain')" id="nav-brain">
+                    <i class="fa-solid fa-fingerprint"></i>
+                    <span>Brand Brain</span>
+                </button>
                 <button class="nav-item" onclick="switchPanel('patterns')" id="nav-patterns">
                     <i class="fa-solid fa-brain"></i>
                     <span>Learning Memory</span>
@@ -556,6 +560,37 @@
             </section>
 
             <!-- PANEL: LEARNING MEMORY -->
+            <!-- The synthesised voice profile. This is what the writer is steered
+                 by and what the enforcer scores against, and it was previously
+                 invisible: the API could delete a Brand Brain but never return
+                 one, so nothing showed what had been learned from a brand's
+                 documents. It is served by the same get_context() the graph
+                 calls, so what is shown here cannot drift from what is used. -->
+            <section id="panel-brain" class="dashboard-panel">
+                <div class="memory-header-card">
+                    <div class="memory-card-details">
+                        <h2>Synthesised Brand Brain</h2>
+                        <p>Extracted from this title's uploaded brand-voice documents. Measured rates are counted from the corpus, not described in a prompt.</p>
+                    </div>
+                    <div class="profile-selector">
+                        <button class="btn btn-secondary active" onclick="loadBrandBrain('blog')" id="btn-brain-blog">Press Releases</button>
+                        <button class="btn btn-secondary" onclick="loadBrandBrain('social')" id="btn-brain-social">Social Captions</button>
+                        <button class="btn btn-secondary" onclick="loadBrandBrain('ad')" id="btn-brain-ad">Trailer Copy</button>
+                        <button class="btn btn-secondary" onclick="loadBrandBrain('proposal')" id="btn-brain-proposal">Talent Bios</button>
+                    </div>
+                </div>
+
+                <div class="content-card">
+                    <div class="output-header">
+                        <h2><i class="fa-solid fa-fingerprint"></i> Voice Profile</h2>
+                        <div class="output-status" id="brain-status-badge">Idle</div>
+                    </div>
+                    <div class="brain-body" id="brain-text">
+                        <span class="placeholder-text">Select a content profile to load its Brand Brain.</span>
+                    </div>
+                </div>
+            </section>
+
             <section id="panel-patterns" class="dashboard-panel">
                 <div class="memory-header-card">
                     <div class="memory-card-details">
