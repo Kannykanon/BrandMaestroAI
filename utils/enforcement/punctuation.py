@@ -7,7 +7,7 @@ it actually refers to.
 import logging
 import re
 
-from utils.brand_profile import measured_mechanics_section
+from utils.brand_profile import brand_prose_section, measured_mechanics_section
 
 logger = logging.getLogger(__name__)
 
@@ -159,11 +159,8 @@ def sanitize_banned_punctuation(content: str, metrics: str) -> tuple[str, list[s
     fixed = content
     applied = []
 
-    punctuation_match = re.search(
-        r"PUNCTUATION HABITS:\n(.*?)(?=\n[A-Z_]+:|\n#|\Z)", metrics, re.DOTALL | re.IGNORECASE
-    )
-    if punctuation_match:
-        rules = punctuation_match.group(1)
+    rules = brand_prose_section(metrics, "PUNCTUATION HABITS")
+    if rules:
         if mark_is_banned(rules, ("exclamation",), measured_rate_for(metrics, ("exclamation",))) and "!" in fixed:
             fixed = fixed.replace("!", ".")
             applied.append("exclamation marks -> periods")
@@ -190,12 +187,17 @@ def sanitize_banned_punctuation(content: str, metrics: str) -> tuple[str, list[s
             fixed = re.sub(r"\.{2,}", ".", fixed)  # any remaining run not followed by a lowercase letter
             applied.append("ellipses -> periods")
 
-    question_match = re.search(
-        r"QUESTION USAGE:\n(.*?)(?=\n[A-Z_]+:|\n#|\Z)", metrics, re.DOTALL | re.IGNORECASE
-    )
-    if question_match:
-        q_rules = question_match.group(1).lower()
-        if ("avoid" in q_rules or "absent" in q_rules or "not use" in q_rules or "none" in q_rules) and "?" in fixed:
+    q_section = brand_prose_section(metrics, "QUESTION USAGE")
+    if q_section:
+        # The counted rate decides this, exactly as it does for the marks above.
+        # Reading the prose alone, "questions are used sparingly" scanned as a
+        # ban and every question mark was removed from a brand that measurably
+        # uses them. Stripping the mark does not produce fewer questions; it
+        # produces questions punctuated as statements, and one shipped as the
+        # opening line of a trailer: "Did you think you knew this story."
+        if mark_is_banned(
+            q_section, ("question",), measured_rate_for(metrics, ("question",))
+        ) and "?" in fixed:
             fixed = fixed.replace("?", ".")
             applied.append("question marks -> periods (blunt fallback, not a rephrase)")
 

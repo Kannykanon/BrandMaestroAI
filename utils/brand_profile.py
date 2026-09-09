@@ -222,6 +222,35 @@ def measured_mechanics_section(metrics: str) -> str | None:
     return match.group(1) if match else None
 
 
+# A synthesised brain writes its prose sections under all-caps headers, and
+# those headers contain spaces, ampersands and apostrophes: "PUNCTUATION
+# HABITS:", "METAPHOR & ANALOGY:", "DON'T:". A next-header lookahead of
+# [A-Z_]+: matches none of them.
+#
+# That is not a cosmetic miss. The rules that decide whether this brand permits
+# a punctuation mark are read out of one of these sections, so a lookahead that
+# cannot find the next header runs the capture to the end of the brain and reads
+# every later section as though it were punctuation rules. Live consequence: the
+# QUESTION USAGE capture ran 2085 characters instead of 330, picked up "avoids
+# extended, complex, or overly decorative metaphors" from METAPHOR & ANALOGY and
+# "heading hierarchies are generally absent" from SECTION PATTERN, and the word
+# "avoid" appearing anywhere in that span stripped every question mark out of
+# every draft. A trailer shipped opening on "Did you think you knew this story."
+_SECTION_BOUNDARY = r"(?=\n[A-Z][A-Z0-9 &'/_-]*:|\n#|\Z)"
+
+
+def brand_prose_section(metrics: str, header: str) -> str | None:
+    """The body of one all-caps prose section of the brain, or None if absent.
+
+    Stops at the next such header, at a '#' block, or at the end of the text.
+    """
+    match = re.search(
+        rf"{re.escape(header)}:\n(.*?){_SECTION_BOUNDARY}",
+        metrics, re.DOTALL | re.IGNORECASE,
+    )
+    return match.group(1) if match else None
+
+
 _NAME_EVIDENCE_CACHE: dict[str, str] = {}
 
 
