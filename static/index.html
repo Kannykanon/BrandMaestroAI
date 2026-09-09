@@ -438,10 +438,33 @@
                                 </div>
                             </div>
                             
+                            <!-- Which of the two intake paths this file takes. They are
+                                 genuinely different pipelines, not a tag on one upload:
+                                 a brand-voice document is read whole into the Brand Brain
+                                 and never indexed, a product document is chunked into the
+                                 RAG index and never reaches the Brain. Until this control
+                                 existed the form always sent the first kind, so the
+                                 retrieval index could not be filled from the UI at all -
+                                 which is what the "Brand docs" research mode reads from. -->
+                            <div class="input-row">
+                                <label class="field-label">DOCUMENT KIND</label>
+                                <div class="research-mode-row">
+                                    <label class="research-mode-option">
+                                        <input type="radio" name="doc_kind" value="brand-voice" id="upload-kind-voice" checked>
+                                        <span><i class="fa-solid fa-feather"></i> Brand voice</span>
+                                    </label>
+                                    <label class="research-mode-option">
+                                        <input type="radio" name="doc_kind" value="product" id="upload-kind-product">
+                                        <span><i class="fa-solid fa-box-open"></i> Product doc</span>
+                                    </label>
+                                </div>
+                                <p class="field-hint" id="upload-kind-hint">Previously published work. Read whole into the Brand Brain to learn how this brand writes. Not indexed for retrieval.</p>
+                            </div>
+
                             <!-- Drag & Drop Zone -->
                             <div class="upload-dropzone" id="upload-dropzone" onclick="triggerFileInput()">
                                 <i class="fa-solid fa-cloud-arrow-up"></i>
-                                <p class="primary-msg">Select or drop reference file here</p>
+                                <p class="primary-msg">Select or drop your document here</p>
                                 <p class="secondary-msg">Supports UTF-8 encoded .txt, .csv, and .pdf documents (Max 100k chars)</p>
                                 <input type="file" id="upload-file-input" class="hidden" onchange="handleFileSelect(event)" required>
                             </div>
@@ -455,7 +478,7 @@
 
                             <button type="submit" class="btn btn-primary btn-block" id="btn-upload-submit">
                                 <i class="fa-solid fa-upload"></i>
-                                <span>Upload and Process Reference Document</span>
+                                <span>Upload and Process Document</span>
                             </button>
                         </form>
                     </div>
