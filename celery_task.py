@@ -207,7 +207,7 @@ def generate_content(
     topic: str,
     format_type: str,
     user_id: int = None,
-    use_search: bool = False,
+    use_search: bool = True,
     human_feedback: str = "",
     regeneration_depth: int = 0
 ):
