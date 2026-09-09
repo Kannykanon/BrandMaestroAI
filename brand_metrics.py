@@ -142,6 +142,56 @@ def _drop_path(target: dict, path: str) -> None:
         target[head] = child
 
 
+_QUOTED_SPAN_RE = re.compile(r"[\"'‘“]([^\"'’”]{12,})[\"'’”]")
+
+
+def _strip_lifted_quotations(extracted: dict, source_text: str) -> tuple[dict, list[str]]:
+    """
+    Remove quoted spans that were copied straight out of the generated content.
+
+    The extraction prompt asks these fields to describe the writing move and not
+    the words — "describe the MOVE, not the phrase". When the move is genuinely
+    abstract the quotation is a template worth keeping ('uses an X isn't Y, it's
+    Z structure'). When it is lifted verbatim it is a sentence from one draft
+    being installed in the brain as a brand signature, and the writer reads the
+    brain as the thing to sound like. Observed live: a trailer's "revealing it as
+    a direct consequence of his profound hubris and akrasia" arrived in
+    signature_constructions as though Ninebark wrote that way.
+
+    Containment against the source separates the two, so a templated quotation
+    survives and a copied one does not.
+    """
+    haystack = _normalise_for_grounding(source_text)
+    removed: list[str] = []
+
+    def clean(value):
+        if isinstance(value, dict):
+            return {k: clean(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [clean(v) for v in value]
+        if not isinstance(value, str):
+            return value
+
+        result = value
+        for span in _QUOTED_SPAN_RE.findall(value):
+            if _normalise_for_grounding(span) in haystack:
+                removed.append(span)
+                # Take the quotation marks with it, plus the lead-in the
+                # description used to introduce it. Without the article, cutting
+                # the quote out of "framing it as missing a 'deeper truth'"
+                # leaves "framing it as missing a", and that half-sentence is
+                # what the synthesis LLM then has to read.
+                result = re.sub(
+                    r"[:,]?\s*(?:\b(?:a|an|the|its|his|her|their)\s+)?"
+                    r"[\"'‘“]\s*" + re.escape(span) + r"\s*[\"'’”]",
+                    "",
+                    result,
+                )
+        return " ".join(result.split())
+
+    return clean(extracted), removed
+
+
 def _keep_voice_signal_only(extracted: dict) -> dict:
     """
     Reduce a profile extracted out of generated content to voice signal alone.
@@ -403,6 +453,12 @@ class BrandMetricsSQL(MetricPort):
         # Voice signal only. A generation is not evidence for a brand fact,
         # for what the brand believes, or for what it writes about.
         extracted = _keep_voice_signal_only(extracted)
+        extracted, lifted = _strip_lifted_quotations(extracted, generation_content)
+        if lifted:
+            logger.warning(
+                "Removed %d phrase(s) lifted from the generation into pattern "
+                "fields: %s", len(lifted), "; ".join(s[:60] for s in lifted[:5]),
+            )
 
         try:
             with get_db_session() as session:
