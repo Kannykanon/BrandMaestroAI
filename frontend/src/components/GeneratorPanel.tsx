@@ -7,7 +7,10 @@ const GeneratorPanel = () => {
   const { user } = useOutletContext<any>();
   const [contentType, setContentType] = useState('press_release');
   const [topic, setTopic] = useState('');
-  const [useSearch, setUseSearch] = useState(false);
+  // On by default: the Parallel Search call in the researcher node is the
+  // live partner integration, and starting the checkbox unticked meant the
+  // default path through the UI never made one.
+  const [useSearch, setUseSearch] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
 
   const [status, setStatus] = useState('Idle');
