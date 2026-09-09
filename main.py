@@ -132,6 +132,26 @@ async def health_check():
 #
 # The API's own liveness lives at /health, which is registered above and so
 # still wins over the static mount.
+# The UI is served straight from disk with no build step, so nothing rewrites
+# asset URLs per release: index.html asked for /app.js?v=2 with the 2 written
+# by hand. Every deploy therefore shipped new bytes at a URL the browser had
+# already cached, and a returning visitor kept running the previous release's
+# JavaScript against the current API until they hard-refreshed. A newly added
+# panel simply did not exist for them.
+#
+# no-cache does not mean do not store: the browser still caches, but must
+# revalidate before reuse. StaticFiles already sends ETag and Last-Modified,
+# so a revalidation is a 304 with no body, and correctness stops depending on
+# somebody remembering to bump a number.
+@app.middleware("http")
+async def _revalidate_ui_assets(request, call_next):
+    response = await call_next(request)
+    content_type = response.headers.get("content-type", "")
+    if content_type.startswith(("text/html", "text/css", "application/javascript", "text/javascript")):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 _STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 if os.path.isdir(_STATIC_DIR):
     from fastapi.staticfiles import StaticFiles
