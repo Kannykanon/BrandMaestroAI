@@ -748,9 +748,20 @@ class BrandMetricsSQL(MetricPort):
         )
 
     def delete_all(self):
-        """Remove all metric rows and cache for this business + content_type."""
+        """Remove all metric rows, the synthesised brain, and the cache."""
         with get_db_session() as session:
             session.query(BrandMetrics).filter_by(
+                business_id=self.business_id,
+                content_type=self.content_type,
+            ).delete()
+            # The stored brain is derived entirely from the rows just deleted,
+            # so leaving it behind leaves a voice profile with no corpus under
+            # it. get_context() refuses to serve one whose profile_count no
+            # longer matches the metric row count, which hides the problem
+            # until the counts happen to line up again — re-uploading the same
+            # corpus is enough — and then a reset brand brain silently serves
+            # its pre-reset self.
+            session.query(BrandBrain).filter_by(
                 business_id=self.business_id,
                 content_type=self.content_type,
             ).delete()
