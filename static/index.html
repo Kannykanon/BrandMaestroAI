@@ -305,7 +305,12 @@
                                 <div class="toggle-container">
                                     <span class="toggle-label"><i class="fa-solid fa-globe"></i> Activate Real-Time Web Search</span>
                                     <label class="switch">
-                                        <input type="checkbox" id="gen-use-search">
+                                        <!-- checked: the Parallel Search call in the researcher
+                                             node is the live partner integration, and an unticked
+                                             box meant the default path through this UI never made
+                                             one. app.js sends .checked straight through as
+                                             use_search. -->
+                                        <input type="checkbox" id="gen-use-search" checked>
                                         <span class="slider"></span>
                                     </label>
                                 </div>
