@@ -88,6 +88,7 @@ async def generate_stream(
         format_type=body.format_type,
         user_id=current_user.id,
         use_search=body.use_search,
+        research_mode=body.research_mode,
     )
 
     async def stream():

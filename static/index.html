@@ -301,17 +301,25 @@
                             </div>
 
 
-                            <div class="input-row toggle-row">
-                                <div class="toggle-container">
-                                    <span class="toggle-label"><i class="fa-solid fa-globe"></i> Activate Real-Time Web Search</span>
-                                    <label class="switch">
-                                        <!-- checked: the Parallel Search call in the researcher
-                                             node is the live partner integration, and an unticked
-                                             box meant the default path through this UI never made
-                                             one. app.js sends .checked straight through as
-                                             use_search. -->
-                                        <input type="checkbox" id="gen-use-search" checked>
-                                        <span class="slider"></span>
+                            <!-- Research sources. The two document kinds reach the
+                                 pipeline by different paths - product documents through
+                                 RAG, previously published work through the Brand Brain -
+                                 and Parallel's web search is a third, independent source.
+                                 This picks which of them the researcher may draw on. -->
+                            <div class="input-row">
+                                <label class="field-label">RESEARCH SOURCES</label>
+                                <div class="research-mode-row">
+                                    <label class="research-mode-option">
+                                        <input type="radio" name="research_mode" value="both" id="gen-mode-both" checked>
+                                        <span><i class="fa-solid fa-layer-group"></i> Both</span>
+                                    </label>
+                                    <label class="research-mode-option">
+                                        <input type="radio" name="research_mode" value="rag" id="gen-mode-rag">
+                                        <span><i class="fa-solid fa-folder-open"></i> Brand documents</span>
+                                    </label>
+                                    <label class="research-mode-option">
+                                        <input type="radio" name="research_mode" value="web" id="gen-mode-web">
+                                        <span><i class="fa-solid fa-globe"></i> Web search</span>
                                     </label>
                                 </div>
                             </div>

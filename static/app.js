@@ -309,7 +309,8 @@ async function triggerGeneration(e) {
     // request, no error, no console output. Generation from the UI had never
     // worked, only from the API directly.
     const formatType = FORMAT_TYPES[contentType] || contentType;
-    const useSearch = document.getElementById('gen-use-search').checked;
+    const researchModeEl = document.querySelector('input[name="research_mode"]:checked');
+    const researchMode = researchModeEl ? researchModeEl.value : 'both';
 
     const submitBtn = document.getElementById('btn-generate-submit');
     const statusBadge = document.getElementById('generation-status-badge');
@@ -348,7 +349,7 @@ async function triggerGeneration(e) {
                 content_type: contentType,
                 topic: topic,
                 format_type: formatType,
-                use_search: useSearch
+                research_mode: researchMode
             })
         });
 

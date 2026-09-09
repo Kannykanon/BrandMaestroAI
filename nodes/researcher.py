@@ -36,6 +36,16 @@ def researcher_node(state: GraphState, search: SearchPort) -> GraphState:
     """
     topic = state["topic"]
     content_type = state["content_type"]
+
+    # Which sources this run may draw on. research_mode is authoritative;
+    # use_search is the older boolean and is honoured when the mode was never
+    # set, so a caller that only knows about the boolean still gets what it
+    # asked for.
+    research_mode = (state.get("research_mode") or "").strip().lower()
+    if research_mode not in ("both", "rag", "web"):
+        research_mode = "both" if state.get("use_search", False) else "rag"
+    use_rag = research_mode in ("both", "rag")
+    use_web = research_mode in ("both", "web")
     from graph.deps import resolve_deps
     rag, analyzer, _memory = resolve_deps(state["business_id"], content_type)
 
@@ -63,10 +73,11 @@ def researcher_node(state: GraphState, search: SearchPort) -> GraphState:
     sources = []
 
     owned = ""
-    try:
-        owned = rag.query(topic) or ""
-    except Exception as e:
-        logger.warning("RAG query failed for topic=%r: %s", topic, e)
+    if use_rag:
+        try:
+            owned = rag.query(topic) or ""
+        except Exception as e:
+            logger.warning("RAG query failed for topic=%r: %s", topic, e)
 
     # Strip internal planning material out of reference-document content before
     # the writer ever sees it. Only worth a call when this content type actually
@@ -99,7 +110,7 @@ def researcher_node(state: GraphState, search: SearchPort) -> GraphState:
         )
 
     external = ""
-    if state.get("use_search", False):
+    if use_web:
         try:
             raw_results = search.search(query=topic, max_results=5)
             external = LLMSingleton.get().invoke(
@@ -135,8 +146,8 @@ def researcher_node(state: GraphState, search: SearchPort) -> GraphState:
         else "none"
     )
     logger.info(
-        "Research complete via %s for topic=%r (owned=%d chars, external=%d chars)",
-        mode, topic, len(owned), len(external),
+        "Research complete via %s (mode=%s) for topic=%r (owned=%d chars, external=%d chars)",
+        mode, research_mode, topic, len(owned), len(external),
     )
 
     return {**state, "research": research}

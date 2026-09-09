@@ -8,6 +8,11 @@ class GraphState(TypedDict):
     format_type: str
     user_id: Optional[int]
     use_search: bool
+    # "both" | "rag" | "web". Which research sources the researcher may
+    # draw on: the brand's own product documents through RAG, Parallel's
+    # web search, or both. use_search above is the older boolean and is
+    # kept in step with this for callers that still send it.
+    research_mode: str
 
     webhook_url: Optional[str]
     human_feedback: Optional[str]

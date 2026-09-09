@@ -1,5 +1,12 @@
-from pydantic import EmailStr, BaseModel, Field, field_validator
+from pydantic import EmailStr, BaseModel, Field, field_validator, model_validator
 from typing import Optional
+
+# Which research sources the researcher may draw on.
+#   rag   the brand's own product documents only
+#   web   Parallel's web search only
+#   both  both, with the brand's own documents authoritative
+RESEARCH_MODES = ("both", "rag", "web")
+RESEARCH_MODE_PATTERN = f"^({'|'.join(RESEARCH_MODES)})$"
 
 # Single source of truth for the content types the pipeline supports. The two
 # Field patterns below are built from it, and the document router validates
@@ -23,7 +30,21 @@ class GenerateRequest(BaseModel):
     # caller who posts the documented minimum body never triggers one — the
     # integration was real in code and invisible in every actual run.
     use_search: bool = True
+    research_mode: str = Field(default="both", pattern=RESEARCH_MODE_PATTERN)
     webhook_url: Optional[str] = None 
+
+    @model_validator(mode="after")
+    def _reconcile_research_selection(self):
+        # use_search is the older boolean and some callers still send only it.
+        # If research_mode was not named explicitly, derive it, so an existing
+        # client asking for use_search=false still gets RAG-only rather than
+        # silently having web search turned back on under it.
+        sent = self.model_fields_set
+        if "research_mode" not in sent and "use_search" in sent:
+            object.__setattr__(self, "research_mode", "both" if self.use_search else "rag")
+        # Keep the boolean in step for everything downstream that reads it.
+        object.__setattr__(self, "use_search", self.research_mode in ("both", "web"))
+        return self
 
 class FeedbackRequest(BaseModel):
     generation_id: str
