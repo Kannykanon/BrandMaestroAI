@@ -118,7 +118,7 @@ async def upload(
     else:
         tasks.append(
             refresh_rag.s(business_id=business_id, content_type=content_type,
-                          new_doc_content=doc_content)
+                          new_doc_content=doc_content, doc_id=doc_id)
         )
         logger.info(
             "Document %s uploaded as role=reference — indexed for retrieval, "
@@ -194,9 +194,13 @@ async def list_documents(
             "content_type": d.content_type,
             "doc_role": getattr(d, "doc_role", "voice"),
             "status": d.status,
+            # Returned so a failed document can say why in the UI instead of
+            # only that it failed.
+            "error_message": d.error_message,
             "file_size_bytes": d.file_size_bytes,
             "chunk_count": d.chunk_count,
             "uploaded_at": d.uploaded_at.isoformat() if d.uploaded_at else None,
+            "processed_at": d.processed_at.isoformat() if d.processed_at else None,
         }
         for d in docs
     ]
@@ -292,7 +296,7 @@ async def delete_document(
     """
     from database import BrandDocument
     from brand_metrics import BrandMetricsSQL
-    from celery_task import extract_metrics
+    from celery_task import synthesize_metrics
 
     doc = db.query(BrandDocument).filter(BrandDocument.id == document_id).first()
     if not doc:
@@ -330,18 +334,45 @@ async def delete_document(
     # task: soft invalidation keeps serving the previous profile until the
     # rebuild lands, which is right for latency but wrong for a deletion —
     # the user asked for this document's influence to be gone.
+    brain_deleted = False
+    resynthesizing = False
     if doc_role == "voice":
-        BrandMetricsSQL(
-            business_id=business_id, content_type=content_type
-        ).invalidate_cache(soft=False)
-        extract_metrics.delay(
-            business_id=business_id, content_type=content_type,
-            doc_id=None, doc_content=None,
+        analyzer = BrandMetricsSQL(business_id=business_id, content_type=content_type)
+        analyzer.invalidate_cache(soft=False)
+
+        # The metric row for this document goes with it via ON DELETE CASCADE,
+        # so what remains here decides between rebuilding and clearing.
+        voice_left = (
+            db.query(BrandDocument)
+            .filter(
+                BrandDocument.business_id == business_id,
+                BrandDocument.content_type == content_type,
+                BrandDocument.doc_role == "voice",
+            )
+            .count()
         )
+        if voice_left:
+            # Rebuild from the documents that remain. This previously called
+            # extract_metrics(doc_id=None, doc_content=None), which is not a
+            # rebuild — extract_and_save hashes doc_content immediately, so the
+            # task raised AttributeError on None, retried three times and died.
+            # Deleting a voice document therefore never re-synthesised anything.
+            synthesize_metrics.delay(
+                business_id=business_id, content_type=content_type
+            )
+            resynthesizing = True
+        else:
+            # That was the last voice document. There is nothing to synthesise a
+            # voice profile from, so the profile itself goes — otherwise the user
+            # has deleted every document they uploaded and the Brand Brain is
+            # still there.
+            analyzer.delete_all()
+            brain_deleted = True
 
     logger.info(
-        "Document %s deleted business_id=%s content_type=%s role=%s vectors_purged=%s",
-        document_id, business_id, content_type, doc_role, purged,
+        "Document %s deleted business_id=%s content_type=%s role=%s "
+        "vectors_purged=%s brain_deleted=%s",
+        document_id, business_id, content_type, doc_role, purged, brain_deleted,
     )
 
     return {
@@ -349,5 +380,6 @@ async def delete_document(
         "document_id": document_id,
         "content_type": content_type,
         "vectors_purged": purged,
-        "brand_brain_resynthesizing": doc_role == "voice",
+        "brand_brain_resynthesizing": resynthesizing,
+        "brand_brain_deleted": brain_deleted,
     }
