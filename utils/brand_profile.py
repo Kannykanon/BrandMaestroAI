@@ -292,3 +292,24 @@ def brand_name_evidence(business_id: str) -> str:
 
     _NAME_EVIDENCE_CACHE[business_id] = evidence
     return evidence
+
+
+def brand_brain_is_usable(metrics: str) -> bool:
+    """Whether this brand context can actually be scored against.
+
+    Every reader in this codebase keys off the brain's headers — extract_section
+    and the asset-bank readers on '#' blocks, brand_prose_section and
+    measured_mechanics_section on the all-caps prose headers. A context with
+    none of them is not a sparse brain, it is the absence of one, and nothing
+    downstream degrades gracefully in that state: the writer falls through to
+    its generic first-person-plural fallback, and every deterministic gate that
+    reads a measured rate finds nothing to read and returns no failures.
+
+    build_and_cache_context() returns "" when a (business_id, content_type) has
+    no metric rows, which happens routinely — documents uploaded under a
+    different content type, extraction still queued, a reset brand brain. So
+    this is an ordinary state to be checked for, not an exceptional one.
+    """
+    if not metrics or not metrics.strip():
+        return False
+    return bool(re.search(r"^\s*#\s*\S", metrics, re.MULTILINE))
