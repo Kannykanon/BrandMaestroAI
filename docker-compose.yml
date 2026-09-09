@@ -55,7 +55,12 @@ services:
     env_file:
       - .env
     environment:
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      # `:-` because a vertex_ai deployment authenticates with ADC and sets no
+      # key. Interpolating without a default makes compose warn once per service
+      # even though nothing on that path reads the value, and five spurious
+      # warnings a run train you to ignore the ones that matter. The ai_studio
+      # path still picks the key up from .env when it is set.
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
       POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
@@ -82,7 +87,7 @@ services:
       - .env
     environment:
       PYTHONPATH: /app
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
       POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
@@ -104,7 +109,7 @@ services:
     env_file:
       - .env
     environment:
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
       POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
@@ -124,7 +129,7 @@ services:
     env_file:
       - .env
     environment:
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
       POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
@@ -145,7 +150,7 @@ services:
       - .env
     environment:
       PYTHONPATH: /app
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
       POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
