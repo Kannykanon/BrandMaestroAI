@@ -5,6 +5,7 @@ known, so it gets a guaranteed answer rather than a probabilistic one.
 """
 import re
 
+from utils.brand_profile import brand_prose_section
 from utils.enforcement.mechanics import check_measured_mechanics
 from utils.enforcement.placeholders import find_unfilled_placeholders
 from utils.enforcement.punctuation import mark_is_banned, measured_rate_for
@@ -20,9 +21,8 @@ def run_preflight_checks(content: str, metrics: str) -> list[dict]:
     failures = []
 
     # 1. Check Punctuation
-    punctuation_match = re.search(r"PUNCTUATION HABITS:\n(.*?)(?=\n[A-Z_]+:|\n#|\Z)", metrics, re.DOTALL | re.IGNORECASE)
-    if punctuation_match:
-        rules = punctuation_match.group(1)
+    rules = brand_prose_section(metrics, "PUNCTUATION HABITS")
+    if rules:
         if mark_is_banned(rules, ("exclamation",), measured_rate_for(metrics, ("exclamation",))) and "!" in content:
             failures.append({
                 "message": "Brand avoids exclamation marks (!), but they were found.",
@@ -56,10 +56,11 @@ def run_preflight_checks(content: str, metrics: str) -> list[dict]:
     failures.extend(find_unfilled_placeholders(content, metrics))
 
     # 2. Check Question Usage
-    question_match = re.search(r"QUESTION USAGE:\n(.*?)(?=\n[A-Z_]+:|\n#|\Z)", metrics, re.DOTALL | re.IGNORECASE)
-    if question_match:
-        rules = question_match.group(1).lower()
-        if ("avoid" in rules or "absent" in rules or "not use" in rules or "none" in rules) and "?" in content:
+    q_section = brand_prose_section(metrics, "QUESTION USAGE")
+    if q_section:
+        if mark_is_banned(
+            q_section, ("question",), measured_rate_for(metrics, ("question",))
+        ) and "?" in content:
             failures.append({
                 "message": "Brand strictly avoids questions, but a question mark (?) was found.",
                 "excerpt": find_excerpt(content, "?"),
