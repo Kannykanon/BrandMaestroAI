@@ -222,7 +222,8 @@ function switchPanel(panelId) {
         'dashboard': { t: 'Dashboard Overview', s: 'Track and configure your brand voice rules, generation capacity, and memory metrics.' },
         'generator': { t: 'Content Synthesizer', s: 'Generate high-fidelity marketing collateral tailored using deep brand voice RAG filters.' },
         'documents': { t: 'Guidelines & Reference Documents', s: 'Manage reference text sources mapped to feed the Brand Memory vectors.' },
-        'patterns': { t: 'Active Model Memory & Synapses', s: 'Explore brand-aligned guidelines and restrictions synthesized directly from human review loops.' }
+        'patterns': { t: 'Active Model Memory & Synapses', s: 'Explore brand-aligned guidelines and restrictions synthesized directly from human review loops.' },
+        'brain': { t: 'Synthesised Brand Brain', s: 'The voice profile extracted from this title’s own documents, exactly as the writer and enforcer receive it.' }
     };
 
     document.getElementById('page-title').innerText = titleMap[panelId].t;
@@ -231,6 +232,51 @@ function switchPanel(panelId) {
     if (panelId === 'patterns') {
         // Auto-refresh memory patterns on switch
         loadMemoryPatterns('blog');
+    }
+
+    if (panelId === 'brain') {
+        loadBrandBrain('blog');
+    }
+}
+
+// Fetch and show the synthesised voice profile for one content type. Rendered
+// as text rather than parsed into fields: the Brain is a document the writer
+// reads whole, and slicing it into a dashboard here would show something the
+// pipeline never sees.
+async function loadBrandBrain(contentType) {
+    const body = document.getElementById('brain-text');
+    const badge = document.getElementById('brain-status-badge');
+
+    ['blog', 'social', 'ad', 'proposal'].forEach(t => {
+        const btn = document.getElementById('btn-brain-' + t);
+        if (btn) btn.classList.toggle('active', t === contentType);
+    });
+
+    badge.innerText = 'Loading';
+    badge.className = 'output-status running';
+    body.innerText = '';
+
+    try {
+        const response = await fetch(`${API_BASE}/documents/brand-brain/${contentType}`, {
+            headers: { 'Authorization': `Bearer ${appState.token}` }
+        });
+        if (!response.ok) throw new Error('Failed to load the Brand Brain');
+
+        const data = await response.json();
+        if (!data.exists) {
+            badge.innerText = 'Not synthesised';
+            badge.className = 'output-status';
+            body.innerHTML = '<span class="placeholder-text">No Brand Brain yet for this profile. Upload brand-voice documents for it and the Brain is synthesised in the background.</span>';
+            return;
+        }
+
+        body.innerText = data.brand_brain;
+        badge.innerText = data.characters.toLocaleString() + ' chars';
+        badge.className = 'output-status success';
+    } catch (err) {
+        badge.innerText = 'Error';
+        badge.className = 'output-status error';
+        body.innerHTML = '<span class="placeholder-text">' + err.message + '</span>';
     }
 }
 
