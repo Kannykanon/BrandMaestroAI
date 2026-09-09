@@ -6,8 +6,6 @@ from graph.state import GraphState
 from database import get_db_session, Generation
 from utils.observe import observe
 
-PROMOTION_THRESHOLD = 8.5
-
 
 @observe("deployer_node")
 def deployer_node(state: GraphState) -> GraphState:
@@ -81,26 +79,21 @@ def deployer_node(state: GraphState) -> GraphState:
         except Exception as e:
             logger.warning("Failed to queue notification for generation_id=%s: %s", generation_id, e)
 
-    # Promote high-scoring generations to brand_metrics to improve future generations
-    if score >= PROMOTION_THRESHOLD:
-        try:
-            from celery_task import promote_generation_feedback
-            promote_generation_feedback.delay(
-                business_id=state["business_id"],
-                content_type=state["content_type"],
-                generation_content=state["content"],
-                human_approved=False,
-                score=score
-            )
-            logger.info(
-                "Promoted generation to brand_metrics generation_id=%s score=%.1f",
-                generation_id, score
-            )
-        except Exception as e:
-            logger.warning(
-                "Failed to promote generation generation_id=%s: %s", generation_id, e
-            )
-
+    # High-scoring generations are NOT promoted into the Brand Brain. The Brain
+    # states how this brand writes, and it is derived from the documents the
+    # brand uploaded. A generation is this system's own output: feeding it back
+    # let one piece redefine the brand, and the drift compounded because each
+    # new generation re-extracted the previous one's inventions. Observed live:
+    # a tortoise-and-hare script taught a documentary studio that it valued
+    # "mindfulness", that its metaphors came from "classic fables", and that its
+    # authority rested on "an old storyteller" rather than on 11 years and 71
+    # commissions.
+    #
+    # Approval still teaches — through memory.save() above and the reviewer's
+    # notes, which reach the writer as approved/rejected angles with their
+    # reasoning (learning_memory.get_patterns -> nodes/writer.py). That is the
+    # right destination: approving a piece endorses the piece, it does not
+    # assert a new voice rule for the brand.
     logger.info(
         "Generation complete generation_id=%s score=%.1f iterations=%d",
         generation_id, score, state.get("iteration", 1)
