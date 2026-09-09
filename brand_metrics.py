@@ -313,9 +313,24 @@ class BrandMetricsSQL(MetricPort):
             )
 
         if not rows:
+            # Nothing left to synthesise from, so nothing may be served. A
+            # stored brain outliving the rows it was built from is how a
+            # "cleared" Brand Brain came back: get_context() only refuses a
+            # stored brain whose profile_count disagrees with the row count, so
+            # the orphan stays invisible until the counts coincide again — and
+            # re-uploading the same corpus is enough to do it. Deleting every
+            # document one at a time ended here, with the brain still standing.
+            with get_db_session() as cleanup:
+                removed = cleanup.query(BrandBrain).filter_by(
+                    business_id=self.business_id,
+                    content_type=self.content_type,
+                ).delete()
+                cleanup.commit()
+            self.invalidate_cache(soft=False)
             logger.info(
-                "No metric rows found for business=%s content_type=%s",
-                self.business_id, self.content_type,
+                "No metric rows for business=%s content_type=%s — "
+                "removed %d stored brain row(s) and dropped the cache",
+                self.business_id, self.content_type, removed,
             )
             return ""
 
