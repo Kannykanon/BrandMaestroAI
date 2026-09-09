@@ -335,6 +335,26 @@
                             <span class="placeholder-text"><i class="fa-solid fa-arrow-left"></i> Configure inputs and trigger the generation stream. Execution logs will render in real time.</span>
                         </div>
 
+                        <!-- Research gathered: the brand's own documents plus, when
+                             web search is on, what Parallel returned. Shown because a
+                             judge (and a writer) should be able to see what the copy was
+                             actually grounded in, rather than trust that a search
+                             happened somewhere off-screen. -->
+                        <div class="research-box hidden" id="research-box">
+                            <div class="content-rendered-header">
+                                <h3><i class="fa-solid fa-magnifying-glass"></i> Research Gathered</h3>
+                                <span class="research-badge" id="research-source-badge"></span>
+                            </div>
+                            <div class="research-section" id="research-owned-wrap">
+                                <div class="research-section-title"><i class="fa-solid fa-folder-open"></i> Brand's own documents <span class="research-tag">authoritative</span></div>
+                                <div class="research-body" id="research-owned-text"></div>
+                            </div>
+                            <div class="research-section hidden" id="research-external-wrap">
+                                <div class="research-section-title"><i class="fa-solid fa-globe"></i> Live web search <span class="research-tag research-tag-parallel">Parallel Search API</span></div>
+                                <div class="research-body" id="research-external-text"></div>
+                            </div>
+                        </div>
+
                         <!-- Generated Content output markup container -->
                         <div class="generated-output-box hidden" id="generated-output-box">
                             <div class="content-rendered-header">
