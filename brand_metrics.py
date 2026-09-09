@@ -39,6 +39,141 @@ STALE_TTL = 900
 # and don't need to be re-sent verbatim.
 MAX_RECENT_PROFILES = 10
 
+# The asset_bank fields the extraction prompt requires to be copied VERBATIM
+# out of the source document. Everything the brain presents to the writer as a
+# "PERMITTED BRAND CLAIM" comes from these, so they are the only fields that
+# carry facts rather than voice.
+_FACT_BEARING_FIELDS = (
+    "social_proof_claims",
+    "named_frameworks",
+    "stated_values",
+    "financial_targets",
+)
+
+# Placeholder strings the extraction LLM emits when a field has no content.
+_EMPTY_CLAIM_VALUES = frozenset({
+    "", "none", "n/a", "na", "not extracted", "not applicable", "unknown",
+})
+
+_QUOTE_TRANSLATION = str.maketrans({
+    "‘": "'", "’": "'", "‚": "'", "‛": "'",
+    "“": '"', "”": '"', "„": '"', "‟": '"',
+    "–": "-", "—": "-", "−": "-", " ": " ",
+})
+
+
+def _normalise_for_grounding(text: str) -> str:
+    """
+    Fold the differences that survive a faithful copy — curly quotes, dash
+    variants, non-breaking spaces, line wrapping — so grounding compares
+    wording rather than typography. Anything beyond that stays significant:
+    a claim whose numbers or nouns differ from the document is not grounded.
+    """
+    return " ".join(str(text).translate(_QUOTE_TRANSLATION).split()).lower()
+
+
+def _ground_asset_bank(extracted: dict, source_text: str) -> tuple[dict, list[str]]:
+    """
+    Drop asset_bank claims that do not actually appear in the document they
+    were extracted from.
+
+    The extraction prompt instructs the LLM to copy these claims VERBATIM, and
+    the brain then hands them to the writer as the closed list of facts it is
+    permitted to state. That makes the VERBATIM instruction a load-bearing
+    guarantee, and an instruction is not a guarantee — so it is checked here
+    instead of trusted. Returns the filtered profile and the dropped claims.
+    """
+    bank = extracted.get("asset_bank")
+    if not isinstance(bank, dict):
+        return extracted, []
+
+    haystack = _normalise_for_grounding(source_text)
+    dropped: list[str] = []
+    cleaned_bank = dict(bank)
+
+    for field in _FACT_BEARING_FIELDS:
+        claims = bank.get(field)
+        if isinstance(claims, str):
+            claims = [claims]
+        if not isinstance(claims, list):
+            continue
+
+        kept = []
+        for claim in claims:
+            normalised = _normalise_for_grounding(claim)
+            if normalised in _EMPTY_CLAIM_VALUES:
+                continue
+            if normalised in haystack:
+                kept.append(claim)
+            else:
+                dropped.append(f"{field}: {claim}")
+        cleaned_bank[field] = kept
+
+    result = dict(extracted)
+    result["asset_bank"] = cleaned_bank
+    return result, dropped
+
+
+# Fields that describe *what the brand is and talks about* rather than how it
+# writes. Extracted from an uploaded document they are brand identity; extracted
+# from a generation they are just the subject matter of that one piece, and
+# promoting them makes the brand drift toward whatever it last wrote about.
+# Observed live: a tortoise-and-hare script taught a documentary studio that its
+# metaphors come from "classic fables" and its authority rests on "an old
+# storyteller". Nested paths are dotted.
+_TOPIC_COUPLED_FIELDS = (
+    "style.metaphor_usage",              # names the content domains to draw from
+    "intellectual_patterns.authority_source",   # names what makes the brand credible
+    "intellectual_patterns.value_hierarchy",    # names what the brand believes
+    "generation_instructions",           # observed carrying topic-specific DO items
+)
+
+
+def _drop_path(target: dict, path: str) -> None:
+    """Remove a dotted key path from a nested profile, copying as it descends."""
+    head, _, rest = path.partition(".")
+    if not rest:
+        target.pop(head, None)
+        return
+    child = target.get(head)
+    if isinstance(child, dict):
+        child = dict(child)
+        _drop_path(child, rest)
+        target[head] = child
+
+
+def _keep_voice_signal_only(extracted: dict) -> dict:
+    """
+    Reduce a profile extracted out of generated content to voice signal alone.
+
+    The feedback loop exists to reinforce *how the brand writes* — rhythm,
+    register, punctuation, structural moves — which the extraction prompt asks
+    for as abstract patterns. It is not a source of facts, of identity, or of
+    subject matter. Left unfiltered it becomes all three: the themes of whatever
+    was last generated get written into the brand's permitted-claims list and
+    its stated beliefs, the writer is then licensed to treat them as brand
+    truth, and the next generation re-extracts them from its own output. Facts
+    belong to the uploaded documents and to search; identity belongs to the
+    documents alone.
+    """
+    if not isinstance(extracted, dict):
+        return extracted
+
+    result = dict(extracted)
+    result.pop("brand_name", None)  # a generation must not rename the brand
+
+    bank = result.get("asset_bank")
+    if isinstance(bank, dict):
+        result["asset_bank"] = {
+            key: value for key, value in bank.items()
+            if key not in _FACT_BEARING_FIELDS
+        }
+
+    for path in _TOPIC_COUPLED_FIELDS:
+        _drop_path(result, path)
+
+    return result
+
 
 class MetricPort(ABC):
     @property
@@ -179,6 +314,14 @@ class BrandMetricsSQL(MetricPort):
             logger.error("Extraction LLM returned invalid JSON — skipping persist")
             return False
 
+        # --- verify the VERBATIM claims really are verbatim ---
+        extracted, dropped = _ground_asset_bank(extracted, doc_content)
+        if dropped:
+            logger.warning(
+                "Dropped %d ungrounded asset_bank claim(s) from doc_id=%s: %s",
+                len(dropped), doc_id, "; ".join(dropped[:5]),
+            )
+
         # --- persist new row ---
         try:
             with get_db_session() as session:
@@ -256,6 +399,10 @@ class BrandMetricsSQL(MetricPort):
         except json.JSONDecodeError:
             logger.error("Extraction LLM returned invalid JSON — skipping persist")
             return False
+
+        # Voice signal only. A generation is not evidence for a brand fact,
+        # for what the brand believes, or for what it writes about.
+        extracted = _keep_voice_signal_only(extracted)
 
         try:
             with get_db_session() as session:
