@@ -536,7 +536,14 @@ def send_notification(self, webhook_url: str, content: str, generation_id: str, 
     max_retries=3,
     default_retry_delay=10
 )
-def refresh_rag(self, business_id, content_type, new_doc_content):
+def refresh_rag(self, business_id, content_type, new_doc_content, doc_id=None):
+    """Index a reference document for retrieval.
+
+    doc_id is optional and used only to record the outcome on the document row:
+    a reference document is processed here rather than by extract_metrics, so
+    without it a reference upload had no path to a terminal status at all and
+    stayed 'pending' even once it was indexed and being retrieved.
+    """
     import hashlib
     from brand_rag import BrandRAG
     from embedding_stategy import build_embedding
@@ -552,6 +559,9 @@ def refresh_rag(self, business_id, content_type, new_doc_content):
 
             if not lock.acquire(blocking=False):
                 logger.info("RAG refresh already running for this document")
+                # Another worker holds the lock for this exact content, so the
+                # document is being indexed — not left unprocessed.
+                _set_document_status(doc_id, DOC_STATUS_COMPLETED)
                 return {"status": "skipped", "reason": "already_running"}
 
         rag = BrandRAG(
@@ -569,15 +579,62 @@ def refresh_rag(self, business_id, content_type, new_doc_content):
             "RAG refresh complete business_id=%s content_type=%s",
             business_id, content_type
         )
+        _set_document_status(doc_id, DOC_STATUS_COMPLETED)
         return {"status": "refreshed", "business_id": business_id}
 
     except Exception as exc:
         logger.error("RAG refresh failed business_id=%s: %s", business_id, exc)
+        if _retries_exhausted(self):
+            _set_document_status(doc_id, DOC_STATUS_FAILED, str(exc))
         raise self.retry(exc=exc, countdown=10)
 
     finally:
         if lock is not None:
             _release_lock(lock, lock_key)
+
+
+DOC_STATUS_PENDING = "pending"
+DOC_STATUS_COMPLETED = "completed"
+DOC_STATUS_FAILED = "failed"
+
+
+def _set_document_status(doc_id, status: str, error: str | None = None) -> None:
+    """Record how processing of one uploaded document ended.
+
+    BrandDocument.status defaults to 'pending' and, until this existed, nothing
+    ever moved it — so every document a user uploaded showed as pending forever,
+    including the ones already extracted into the Brand Brain. The status column
+    and the UI badge reading it were both already there; only the write was
+    missing.
+
+    Never raises. A document that processed correctly must not be reported as
+    failed because the bookkeeping write failed.
+    """
+    if doc_id is None:
+        return
+    try:
+        from database import BrandDocument, get_db_session
+        from sqlalchemy import func as sa_func
+
+        with get_db_session() as session:
+            updated = session.query(BrandDocument).filter_by(id=doc_id).update(
+                {
+                    "status": status,
+                    "error_message": (error or "")[:2000] or None,
+                    "processed_at": sa_func.now(),
+                },
+                synchronize_session=False,
+            )
+            session.commit()
+        if not updated:
+            logger.warning("No document row %s to mark %s", doc_id, status)
+    except Exception as exc:
+        logger.warning("Could not mark document %s as %s: %s", doc_id, status, exc)
+
+
+def _retries_exhausted(task) -> bool:
+    """Whether this is the task's final attempt, so a failure is terminal."""
+    return (task.request.retries or 0) >= (task.max_retries or 0)
 
 
 @celery_app.task(bind=True, name="tasks.extract_metrics", max_retries=3, default_retry_delay=10)
@@ -587,6 +644,9 @@ def extract_metrics(self, business_id: str, content_type: str, doc_id: int, doc_
     try:
         inserted = analyzer.extract_and_save(doc_id=doc_id, doc_content=doc_content)
         if not inserted:
+            # Already extracted — the document IS in the Brand Brain, which is
+            # what the status reports, so this is a success and not a skip.
+            _set_document_status(doc_id, DOC_STATUS_COMPLETED)
             return {"status": "skipped", "reason": "already_extracted"}
 
         analyzer.invalidate_cache()
@@ -599,8 +659,13 @@ def extract_metrics(self, business_id: str, content_type: str, doc_id: int, doc_
             )
             logger.info("Queued debounced synthesis for %s", business_id)
 
+        _set_document_status(doc_id, DOC_STATUS_COMPLETED)
         return {"status": "complete", "business_id": business_id, "doc_id": doc_id, "synthesis": "debounced"}
     except Exception as exc:
+        # Only the last attempt is terminal; marking failed on the first would
+        # show a document as failed while a retry was still pending.
+        if _retries_exhausted(self):
+            _set_document_status(doc_id, DOC_STATUS_FAILED, str(exc))
         raise self.retry(exc=exc, countdown=10)
 
 

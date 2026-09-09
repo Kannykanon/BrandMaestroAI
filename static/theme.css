@@ -816,6 +816,43 @@ input, select, textarea, button {
     border-color: var(--border-color);
 }
 
+/* Where an uploaded document ended up. Shares the score-badge sizing so the
+   documents table stays visually consistent, but carries an icon and a label
+   naming the destination — a voice document goes into the Brand Brain, a
+   reference document into the retrieval index. */
+.doc-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: var(--border-radius-sm);
+    font-weight: 600;
+    font-size: 11px;
+    white-space: nowrap;
+    border: 1px solid transparent;
+}
+
+.doc-status i { font-size: 10px; }
+
+.doc-status.is-done {
+    background-color: rgba(16, 185, 129, 0.15);
+    color: var(--accent-green);
+    border-color: var(--accent-green-glow);
+}
+
+.doc-status.is-pending {
+    background-color: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.2);
+}
+
+.doc-status.is-failed {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: var(--primary-red);
+    border-color: rgba(239, 68, 68, 0.25);
+    cursor: help;
+}
+
 .history-score .time {
     font-size: 11px;
     color: var(--text-muted);

@@ -712,7 +712,7 @@ function updateUploadedDocsTableHTML() {
             <td><span class="badge badge-neutral">${doc.doc_role === 'reference' ? 'Reference' : 'Voice'}</span></td>
             <td>${formatDocDate(doc.uploaded_at)}</td>
             <td class="doc-actions">
-                <span class="score-badge">${escapeHTML(doc.status || 'ready')}</span>
+                ${renderDocStatus(doc)}
                 <button class="btn btn-sm btn-danger"
                         onclick="handleDeleteDocument(${doc.id}, this)"
                         title="Delete this document and everything derived from it">
@@ -721,6 +721,39 @@ function updateUploadedDocsTableHTML() {
             </td>
         </tr>
     `).join('');
+}
+
+// A document's status badge. The two roles are processed by different tasks and
+// end up in different places, so the badge says which happened rather than a
+// bare "completed": a voice document is extracted into the Brand Brain, a
+// reference document is indexed for retrieval.
+function renderDocStatus(doc) {
+    const status = (doc.status || 'pending').toLowerCase();
+    const isReference = doc.doc_role === 'reference';
+
+    if (status === 'completed') {
+        const label = isReference ? 'Indexed' : 'In Brand Brain';
+        const title = isReference
+            ? 'Indexed for retrieval — available to the researcher as source material'
+            : 'Extracted into the Brand Brain — shaping the voice of new content';
+        return `<span class="doc-status is-done" title="${escapeHTML(title)}">
+                    <i class="fa-solid fa-circle-check"></i> ${label}
+                </span>`;
+    }
+
+    if (status === 'failed') {
+        const why = doc.error_message
+            ? `Processing failed: ${doc.error_message}`
+            : 'Processing failed. Delete the document and upload it again.';
+        return `<span class="doc-status is-failed" title="${escapeHTML(why)}">
+                    <i class="fa-solid fa-circle-exclamation"></i> Failed
+                </span>`;
+    }
+
+    return `<span class="doc-status is-pending"
+                  title="Queued — this document is being processed">
+                <i class="fa-solid fa-spinner fa-spin"></i> Processing
+            </span>`;
 }
 
 // Filenames come from user uploads, so they reach this table as untrusted
@@ -764,12 +797,15 @@ async function handleDeleteDocument(documentId, btn) {
         }
 
         const data = await response.json();
-        showToast(
-            data.brand_brain_resynthesizing
-                ? 'Document deleted — rebuilding the brand voice profile'
-                : 'Document deleted',
-            'success'
-        );
+        let message = 'Document deleted';
+        if (data.brand_brain_deleted) {
+            // Nothing is left to derive a voice from, so say the Brain is gone
+            // rather than implying a rebuild the user will look for and not find.
+            message = 'Document deleted — that was the last one, so the Brand Brain is cleared';
+        } else if (data.brand_brain_resynthesizing) {
+            message = 'Document deleted — rebuilding the Brand Brain from the rest';
+        }
+        showToast(message, 'success');
         await loadUploadedDocsList();
     } catch (err) {
         showToast(err.message, 'error');
@@ -850,6 +886,48 @@ async function loadUploadedDocsList() {
         showToast(err.message, 'error');
     }
     updateUploadedDocsTableHTML();
+    scheduleDocStatusPoll();
+}
+
+// Extraction happens in a Celery worker, so a document is still 'pending' when
+// the list is re-read straight after uploading it. Without this the badge sat on
+// "Processing" until the user thought to reload the page, which is the same
+// problem as never setting the status at all.
+//
+// Polls only while something is actually pending, and stops on its own so an
+// idle tab is not asking the API for a change that will never come.
+const DOC_POLL_INTERVAL_MS = 3000;
+const DOC_POLL_TIMEOUT_MS = 180000;
+let docPollTimer = null;
+let docPollStartedAt = null;
+
+function scheduleDocStatusPoll() {
+    if (docPollTimer) {
+        clearTimeout(docPollTimer);
+        docPollTimer = null;
+    }
+
+    const pending = (appState.uploadedDocs || []).some(
+        d => (d.status || 'pending').toLowerCase() === 'pending'
+    );
+    if (!pending) {
+        docPollStartedAt = null;
+        return;
+    }
+
+    if (docPollStartedAt === null) {
+        docPollStartedAt = Date.now();
+    } else if (Date.now() - docPollStartedAt > DOC_POLL_TIMEOUT_MS) {
+        // Give up rather than poll forever. The document may genuinely still be
+        // queued behind others; a reload will pick up whatever it settled on.
+        docPollStartedAt = null;
+        return;
+    }
+
+    docPollTimer = setTimeout(() => {
+        docPollTimer = null;
+        if (appState.token) loadUploadedDocsList();
+    }, DOC_POLL_INTERVAL_MS);
 }
 
 // --- UTILITY CLIENT-SIDE HELPERS ---
