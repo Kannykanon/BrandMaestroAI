@@ -257,8 +257,20 @@ function renderResearch(research) {
     const NL = String.fromCharCode(10);
     const BAR = String.fromCharCode(9552, 9552, 9552); // the box-drawing banner
 
-    // Drop the banner lines; keep everything they introduce.
-    const clean = t => t.split(NL).filter(l => l.indexOf(BAR) === -1).join(NL).trim();
+    // Drop the banner lines, then the instruction paragraph under them. Those
+    // lines address the writer, not the reader ("Use it for framing", "Do NOT
+    // use it to assert facts"), and showing them here puts prompt scaffolding
+    // on screen where the research is supposed to be. Both blocks separate
+    // that paragraph from the content with a blank line, so cut to the first
+    // one - but only if it comes early, so a block without a preamble keeps
+    // all of its content.
+    const clean = t => {
+        const lines = t.split(NL).filter(l => l.indexOf(BAR) === -1);
+        while (lines.length && !lines[0].trim()) lines.shift();
+        const blank = lines.findIndex(l => !l.trim());
+        if (blank > 0 && blank <= 6) return lines.slice(blank + 1).join(NL).trim();
+        return lines.join(NL).trim();
+    };
 
     const marker = research.indexOf('EXTERNAL CONTEXT');
     let owned = research;
