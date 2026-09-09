@@ -276,6 +276,51 @@ async def list_documents(
     ]
 
 
+@router.get("/brand-brain/{content_type}")
+async def get_brand_brain(
+        content_type: str,
+        current_user: Annotated[object, Depends(get_current_user)],
+):
+    """The synthesised voice profile for one content type, as the pipeline sees it.
+
+    The Brain is what the whole system rests on - the writer is steered by it and
+    the enforcer scores against the rates counted in it - and until now it could
+    be deleted through the API but never read. Nothing outside the graph could
+    show what had actually been learned from a brand's documents, so "measured,
+    not described" was a claim a user had to take on trust.
+
+    Serves exactly what the researcher and enforcer receive, by calling the same
+    get_context(), so what is displayed cannot drift from what is used.
+    """
+    from schema import CONTENT_TYPES
+    if content_type not in CONTENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"content_type must be one of {', '.join(CONTENT_TYPES)}",
+        )
+
+    business_id = current_user.business_id
+
+    from brand_metrics import BrandMetricsSQL
+    try:
+        brain = BrandMetricsSQL(business_id=business_id, content_type=content_type).get_context() or ""
+    except Exception as e:
+        logger.warning("Brand Brain read failed business_id=%s content_type=%s: %s",
+                       business_id, content_type, e)
+        brain = ""
+
+    brain = brain.strip()
+    return {
+        "business_id": business_id,
+        "content_type": content_type,
+        # An empty Brain is a normal state, not an error: it means no voice
+        # documents have been synthesised for this content type yet.
+        "exists": bool(brain),
+        "brand_brain": brain,
+        "characters": len(brain),
+    }
+
+
 @router.delete("/brand-brain/{content_type}")
 async def reset_brand_brain(
         content_type: str,

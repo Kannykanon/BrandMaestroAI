@@ -2128,3 +2128,20 @@ body {
     line-height: 1.5;
     color: var(--text-secondary);
 }
+
+
+/* Brand Brain body: a document, shown as one. */
+.brain-body {
+    margin-top: 12px;
+    padding: 20px;
+    background-color: #050507;
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    border-radius: var(--border-radius-md);
+    max-height: 70vh;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    color: #cbd5e1;
+}
