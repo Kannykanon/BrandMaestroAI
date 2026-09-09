@@ -61,7 +61,6 @@ celery_app.conf.update(
         "tasks.retrain":                     {"queue": "retraining"},
         "tasks.refresh_rag":                 {"queue": "rag_refresh"},
         "tasks.extract_metrics":             {"queue": "rag_refresh"},  
-        "tasks.promote_generation_feedback": {"queue": "rag_refresh"},  
         "tasks.synthesize_metrics":          {"queue": "rag_refresh"},
     }
 )
@@ -440,8 +439,8 @@ def process_feedback(
                         business_id, claimed
                     )
         
-        from human_loop import promote_to_brand_metrics
-        promote_to_brand_metrics(generation_id)
+        from human_loop import handle_review_outcome
+        handle_review_outcome(generation_id)
 
         return {"status": "saved", "generation_id": generation_id}
 
@@ -603,33 +602,6 @@ def extract_metrics(self, business_id: str, content_type: str, doc_id: int, doc_
         return {"status": "complete", "business_id": business_id, "doc_id": doc_id, "synthesis": "debounced"}
     except Exception as exc:
         raise self.retry(exc=exc, countdown=10)
-
-
-@celery_app.task(bind=True, name="tasks.promote_generation_feedback", max_retries=3, default_retry_delay=30)
-def promote_generation_feedback(self, business_id: str, content_type: str, generation_content: str, human_approved: bool, score: float):
-    from brand_metrics import BrandMetricsSQL
-
-    score_weight = 2.0 if human_approved else (1.5 if score >= 9.0 else 1.2)
-    analyzer = BrandMetricsSQL(business_id=business_id, content_type=content_type)
-
-    try:
-        inserted = analyzer.save_generation_feedback(generation_content=generation_content, score_weight=score_weight)
-        if not inserted:
-            return {"status": "skipped", "reason": "already_processed"}
-
-        analyzer.invalidate_cache()
-        debounce_key = f"debounce_synthesis:{business_id}:{content_type}"
-        
-        if get_redis().set(debounce_key, "1", nx=True, ex=15):
-            synthesize_metrics.apply_async(
-                kwargs={"business_id": business_id, "content_type": content_type},
-                countdown=15
-            )
-            logger.info("Queued debounced synthesis from feedback for %s", business_id)
-
-        return {"status": "complete", "score_weight": score_weight, "synthesis": "debounced"}
-    except Exception as exc:
-        raise self.retry(exc=exc, countdown=30)
 
 
 @celery_app.task(bind=True, name="tasks.synthesize_metrics", max_retries=2, default_retry_delay=30)
