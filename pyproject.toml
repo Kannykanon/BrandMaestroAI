@@ -64,12 +64,14 @@ dependencies = [
     "pydantic-settings>=2.14.1",
     "email-validator>=2.3.0",
     "pydantic[email]>=2.13.4",
-    "langchain-google-genai>=2.0,<3.0",
-    "langchain-google-vertexai>=2.0,<3.0",
+    "langchain-google-genai>=2.0.0",
+    "langchain-google-vertexai>=2.0.0",
     "google-generativeai>=0.8",
-    "google-cloud-aiplatform>=1.81.0,<2.0",
+    "google-cloud-aiplatform[agent-engines]>=1.114.0,<2.0",
     "celery-types>=0.26.0",
     "opik>=2.2.52",
+    "cloudpickle>=3.1.2",
+    "langchain-text-splitters>=0.3.11",
 ]
 
 [dependency-groups]
@@ -87,5 +89,5 @@ dev = [
     "locust>=2.44.0",
 ]
 deploy = [
-    "google-cloud-aiplatform[agent_engines,langgraph]>=1.70.0",
+    "google-cloud-aiplatform[agent_engines,langgraph]>=1.114.0",
 ]
