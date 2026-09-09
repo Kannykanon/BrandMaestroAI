@@ -589,6 +589,23 @@ function clearSelectedFile() {
     document.getElementById('selected-file-badge').classList.add('hidden');
 }
 
+// The two kinds do different things, and the difference is worth stating at
+// the point of choosing rather than in documentation nobody opens.
+const DOC_KIND_HINTS = {
+    'brand-voice': 'Previously published work. Read whole into the Brand Brain to learn how this brand writes. Not indexed for retrieval.',
+    'product': 'Product sheets, press kits, fact sheets. Chunked into the RAG index as source facts. Held out of the Brand Brain.'
+};
+
+function bindDocKindHint() {
+    const hint = document.getElementById('upload-kind-hint');
+    if (!hint) return;
+    document.querySelectorAll('input[name="doc_kind"]').forEach(el => {
+        el.addEventListener('change', () => { hint.innerText = DOC_KIND_HINTS[el.value] || ''; });
+    });
+}
+
+document.addEventListener('DOMContentLoaded', bindDocKindHint);
+
 async function uploadDocument(e) {
     e.preventDefault();
     if (!appState.selectedFile) {
@@ -598,6 +615,11 @@ async function uploadDocument(e) {
 
     const contentType = document.getElementById('upload-content-type').value;
     const submitBtn = document.getElementById('btn-upload-submit');
+    // 'brand-voice' or 'product' - the value is the endpoint segment, so the
+    // form posts to the path that performs the ingestion it names rather than
+    // to a shared endpoint carrying a role field.
+    const kindEl = document.querySelector('input[name="doc_kind"]:checked');
+    const docKind = kindEl ? kindEl.value : 'brand-voice';
 
     const formData = new FormData();
     formData.append('file', appState.selectedFile);
@@ -608,7 +630,7 @@ async function uploadDocument(e) {
     submitBtn.querySelector('span').innerText = 'Processing & Vectorizing...';
 
     try {
-        const response = await fetch(`${API_BASE}/documents/top-performing`, {
+        const response = await fetch(`${API_BASE}/documents/${docKind}`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${appState.token}`
@@ -622,7 +644,9 @@ async function uploadDocument(e) {
         }
 
         const data = await response.json();
-        showToast('Document vectorized successfully!', 'success');
+        showToast(docKind === 'product'
+            ? 'Product document indexed for retrieval'
+            : 'Brand voice document sent to the Brand Brain', 'success');
 
         // Re-read the list from the server instead of appending a locally
         // constructed row. The upload has already been persisted, so the server
@@ -634,7 +658,7 @@ async function uploadDocument(e) {
         showToast(err.message, 'error');
     } finally {
         submitBtn.disabled = false;
-        submitBtn.querySelector('span').innerText = 'Upload and Process Reference Document';
+        submitBtn.querySelector('span').innerText = 'Upload and Process Document';
     }
 }
 

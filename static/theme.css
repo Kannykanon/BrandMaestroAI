@@ -2108,3 +2108,23 @@ body {
     outline: 2px solid var(--primary-red);
     outline-offset: 2px;
 }
+
+
+/* Field label + hint, used by the research source and document kind pickers.
+   Both were referenced by markup before they existed here, so the labels
+   rendered as unstyled body text. */
+.field-label {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 2px;
+}
+
+.field-hint {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
