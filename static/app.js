@@ -242,6 +242,49 @@ function selectFormatCard(input) {
 
 // --- REAL-TIME SSE CONTENT STREAM GENERATION ---
 
+// The researcher emits one blob holding the brand's own documents and, when
+// web search is on, the Parallel results. Splitting it into two labelled
+// sections is what lets anyone watching see which facts came from where -
+// previously this was logged as the first 100 characters and nothing else, so
+// the web search was invisible even when it had run.
+function renderResearch(research) {
+    const box = document.getElementById('research-box');
+    const ownedText = document.getElementById('research-owned-text');
+    const extWrap = document.getElementById('research-external-wrap');
+    const extText = document.getElementById('research-external-text');
+    const badge = document.getElementById('research-source-badge');
+
+    const NL = String.fromCharCode(10);
+    const BAR = String.fromCharCode(9552, 9552, 9552); // the box-drawing banner
+
+    // Drop the banner lines; keep everything they introduce.
+    const clean = t => t.split(NL).filter(l => l.indexOf(BAR) === -1).join(NL).trim();
+
+    const marker = research.indexOf('EXTERNAL CONTEXT');
+    let owned = research;
+    let external = '';
+    if (marker !== -1) {
+        const lineStart = research.lastIndexOf(NL, marker);
+        const cut = lineStart === -1 ? marker : lineStart;
+        owned = research.slice(0, cut);
+        external = research.slice(cut);
+    }
+
+    ownedText.innerText = clean(owned) || 'No brand documents retrieved for this topic.';
+
+    const externalClean = clean(external);
+    if (externalClean) {
+        extText.innerText = externalClean;
+        extWrap.classList.remove('hidden');
+        badge.innerText = 'brand documents + Parallel web search';
+    } else {
+        extWrap.classList.add('hidden');
+        badge.innerText = 'brand documents only';
+    }
+
+    box.classList.remove('hidden');
+}
+
 async function triggerGeneration(e) {
     e.preventDefault();
 
@@ -268,6 +311,11 @@ async function triggerGeneration(e) {
     renderedDiv.innerHTML = '';
     outputBox.classList.add('hidden');
     feedbackBox.classList.add('hidden');
+    document.getElementById('research-box').classList.add('hidden');
+    document.getElementById('research-owned-text').innerText = '';
+    document.getElementById('research-external-text').innerText = '';
+    document.getElementById('research-external-wrap').classList.add('hidden');
+    document.getElementById('research-source-badge').innerText = '';
 
     submitBtn.disabled = true;
     submitBtn.classList.add('loading');
@@ -343,7 +391,8 @@ async function triggerGeneration(e) {
 
                     // Process graph execution states
                     if (stateUpdate.research) {
-                        logConsole(`[Search Synthesis] Researched contexts: ${stateUpdate.research.substring(0, 100)}...`);
+                        renderResearch(stateUpdate.research);
+                        logConsole('[Researcher] Research gathered - see the Research panel');
                     }
                     if (stateUpdate.creative_angle) {
                         statusBadge.innerText = 'Creating Angle';

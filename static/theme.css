@@ -1059,8 +1059,11 @@ input:checked + .slider:before {
 /* Stream Terminal UI */
 .output-card {
     height: auto;
-    max-height: 850px;
-    overflow: hidden;
+    /* No max-height/overflow:hidden here. With the feedback card shown the
+       stack (console + research + draft + feedback) is taller than 850px, and
+       clipping it cut the generated draft off with nothing to scroll: the copy
+       button worked while the text it copied could not be read. The column
+       scrolls with the page instead. */
 }
 
 .output-header {
@@ -1200,7 +1203,7 @@ input:checked + .slider:before {
 
 .rendered-markdown {
     padding: 24px;
-    max-height: 340px;
+    max-height: 60vh;
     overflow-y: auto;
     font-size: 14px;
     white-space: pre-wrap;
@@ -1996,5 +1999,62 @@ body {
 .badge-neutral {
     background-color: rgba(255, 255, 255, 0.07);
     border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+
+/* Research panel: what the copy was grounded in, brand documents and, when
+   web search is on, the Parallel results. */
+.research-box {
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    background-color: rgba(255, 255, 255, 0.01);
+    margin-top: 10px;
+    overflow: hidden;
+}
+
+.research-section {
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.research-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px 0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+}
+
+.research-tag {
+    font-size: 10px;
+    text-transform: none;
+    letter-spacing: 0;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-secondary);
+}
+
+.research-tag-parallel {
+    border-color: rgba(239, 68, 68, 0.5);
+    color: var(--primary-red);
+}
+
+.research-body {
+    padding: 12px 20px 20px;
+    max-height: 260px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    color: #cbd5e1;
+}
+
+.research-badge {
+    font-size: 11px;
     color: var(--text-secondary);
 }
