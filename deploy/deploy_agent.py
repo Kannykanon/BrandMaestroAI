@@ -59,8 +59,16 @@ def main():
     remote_app = agent_engines.create(
         app,
         requirements=[
+            "google-cloud-aiplatform[agent_engines,langgraph]==1.125.0",
+            "langchain",
+            "langchain-text-splitters",
+            "langchain-google-vertexai>=2.0.0",
+            "structlog",
+            "python-dotenv",
+            "sqlalchemy",
+            "tenacity",
             "langgraph>=0.0.51",
-            "langchain-google-genai>=1.0.3,<1.1.0",
+            "langchain-google-genai>=2.0.0",
             "parallel-web>=1.3.0,<2.0.0",
             "psycopg2-binary",
             "redis",
@@ -69,6 +77,9 @@ def main():
             "llama-index-embeddings-fastembed",
             "fastembed",
         ],
+        env_vars={var: os.environ[var] for var in REQUIRED_ENV} | {"LLM_PROVIDER": os.getenv("LLM_PROVIDER", "ai_studio")},
+
+        extra_packages=["deploy", "graph", "nodes", "utils", "prompts", "database.py", "model.py", "brand_rag.py", "learning_memory.py", "brand_metrics.py", "search.py", "embedding_stategy.py", "chunking_stategy.py"],
         display_name="brandmaestro-content-pipeline",
         description=(
             "BrandMaestro AI: Researcher -> Writer -> Enforcer -> Deployer "
