@@ -32,9 +32,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from deploy.agent_runtime import get_agent_engine_app  # noqa: E402
 
 
-REQUIRED_ENV = [
-    "PARALLEL_API_KEY", "GOOGLE_API_KEY", "POSTGRES_URI", "REDIS_URL",
-]
+# GOOGLE_API_KEY only belongs here on the ai_studio path. On vertex_ai the
+# agent authenticates with Application Default Credentials and no key
+# exists, so demanding it unconditionally refused to deploy the exact
+# configuration that actually runs in production.
+REQUIRED_ENV = ["PARALLEL_API_KEY", "POSTGRES_URI", "REDIS_URL"]
+if os.getenv("LLM_PROVIDER", "ai_studio").strip().lower() != "vertex_ai":
+    REQUIRED_ENV.append("GOOGLE_API_KEY")
 
 
 def main():
