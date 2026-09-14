@@ -84,18 +84,17 @@ class MyProvider(LLMProvider):
 
 ### Embeddings
 
-Retrieval over product documents needs an embeddings model, chosen separately:
+Retrieval over product documents uses the same design in `embedding_stategy.py`: an abstract `EmbeddingProvider`, three adapters, and `EmbeddingSingleton` as the switch. Groq and Anthropic have no embedding models of their own, so each LLM provider is paired with a backend:
 
-| `EMBEDDING_PROVIDER` | Default model | Dimensions |
-|---|---|---|
-| `google_vertexai` | `text-embedding-004` | 768 |
-| `openai` | `text-embedding-3-small` | 1536 |
-| `google_genai` | `text-embedding-004` | 768 |
-| `fastembed` (extra `offline`) | `BAAI/bge-small-en-v1.5` | 384 |
+| `LLM_PROVIDER` | Embeddings adapter | Model | Dimensions | Credential |
+|---|---|---|---|---|
+| `vertex_ai` | `VertexEmbedding` | `text-embedding-004` | 768 | `PROJECT_ID` + ADC |
+| `claude` | `VoyageEmbedding` (Anthropic's recommended partner) | `voyage-4` | 1024 | `VOYAGE_API_KEY` |
+| `groq` | `LocalEmbedding` (FastEmbed, in-process) | `BAAI/bge-small-en-v1.5` | 384 | none |
 
-Unset, it follows `LLM_PROVIDER=vertex_ai` to Vertex embeddings. Groq and Claude have no embeddings API, so set it explicitly with either. `EMBEDDING_BASE_URL` points `openai` at any compatible server; set `EMBEDDING_DIMENSIONS` for a model not in the table (max 2000, the pgvector HNSW limit).
+`EMBEDDING_PROVIDER=vertex_ai|voyage|local` overrides the pairing, e.g. Claude for writing with Vertex for retrieval. `EMBEDDING_MODEL` picks another model the adapter knows; `EMBEDDING_DIMENSIONS` sets Voyage's vector size (256, 512 or 1024). The local model downloads on first use into a Docker volume, so it survives redeploys.
 
-The vector table name includes the dimension, so changing to a model with a different size starts a fresh index — re-upload product documents afterwards.
+The vector table name includes the dimension, so switching backend starts a fresh index — re-upload product documents afterwards.
 
 ---
 
@@ -217,7 +216,7 @@ The suite needs no live services or API keys.
 ```
 main.py              FastAPI app and startup checks
 model.py             LLM provider adapters and LLMSingleton switch
-embedding_stategy.py Embedding providers
+embedding_stategy.py Embedding adapters and EmbeddingSingleton switch
 schema.py            Request models and content types
 database.py          SQLAlchemy models
 brand_rag.py         Vector search over product documents

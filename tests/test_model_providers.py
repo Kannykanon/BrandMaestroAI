@@ -7,7 +7,6 @@ chat models are constructed, never invoked.
 import pytest
 from langchain_core.messages import AIMessage
 
-import embedding_stategy
 from model import (
     ChatModelHandle,
     ClaudeProvider,
@@ -20,7 +19,6 @@ from utils.llm_output import message_text
 
 PROVIDER_ENV = [
     "LLM_PROVIDER", "LLM_MODEL", "GEMINI_MODEL",
-    "EMBEDDING_PROVIDER", "EMBEDDING_MODEL", "EMBEDDING_DIMENSIONS", "EMBEDDING_BASE_URL",
 ] + [f"{prefix}_{mode.upper()}"
      for prefix in ("LLM_TEMPERATURE", "LLM_MAX_TOKENS")
      for mode in LLMSingleton.MODE_TEMPERATURES]
@@ -150,29 +148,3 @@ class TestTextContent:
 
         handle = ChatModelHandle(_Blocks(), ClaudeProvider())
         assert handle.invoke("prompt").content == "done"
-
-
-class TestEmbeddingProvider:
-    def test_vertex_llm_uses_vertex_embeddings(self, env):
-        assert embedding_stategy.resolve_embedding_provider() == "google_vertexai"
-
-    @pytest.mark.parametrize("provider", ["claude", "groq"])
-    def test_provider_without_embeddings_requires_explicit_choice(self, env, provider):
-        env(LLM_PROVIDER=provider)
-        with pytest.raises(ValueError, match="EMBEDDING_PROVIDER"):
-            embedding_stategy.resolve_embedding_provider()
-
-    def test_explicit_choice_and_legacy_alias(self, env):
-        env(LLM_PROVIDER="claude", EMBEDDING_PROVIDER="vertex_ai")
-        assert embedding_stategy.resolve_embedding_provider() == "google_vertexai"
-
-    def test_openai_dimensions(self, env, monkeypatch):
-        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        env(EMBEDDING_PROVIDER="openai")
-        assert embedding_stategy.build_embedding().embed_dim == 1536
-        env(EMBEDDING_PROVIDER="openai", EMBEDDING_MODEL="text-embedding-3-large")
-        with pytest.raises(ValueError, match="HNSW"):
-            embedding_stategy.build_embedding()
-        env(EMBEDDING_PROVIDER="openai", EMBEDDING_MODEL="text-embedding-3-large",
-            EMBEDDING_DIMENSIONS="1024")
-        assert embedding_stategy.build_embedding().embed_dim == 1024

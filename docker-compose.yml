@@ -40,10 +40,7 @@ services:
   # ---------------------------------------------------------------------------
 
   api:
-    build:
-      context: .
-      args:
-        EXTRAS: ${EXTRAS:-}
+    build: .
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
     ports:
       - "8000:8000"
@@ -59,6 +56,7 @@ services:
       FRONTEND_URL: ${FRONTEND_URL}
     volumes:
       - ./static:/app/static
+      - fastembed_cache:/app/.cache/fastembed
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,10 +65,7 @@ services:
     restart: unless-stopped
 
   worker_generation:
-    build:
-      context: .
-      args:
-        EXTRAS: ${EXTRAS:-}
+    build: .
     command: celery -A celery_task worker --queues generation --concurrency 8 --loglevel info
     deploy:
       replicas: 2
@@ -85,6 +80,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY}
       FRONTEND_URL: ${FRONTEND_URL}
+    volumes:
+      - fastembed_cache:/app/.cache/fastembed
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,10 +90,7 @@ services:
     restart: unless-stopped
 
   worker_feedback:
-    build:
-      context: .
-      args:
-        EXTRAS: ${EXTRAS:-}
+    build: .
     command: celery -A celery_task worker --queues feedback --concurrency 8 --loglevel info
     # Load the whole .env so model provider settings and API keys reach the
     # container. The explicit environment block below still wins.
@@ -106,6 +100,8 @@ services:
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
       POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
+    volumes:
+      - fastembed_cache:/app/.cache/fastembed
     depends_on:
       postgres:
         condition: service_healthy
@@ -114,10 +110,7 @@ services:
     restart: unless-stopped
 
   worker_retraining:
-    build:
-      context: .
-      args:
-        EXTRAS: ${EXTRAS:-}
+    build: .
     command: celery -A celery_task worker --queues retraining --concurrency 2 --loglevel info
     # Load the whole .env so model provider settings and API keys reach the
     # container. The explicit environment block below still wins.
@@ -127,6 +120,8 @@ services:
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
       POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
+    volumes:
+      - fastembed_cache:/app/.cache/fastembed
     depends_on:
       postgres:
         condition: service_healthy
@@ -135,10 +130,7 @@ services:
     restart: unless-stopped
 
   worker_rag:
-    build:
-      context: .
-      args:
-        EXTRAS: ${EXTRAS:-}
+    build: .
     command: celery -A celery_task worker --queues rag_refresh --concurrency 2 --loglevel info
     # Load the whole .env so model provider settings and API keys reach the
     # container. The explicit environment block below still wins.
@@ -151,6 +143,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY}
       FRONTEND_URL: ${FRONTEND_URL}
+    volumes:
+      - fastembed_cache:/app/.cache/fastembed
     depends_on:
       postgres:
         condition: service_healthy
@@ -159,10 +153,7 @@ services:
     restart: unless-stopped
 
   flower:
-    build:
-      context: .
-      args:
-        EXTRAS: ${EXTRAS:-}
+    build: .
     command: celery -A celery_task flower --port=5555
     ports:
       - "5555:5555"
@@ -180,3 +171,6 @@ services:
 
 volumes:
   postgres_data:
+  # The local embedding model (EMBEDDING_PROVIDER=local), shared by every
+  # service and kept across redeploys so it downloads once.
+  fastembed_cache:

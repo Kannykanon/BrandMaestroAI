@@ -215,12 +215,12 @@ def _purge_vectors(business_id: str, content_type: str) -> bool:
     """
     try:
         from brand_rag import BrandRAG
-        from embedding_stategy import build_embedding
+        from embedding_stategy import EmbeddingSingleton
 
         BrandRAG(
             business_id=business_id,
             content_type=content_type,
-            embedding=build_embedding(),
+            embedding=EmbeddingSingleton.get(),
         ).purge()
         return True
     except Exception as e:

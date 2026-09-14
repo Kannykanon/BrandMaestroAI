@@ -519,7 +519,7 @@ def refresh_rag(self, business_id, content_type, new_doc_content, doc_id=None):
     """
     import hashlib
     from brand_rag import BrandRAG
-    from embedding_stategy import build_embedding
+    from embedding_stategy import EmbeddingSingleton
     from brand_metrics import BrandMetricsSQL
 
     lock = None
@@ -540,7 +540,7 @@ def refresh_rag(self, business_id, content_type, new_doc_content, doc_id=None):
         rag = BrandRAG(
             business_id=business_id,
             content_type=content_type,
-            embedding=build_embedding()
+            embedding=EmbeddingSingleton.get()
         )
         analyzer = BrandMetricsSQL(
             business_id=business_id,

@@ -10,13 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml .
 
-# Optional extras from pyproject.toml, comma-separated, e.g. EXTRAS=offline
-# for the local embedding model.
-ARG EXTRAS=""
-
 # Generous timeout and retries: the dependency set includes several large
 # wheels, and a single slow read from PyPI otherwise fails the whole build.
-RUN if [ -n "$EXTRAS" ]; then TARGET=".[$EXTRAS]"; else TARGET="."; fi     && pip install --no-cache-dir --prefix=/install --timeout 120 --retries 10 "$TARGET"
+RUN pip install --no-cache-dir --prefix=/install --timeout 120 --retries 10 .
 
 FROM python:3.11-slim AS runtime
 
@@ -38,6 +34,10 @@ COPY . .
 # fails with ModuleNotFoundError. Setting PYTHONPATH makes imports resolve the
 # same way regardless of which entry point started the process.
 ENV PYTHONPATH=/app
+
+# Where the local embedding model (EMBEDDING_PROVIDER=local) is downloaded on
+# first use. docker-compose mounts a volume here so it survives redeploys.
+ENV FASTEMBED_CACHE_PATH=/app/.cache/fastembed
 
 # PORT is supplied by the host on most PaaS (Render, Fly, Cloud Run); default
 # to 8000 for local runs and docker-compose.
