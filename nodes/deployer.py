@@ -14,6 +14,9 @@ def deployer_node(state: GraphState) -> GraphState:
 
     generation_id = state["generation_id"]
     score = state.get("score", 0.0)
+    # The enforcer's verdict, stored separately from status: a draft saved
+    # because the revision loop ran out of rounds is completed, not approved.
+    approved = bool(state.get("approved", False))
     logger.info("DEPLOYER NODE: received content of length %s", len(state.get("content", "")))
 
     # Persist to DB
@@ -30,6 +33,7 @@ def deployer_node(state: GraphState) -> GraphState:
             user_id=state.get("user_id"),
             status="completed",
             score=score,
+            approved=approved,
             content=state["content"],
             completed_at=completed_at
         ).on_conflict_do_update(
@@ -37,6 +41,7 @@ def deployer_node(state: GraphState) -> GraphState:
             set_={
                 "status": "completed",
                 "score": score,
+                "approved": approved,
                 "content": state["content"],
                 "completed_at": completed_at
             }

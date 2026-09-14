@@ -41,3 +41,4 @@ setup-vm.sh
 docker-compose.yml
 uv.lock
 .python-version
+.yt_storage
