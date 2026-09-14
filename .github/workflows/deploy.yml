@@ -28,6 +28,13 @@ env:
   DEPLOY_PATH: /home/aniekanudo476_gmail_com/brandmaestro
   HEALTH_URL: https://brandmaestro.ddnsfree.com/health
 
+# One deploy at a time. Two overlapping runs would race on the checkout and on
+# docker compose, and one run's key cleanup would delete the other's SSH key
+# mid-connection. A newer push queues behind the running deploy.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -41,23 +48,58 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      # Every run starts on a fresh runner, so gcloud generates a new SSH key and
+      # registers it in the deploy service account's OS Login profile. Those
+      # keys never expired, and every past deploy's key was still there. This
+      # account exists only for this workflow, so clearing its keys before
+      # connecting is safe and keeps the profile from growing without bound.
+      - name: Clear stale OS Login keys
+        run: |
+          set +e -uo pipefail
+          for fingerprint in $(gcloud compute os-login ssh-keys list --format="value(value.fingerprint)"); do
+            gcloud compute os-login ssh-keys remove --key="$fingerprint" --quiet || true
+          done
+
+      # A freshly registered key can take a few seconds to reach the VM. On
+      # 2026-09-14 sshd closed the connection before accepting the new key and
+      # the deploy failed with exit code 255 while a manual deploy minutes later
+      # worked. gcloud returns 255 only when ssh itself fails to connect or
+      # authenticate, so only that is retried; a failing git or docker command
+      # on the VM exits with its own code and fails the job at once. Every
+      # command in the deploy is safe to run again.
       - name: Deploy to the VM
         run: |
-          set -euo pipefail
-          gcloud compute ssh "$INSTANCE" \
-            --zone="$ZONE" \
-            --project="$PROJECT" \
-            --quiet \
-            --command="set -e
-              sudo -u $OWNER git -C $DEPLOY_PATH fetch origin main
-              sudo -u $OWNER git -C $DEPLOY_PATH reset --hard origin/main
-              cd $DEPLOY_PATH
-              # sudo because OS Login accounts are not in the docker group.
-              # --build is what makes this a deploy rather than a restart: the
-              # services declare \`build: .\` and no \`image:\`, so without it
-              # compose recreates containers from the image it already had.
-              sudo docker compose up -d --build --force-recreate \
-                api worker_generation worker_feedback worker_retraining worker_rag flower"
+          set +e -uo pipefail
+          for attempt in 1 2 3 4; do
+            gcloud compute ssh "$INSTANCE" \
+              --zone="$ZONE" \
+              --project="$PROJECT" \
+              --quiet \
+              --ssh-key-expire-after=1h \
+              --ssh-flag="-o ConnectTimeout=30" \
+              --command="set -e
+                sudo -u $OWNER git -C $DEPLOY_PATH fetch origin main
+                sudo -u $OWNER git -C $DEPLOY_PATH reset --hard origin/main
+                cd $DEPLOY_PATH
+                # sudo because OS Login accounts are not in the docker group.
+                # --build is what makes this a deploy rather than a restart: the
+                # services declare \`build:\` and no \`image:\`, so without it
+                # compose recreates containers from the image it already had.
+                sudo docker compose up -d --build --force-recreate \
+                  api worker_generation worker_feedback worker_retraining worker_rag flower"
+            code=$?
+            if [ "$code" -eq 0 ]; then
+              exit 0
+            fi
+            if [ "$code" -ne 255 ]; then
+              echo "deploy command failed on the VM (exit $code)"
+              exit "$code"
+            fi
+            echo "attempt ${attempt}: ssh could not connect or authenticate (exit 255); retrying in 20s"
+            sleep 20
+          done
+          echo "ssh failed on every attempt"
+          exit 255
 
       - name: Wait for the app to come back
         run: |
