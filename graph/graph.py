@@ -11,10 +11,8 @@ def build_graph(search: SearchPort) -> StateGraph:
     Only `search` is bound at compile time (it has no per-business scope).
     rag/analyzer/memory are resolved per node call from
     state["business_id"]/state["content_type"] — see graph/deps.py — so
-    this compiled graph is safe to build ONCE and reuse across many
-    requests, which is what Agent Platform Runtime's LanggraphAgent
-    template expects (it calls this builder once at deploy time, not
-    per query).
+    this compiled graph is safe to build once and reuse across many
+    requests.
     """
     researcher = partial(researcher_node, search=search)
 

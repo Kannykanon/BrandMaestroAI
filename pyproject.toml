@@ -30,14 +30,12 @@ py-modules = []
 package-mode = false
 
 [project]
-name = "langgraph-marketing-automation"
-version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
+name = "brandmaestro-ai"
+version = "0.2.0"
+description = "Brand-voice content writing: blogs, ads, proposals, scripts and press releases, with any LLM provider"
 # Upper bound is deliberate. An open-ended ">=3.11" is read by resolvers as
-# including Python 4, and any dependency capped at "<4" (celery-types, among
-# others) then has no version satisfying the range, so resolution fails with a
-# confusing message about a Python version nobody is using.
+# including Python 4, and any dependency capped at "<4" then has no version
+# satisfying the range, so resolution fails with a confusing message.
 requires-python = ">=3.11,<4"
 dependencies = [
     "httpx>=0.28.1",
@@ -45,6 +43,14 @@ dependencies = [
     "langchain-community>=0.3,<0.4",
     "langchain-core>=0.3,<0.4",
     "langgraph>=0.2,<0.3",
+    "langchain-text-splitters>=0.3.11",
+    # Chat model adapters in model.py; LLM_PROVIDER picks one at runtime.
+    "langchain-google-vertexai>=2.0.0,<3",
+    "langchain-groq>=0.3,<0.4",
+    "langchain-anthropic>=0.3,<0.4",
+    # Embedding backends in embedding_stategy.py.
+    "langchain-openai>=0.3,<0.4",
+    "langchain-google-genai>=2.0.0,<3",
     "psycopg2-binary>=2.9.12",
     "structlog>=25.5.0",
     "parallel-web>=1.3.0,<2.0.0",
@@ -64,30 +70,19 @@ dependencies = [
     "pydantic-settings>=2.14.1",
     "email-validator>=2.3.0",
     "pydantic[email]>=2.13.4",
-    "langchain-google-genai>=2.0.0",
-    "langchain-google-vertexai>=2.0.0",
-    "google-generativeai>=0.8",
-    "google-cloud-aiplatform[agent-engines]>=1.114.0,<2.0",
-    "celery-types>=0.26.0",
     "opik>=2.2.52",
-    "cloudpickle>=3.1.2",
-    "langchain-text-splitters>=0.3.11",
 ]
 
-[dependency-groups]
-# Optional: local, third-party embedding fallback (EmbeddingPort ->
-# FastEmbedEmbedding). Not installed by default — the default embedding
-# model is Google's text-embedding-004.
+[project.optional-dependencies]
+# Local embedding model (EMBEDDING_PROVIDER=fastembed), no API key needed.
 offline = [
     "llama-index-embeddings-fastembed>=0.6.0",
     "fastembed>=0.4.2",
 ]
+
+[dependency-groups]
 dev = [
-    "deepeval==1.4.2",
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
-    "locust>=2.44.0",
-]
-deploy = [
-    "google-cloud-aiplatform[agent_engines,langgraph]>=1.114.0",
+    "celery-types>=0.26.0",
 ]

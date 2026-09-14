@@ -14,16 +14,32 @@ let appState = {
 // API Base URL config (Relative routes work on same origin)
 const API_BASE = window.location.origin;
 
-// The writer takes format_type as a hint about the artefact being written,
-// and falls back to content_type when it is absent. The four content types the
-// UI offers each correspond to exactly one artefact, so there is nothing for a
+// Content types the pipeline supports, in display order. Mirrors
+// schema.CONTENT_TYPES on the server.
+const CONTENT_TYPES = ['blog', 'ad', 'proposal', 'script', 'press_release'];
+
+const CONTENT_TYPE_LABELS = {
+    blog:          'Blog Post',
+    ad:            'Ad Copy',
+    proposal:      'Proposal',
+    script:        'Script',
+    press_release: 'Press Release',
+};
+
+// The writer takes format_type as a hint about the artefact being written.
+// Each content type corresponds to one artefact, so there is nothing for a
 // user to choose here and no control for it.
 const FORMAT_TYPES = {
-    blog:     'press_release',
-    social:   'social_caption',
-    ad:       'trailer_copy',
-    proposal: 'talent_bio',
+    blog:          'long-form blog article',
+    ad:            'ad copy with headline, body and call to action',
+    proposal:      'business proposal',
+    script:        'video or audio script',
+    press_release: 'press release',
 };
+
+function contentTypeLabel(contentType) {
+    return CONTENT_TYPE_LABELS[contentType] || (contentType || '').toUpperCase();
+}
 
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -223,7 +239,7 @@ function switchPanel(panelId) {
         'generator': { t: 'Content Synthesizer', s: 'Generate high-fidelity marketing collateral tailored using deep brand voice RAG filters.' },
         'documents': { t: 'Guidelines & Reference Documents', s: 'Manage reference text sources mapped to feed the Brand Memory vectors.' },
         'patterns': { t: 'Active Model Memory & Synapses', s: 'Explore brand-aligned guidelines and restrictions synthesized directly from human review loops.' },
-        'brain': { t: 'Synthesised Brand Brain', s: 'The voice profile extracted from this title’s own documents, exactly as the writer and enforcer receive it.' }
+        'brain': { t: 'Synthesised Brand Brain', s: 'The voice profile extracted from this brand’s own documents, exactly as the writer and enforcer receive it.' }
     };
 
     document.getElementById('page-title').innerText = titleMap[panelId].t;
@@ -247,7 +263,7 @@ async function loadBrandBrain(contentType) {
     const body = document.getElementById('brain-text');
     const badge = document.getElementById('brain-status-badge');
 
-    ['blog', 'social', 'ad', 'proposal'].forEach(t => {
+    CONTENT_TYPES.forEach(t => {
         const btn = document.getElementById('btn-brain-' + t);
         if (btn) btn.classList.toggle('active', t === contentType);
     });
@@ -712,7 +728,7 @@ async function uploadDocument(e) {
 
 async function loadMemoryPatterns(contentType) {
     // Switch active buttons state
-    ['blog', 'social', 'ad', 'proposal'].forEach(t => {
+    CONTENT_TYPES.forEach(t => {
         const btn = document.getElementById(`btn-memory-${t}`);
         if (btn) {
             btn.classList.remove('active');
@@ -751,7 +767,7 @@ async function loadMemoryPatterns(contentType) {
             approvedList.innerHTML = `
                 <div class="empty-state">
                     <i class="fa-solid fa-shield-heart"></i>
-                    <p>No verified style guideposts synthesized for "${contentType.toUpperCase()}" outputs yet. Submit positive human score feedback to build memory rules.</p>
+                    <p>No verified style guideposts synthesized for "${escapeHTML(contentTypeLabel(contentType))}" outputs yet. Submit positive human score feedback to build memory rules.</p>
                 </div>`;
         } else {
             approvedList.innerHTML = approvedPatterns.map(p => `
@@ -767,7 +783,7 @@ async function loadMemoryPatterns(contentType) {
             rejectedList.innerHTML = `
                 <div class="empty-state">
                     <i class="fa-solid fa-ban"></i>
-                    <p>No rejection thresholds mapped for "${contentType.toUpperCase()}" outputs yet. Mark unsatisfactory content as rejected to define red-lines.</p>
+                    <p>No rejection thresholds mapped for "${escapeHTML(contentTypeLabel(contentType))}" outputs yet. Mark unsatisfactory content as rejected to define red-lines.</p>
                 </div>`;
         } else {
             rejectedList.innerHTML = rejectedPatterns.map(p => `
@@ -803,9 +819,9 @@ function updateGenerationsListHTML() {
     container.innerHTML = appState.generations.map(gen => `
         <div class="history-item">
             <div class="history-info">
-                <div class="title">${gen.topic}</div>
+                <div class="title">${escapeHTML(gen.topic)}</div>
                 <div class="meta">
-                    <span><i class="fa-solid fa-layer-group"></i> ${gen.contentType.toUpperCase()}</span>
+                    <span><i class="fa-solid fa-layer-group"></i> ${escapeHTML(contentTypeLabel(gen.contentType))}</span>
                     <span><i class="fa-regular fa-id-card"></i> ${gen.id.substring(0, 8)}...</span>
                 </div>
             </div>
@@ -840,7 +856,7 @@ function updateUploadedDocsTableHTML() {
     tableBody.innerHTML = appState.uploadedDocs.map(doc => `
         <tr>
             <td><strong>${escapeHTML(doc.filename)}</strong></td>
-            <td><span class="badge badge-accent">${escapeHTML((doc.content_type || '').toUpperCase())}</span></td>
+            <td><span class="badge badge-accent">${escapeHTML(contentTypeLabel(doc.content_type))}</span></td>
             <td><span class="badge badge-neutral">${doc.doc_role === 'reference' ? 'Reference' : 'Voice'}</span></td>
             <td>${formatDocDate(doc.uploaded_at)}</td>
             <td class="doc-actions">
@@ -951,8 +967,8 @@ async function handleDeleteDocument(documentId, btn) {
 async function handleResetBrandBrain() {
     const select = document.getElementById('reset-content-type');
     const contentType = select.value;
-    // The visible label ("Social Caption Model") is what the user chose; the
-    // value ("social") is an internal key and would read as a different thing.
+    // The visible label ("Press Release Model") is what the user chose; the
+    // value ("press_release") is an internal key and would read as a different thing.
     const label = select.options[select.selectedIndex].text;
 
     // Two steps on purpose: this discards every document and the learned voice

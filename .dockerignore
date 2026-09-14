@@ -1,17 +1,43 @@
+# Secrets
+.env
+.env.*
+*credentials*.json
+*service-account*.json
+
+# VCS, CI and editor state
+.git
+.gitignore
+.gitattributes
+.github
+.idea
+.vscode
+.claude
+
+# Python build and cache output
 .venv
 venv
 env
 __pycache__
 *.pyc
 *.pyo
-.git
-.gitignore
 *.egg-info
+build
+dist
 .pytest_cache
 .mypy_cache
-node_modules
+.ruff_cache
+.deepeval
+
+# Not needed at runtime
+tests
+demo
+docs
+*.md
 *.log
-.env
-.env.*
-dist
-build
+*.bak
+*.bak*
+node_modules
+setup-vm.sh
+docker-compose.yml
+uv.lock
+.python-version

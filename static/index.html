@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BrandMaestro AI — On-Brand Publicity Content Per Title</title>
+    <title>BrandMaestro AI — On-Brand Content Writing</title>
     <!-- Modern Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,13 +29,13 @@
                 <span class="logo-text">BrandMaestro<span>AI</span></span>
             </div>
             <div class="auth-panel-hero">
-                <h2 class="auth-panel-headline">Every title's voice.<br>Every piece of publicity.</h2>
-                <p class="auth-panel-sub">Upload a title's approved materials once. BrandMaestro AI learns that exact voice and generates perfectly aligned press releases, social captions, trailer copy, and talent bios with a single prompt.</p>
+                <h2 class="auth-panel-headline">Your brand's voice.<br>Every piece of content.</h2>
+                <p class="auth-panel-sub">Upload your approved writing once. BrandMaestro AI learns that exact voice and generates on-brand blog posts, ad copy, proposals, scripts, and press releases from a single prompt.</p>
                 <ul class="auth-feature-list">
                     <li><i class="fa-solid fa-check"></i> One-time brand voice setup</li>
                     <li><i class="fa-solid fa-check"></i> Real-time streaming generation</li>
                     <li><i class="fa-solid fa-check"></i> Self-improving from feedback</li>
-                    <li><i class="fa-solid fa-check"></i> Ads &middot; Blogs &middot; Proposals &middot; Emails</li>
+                    <li><i class="fa-solid fa-check"></i> Blogs &middot; Ads &middot; Proposals &middot; Scripts &middot; Press Releases</li>
                 </ul>
             </div>
             <!-- The product shot carries the left panel. It previously had no
@@ -170,14 +170,14 @@
             <header class="top-header">
                 <div class="page-title-area">
                     <h1 id="page-title">Dashboard Overview</h1>
-                    <p class="subtitle" id="page-subtitle">Track and configure this title's voice rules, generation capacity, and memory metrics.</p>
+                    <p class="subtitle" id="page-subtitle">Track and configure your brand voice rules, generation capacity, and memory metrics.</p>
                 </div>
                 <div class="header-actions">
                     <div class="business-id-selector">
-                        <span class="label">Active Title ID:</span>
+                        <span class="label">Business ID:</span>
                         <div class="business-id-field">
                             <span id="display-business-id" class="value">b12345-uuid-67890</span>
-                            <button class="btn-copy" onclick="copyBusinessId()" title="Copy Title ID"><i class="fa-regular fa-copy"></i></button>
+                            <button class="btn-copy" onclick="copyBusinessId()" title="Copy Business ID"><i class="fa-regular fa-copy"></i></button>
                         </div>
                     </div>
                     <div class="status-indicator">
@@ -270,7 +270,7 @@
                     <!-- Form Controls -->
                     <div class="content-card">
                         <h2>Configure Creative Output</h2>
-                        <p class="card-subtitle">Define parameters to generate on-brand publicity content for this title.</p>
+                        <p class="card-subtitle">Define parameters to generate on-brand content in your brand's voice.</p>
                         
                         <form id="form-generator" onsubmit="triggerGeneration(event)">
                             <div class="input-group">
@@ -278,30 +278,35 @@
                                 <div class="format-cards">
                                     <label class="format-card active">
                                         <input type="radio" name="content_type" value="blog" checked onclick="selectFormatCard(this)">
-                                        <i class="fa-solid fa-newspaper"></i>
-                                        <span>Press Release</span>
-                                    </label>
-                                    <label class="format-card">
-                                        <input type="radio" name="content_type" value="social" onclick="selectFormatCard(this)">
-                                        <i class="fa-solid fa-hashtag"></i>
-                                        <span>Social Caption</span>
+                                        <i class="fa-solid fa-pen-to-square"></i>
+                                        <span>Blog Post</span>
                                     </label>
                                     <label class="format-card">
                                         <input type="radio" name="content_type" value="ad" onclick="selectFormatCard(this)">
-                                        <i class="fa-solid fa-clapperboard"></i>
-                                        <span>Trailer Copy</span>
+                                        <i class="fa-solid fa-bullhorn"></i>
+                                        <span>Ad Copy</span>
                                     </label>
                                     <label class="format-card">
                                         <input type="radio" name="content_type" value="proposal" onclick="selectFormatCard(this)">
-                                        <i class="fa-solid fa-id-badge"></i>
-                                        <span>Talent Bio</span>
+                                        <i class="fa-solid fa-file-signature"></i>
+                                        <span>Proposal</span>
+                                    </label>
+                                    <label class="format-card">
+                                        <input type="radio" name="content_type" value="script" onclick="selectFormatCard(this)">
+                                        <i class="fa-solid fa-scroll"></i>
+                                        <span>Script</span>
+                                    </label>
+                                    <label class="format-card">
+                                        <input type="radio" name="content_type" value="press_release" onclick="selectFormatCard(this)">
+                                        <i class="fa-solid fa-newspaper"></i>
+                                        <span>Press Release</span>
                                     </label>
                                 </div>
                             </div>
 
                             <div class="input-group">
                                 <label for="gen-topic">Core Subject / Campaign Topic</label>
-                                <input type="text" id="gen-topic" placeholder="e.g. Season 2 premiere announcement social campaign" required>
+                                <input type="text" id="gen-topic" placeholder="e.g. Launch of our new analytics dashboard for small retailers" required>
                             </div>
 
 
@@ -426,18 +431,19 @@
                 <div class="documents-layout">
                     <!-- Upload Document Card -->
                     <div class="content-card">
-                        <h2>Upload Approved Publicity Materials</h2>
-                        <p class="card-subtitle">Feed this title's past press releases, social captions, trailer scripts, or talent bios into the vector database. BrandMaestro AI extracts linguistic rules automatically.</p>
+                        <h2>Upload Approved Brand Materials</h2>
+                        <p class="card-subtitle">Feed your past blog posts, ads, proposals, scripts, or press releases into the vector database. BrandMaestro AI extracts linguistic rules automatically.</p>
                         
                         <form id="form-upload" onsubmit="uploadDocument(event)">
                             <div class="input-row">
                                 <div class="input-group">
                                     <label for="upload-content-type">Associate Content Type Profile</label>
                                     <select id="upload-content-type" required>
-                                        <option value="blog">Press Release Model</option>
-                                        <option value="social">Social Caption Model</option>
-                                        <option value="ad">Trailer Copy Model</option>
-                                        <option value="proposal">Talent Bio Model</option>
+                                        <option value="blog">Blog Post Model</option>
+                                        <option value="ad">Ad Copy Model</option>
+                                        <option value="proposal">Proposal Model</option>
+                                        <option value="script">Script Model</option>
+                                        <option value="press_release">Press Release Model</option>
                                     </select>
                                 </div>
                             </div>
@@ -544,10 +550,11 @@
                                      Offering a type the UI cannot upload to
                                      would only ever clear nothing. -->
                                 <select id="reset-content-type">
-                                    <option value="blog">Press Release Model</option>
-                                    <option value="social">Social Caption Model</option>
-                                    <option value="ad">Trailer Copy Model</option>
-                                    <option value="proposal">Talent Bio Model</option>
+                                    <option value="blog">Blog Post Model</option>
+                                    <option value="ad">Ad Copy Model</option>
+                                    <option value="proposal">Proposal Model</option>
+                                    <option value="script">Script Model</option>
+                                    <option value="press_release">Press Release Model</option>
                                 </select>
                             </div>
                             <button id="btn-reset-brain" class="btn btn-danger" onclick="handleResetBrandBrain()">
@@ -570,13 +577,14 @@
                 <div class="memory-header-card">
                     <div class="memory-card-details">
                         <h2>Synthesised Brand Brain</h2>
-                        <p>Extracted from this title's uploaded brand-voice documents. Measured rates are counted from the corpus, not described in a prompt.</p>
+                        <p>Extracted from your uploaded brand-voice documents. Measured rates are counted from the corpus, not described in a prompt.</p>
                     </div>
                     <div class="profile-selector">
-                        <button class="btn btn-secondary active" onclick="loadBrandBrain('blog')" id="btn-brain-blog">Press Releases</button>
-                        <button class="btn btn-secondary" onclick="loadBrandBrain('social')" id="btn-brain-social">Social Captions</button>
-                        <button class="btn btn-secondary" onclick="loadBrandBrain('ad')" id="btn-brain-ad">Trailer Copy</button>
-                        <button class="btn btn-secondary" onclick="loadBrandBrain('proposal')" id="btn-brain-proposal">Talent Bios</button>
+                        <button class="btn btn-secondary active" onclick="loadBrandBrain('blog')" id="btn-brain-blog">Blog Posts</button>
+                        <button class="btn btn-secondary" onclick="loadBrandBrain('ad')" id="btn-brain-ad">Ad Copy</button>
+                        <button class="btn btn-secondary" onclick="loadBrandBrain('proposal')" id="btn-brain-proposal">Proposals</button>
+                        <button class="btn btn-secondary" onclick="loadBrandBrain('script')" id="btn-brain-script">Scripts</button>
+                        <button class="btn btn-secondary" onclick="loadBrandBrain('press_release')" id="btn-brain-press_release">Press Releases</button>
                     </div>
                 </div>
 
@@ -594,14 +602,15 @@
             <section id="panel-patterns" class="dashboard-panel">
                 <div class="memory-header-card">
                     <div class="memory-card-details">
-                        <h2>Active Title Memory & Stylistic Rules</h2>
+                        <h2>Active Brand Memory & Stylistic Rules</h2>
                         <p>Toggle content profiles to view the specific, structured patterns and rules synthesised from human feedback loops.</p>
                     </div>
                     <div class="profile-selector">
-                        <button class="btn btn-secondary active" onclick="loadMemoryPatterns('blog')" id="btn-memory-blog">Press Releases</button>
-                        <button class="btn btn-secondary" onclick="loadMemoryPatterns('social')" id="btn-memory-social">Social Captions</button>
-                        <button class="btn btn-secondary" onclick="loadMemoryPatterns('ad')" id="btn-memory-ad">Trailer Copy</button>
-                        <button class="btn btn-secondary" onclick="loadMemoryPatterns('proposal')" id="btn-memory-proposal">Talent Bios</button>
+                        <button class="btn btn-secondary active" onclick="loadMemoryPatterns('blog')" id="btn-memory-blog">Blog Posts</button>
+                        <button class="btn btn-secondary" onclick="loadMemoryPatterns('ad')" id="btn-memory-ad">Ad Copy</button>
+                        <button class="btn btn-secondary" onclick="loadMemoryPatterns('proposal')" id="btn-memory-proposal">Proposals</button>
+                        <button class="btn btn-secondary" onclick="loadMemoryPatterns('script')" id="btn-memory-script">Scripts</button>
+                        <button class="btn btn-secondary" onclick="loadMemoryPatterns('press_release')" id="btn-memory-press_release">Press Releases</button>
                     </div>
                 </div>
 

@@ -12,6 +12,7 @@ from prompts.writer import (
     HUMAN_DIRECTIVE_BLOCK,
 )
 from graph.state import GraphState
+from schema import CONTENT_TYPE_LABELS
 from utils.brand_profile import (
     extract_asset_bank,
     extract_brand_name,
@@ -54,14 +55,15 @@ def writer_node(state: GraphState) -> GraphState:
     `rag`, `analyzer`, and `memory` are resolved per call from
     state["business_id"] / state["content_type"] (see graph/deps.py)
     rather than pre-bound, so this node is compatible with a graph
-    compiled once and reused across requests (Agent Platform Runtime).
+    compiled once and reused across requests.
     """
     from graph.deps import resolve_deps
     rag, analyzer, memory = resolve_deps(state["business_id"], state["content_type"])
 
     topic        = state["topic"]
     content_type = state["content_type"]
-    format_type  = state.get("format_type", "") or content_type
+    content_label = CONTENT_TYPE_LABELS.get(content_type, content_type)
+    format_type  = state.get("format_type", "") or content_label
     research     = state["research"]
     feedback     = state.get("feedback", "")
     iteration    = state.get("iteration", 0) + 1
@@ -192,7 +194,7 @@ def writer_node(state: GraphState) -> GraphState:
         prompt_planner = WRITER_PLANNER.format(
             human_directive=human_directive,
             topic=topic,
-            content_type=content_type,
+            content_type=content_label,
             format_type=format_type,
             research=research or "No research available — plan generically around the topic string above.",
             structural_examples=structural_examples,
@@ -212,7 +214,7 @@ def writer_node(state: GraphState) -> GraphState:
         prompt_drafter = WRITER_DRAFTER.format(
             human_directive=human_directive,
             topic=topic,
-            content_type=content_type,
+            content_type=content_label,
             format_type=format_type,
             outline=outline,
             brand_name=brand_name,

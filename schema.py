@@ -12,10 +12,17 @@ RESEARCH_MODE_PATTERN = f"^({'|'.join(RESEARCH_MODES)})$"
 # Field patterns below are built from it, and the document router validates
 # against it, so a type cannot be accepted for upload and then rejected — or
 # silently ignored — when the same user tries to clear it.
-CONTENT_TYPES = (
-    "blog", "social", "ad", "proposal",
-    "press_release", "trailer_copy", "talent_bio", "synopsis",
-)
+CONTENT_TYPES = ("blog", "ad", "proposal", "script", "press_release")
+
+# How each type is named to the model, so a prompt asks for "a business
+# proposal" rather than for "a proposal" or an internal key.
+CONTENT_TYPE_LABELS = {
+    "blog": "blog post",
+    "ad": "ad copy",
+    "proposal": "business proposal",
+    "script": "script (video, audio or presentation)",
+    "press_release": "press release",
+}
 CONTENT_TYPE_PATTERN = f"^({'|'.join(CONTENT_TYPES)})$"
 
 
@@ -25,10 +32,7 @@ class GenerateRequest(BaseModel):
     topic: str
     format_type: str
     user_id: Optional[int] = None
-    # Default on. The researcher's Parallel Search call is the live partner
-    # integration this project is judged on, and defaulting it off meant a
-    # caller who posts the documented minimum body never triggers one — the
-    # integration was real in code and invisible in every actual run.
+    # Default on: a caller posting the minimum body gets web research too.
     use_search: bool = True
     research_mode: str = Field(default="both", pattern=RESEARCH_MODE_PATTERN)
     webhook_url: Optional[str] = None 
@@ -58,7 +62,7 @@ class FeedbackRequest(BaseModel):
 class DocumentUploadRequest(BaseModel):
     business_id: str
     content_type: str = Field(..., pattern=CONTENT_TYPE_PATTERN)
-    platform: Optional[str] = None      # e.g. "instagram", "linkedin"
+    platform: Optional[str] = None      # e.g. "linkedin", "google_ads"
     performance_metric: Optional[str] = None  # e.g. "highest_engagement"
 
 class TaskResponse(BaseModel):

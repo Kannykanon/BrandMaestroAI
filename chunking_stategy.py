@@ -1,5 +1,9 @@
+import logging
 from abc import ABC, abstractmethod
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+logger = logging.getLogger(__name__)
 
 
 class ChunkingStrategy(ABC):
@@ -16,7 +20,6 @@ class ChunkingStrategy(ABC):
         return self.splitter._chunk_overlap
 
 
-
 class BlogChunking(ChunkingStrategy):
     """
     Paragraph-aware chunking for long-form blog content.
@@ -31,26 +34,6 @@ class BlogChunking(ChunkingStrategy):
 
     def chunk(self, text: str) -> list[str]:
         return self.splitter.split_text(text)
-
-
-class SocialChunking(ChunkingStrategy):
-    """
-    Small chunks for social media content.
-    Social posts are short — minimal overlap needed.
-    """
-    def __init__(self):
-        self.splitter = RecursiveCharacterTextSplitter(
-            chunk_size=200,
-            chunk_overlap=20,
-            separators=["\n", ".", " "]
-        )
-
-    def chunk(self, text: str) -> list[str]:
-        chunks = self.splitter.split_text(text)
-        # if content is short enough, keep it whole
-        if len(text) <= 200:
-            return [text]
-        return chunks
 
 
 class AdChunking(ChunkingStrategy):
@@ -85,17 +68,31 @@ class ProposalChunking(ChunkingStrategy):
         return self.splitter.split_text(text)
 
 
-# Registry — maps content_type to its strategy
-# Add new content types here without touching anything else
+class ScriptChunking(ChunkingStrategy):
+    """
+    Scene- and line-aware chunking for video, audio and presentation scripts.
+    Splits on blank lines between scenes or beats first, then on individual
+    lines, so a speaker's line is not cut away from its cue.
+    """
+    def __init__(self):
+        self.splitter = RecursiveCharacterTextSplitter(
+            chunk_size=600,
+            chunk_overlap=80,
+            separators=["\n\n", "\n", ".", " "]
+        )
+
+    def chunk(self, text: str) -> list[str]:
+        return self.splitter.split_text(text)
+
+
+# Registry — maps content_type to its strategy.
+# Add new content types here and in schema.CONTENT_TYPES.
 CHUNKING_REGISTRY: dict[str, ChunkingStrategy] = {
     "blog":          BlogChunking(),
-    "social":        SocialChunking(),
     "ad":            AdChunking(),
     "proposal":      ProposalChunking(),
+    "script":        ScriptChunking(),
     "press_release": ProposalChunking(),     # section-aware, same structure as proposals
-    "trailer_copy":  AdChunking(),           # short punchy copy, same structure as ads
-    "talent_bio":    BlogChunking(),         # narrative paragraphs
-    "synopsis":      ProposalChunking(),     # long-form sectioned content
 }
 
 _DEFAULT_STRATEGY = BlogChunking()
@@ -105,15 +102,10 @@ def get_chunking_strategy(content_type: str) -> ChunkingStrategy:
     """
     Returns the chunking strategy for the given content type.
     Falls back to BlogChunking for unknown types with a warning.
-
-    Usage:
-        strategy = get_chunking_strategy("blog")
-        chunks = strategy.chunk(doc_content)
     """
     strategy = CHUNKING_REGISTRY.get(content_type)
     if not strategy:
-        import logging
-        logging.getLogger(__name__).warning(
+        logger.warning(
             "No chunking strategy for content type '%s', falling back to default (BlogChunking). "
             "Available types: %s", content_type, list(CHUNKING_REGISTRY.keys())
         )

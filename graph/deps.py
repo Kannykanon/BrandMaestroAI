@@ -2,10 +2,9 @@
 """
 Per-request dependency resolution for graph nodes.
 
-Agent Platform Runtime (LanggraphAgent) builds a graph ONCE when the agent
-is deployed, then reuses that same compiled graph for every subsequent
-`.query(...)` call — it does not rebuild the graph per request the way the
-old `build_graph(search, rag, analyzer, memory)` factory did.
+The graph is compiled without any business scope, so the same compiled graph
+can serve every request rather than being rebuilt around one business the way
+the old `build_graph(search, rag, analyzer, memory)` factory was.
 
 That means `rag`, `analyzer`, and `memory` can no longer be pre-bound via
 functools.partial() with a single business_id/content_type baked in at

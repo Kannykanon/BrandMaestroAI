@@ -65,35 +65,8 @@ celery_app.conf.update(
     }
 )
 
-def _run_pipeline_remote(resource_name: str, initial_state: dict) -> dict:
-    """Runs the pipeline via the agent deployed on Agent Platform Runtime
-    (see deploy/deploy_agent.py). This is the path actually exercised in
-    production/demo — the Researcher -> Writer -> Enforcer -> Deployer
-    loop executes on Google Cloud, not in this worker process."""
-    import vertexai
-    from vertexai import agent_engines
-
-    vertexai.init(
-        project=os.environ["PROJECT_ID"],
-        location=os.getenv("LOCATION", "us-central1"),
-    )
-    remote_app = agent_engines.get(resource_name)
-    return remote_app.query(input=initial_state)
-
-
 def _run_pipeline(initial_state: dict) -> dict:
-    """
-    Routes a generation request to Agent Platform Runtime when
-    AGENT_ENGINE_RESOURCE_NAME is set (production/demo path); otherwise
-    falls back to building and running the LangGraph pipeline in-process
-    (local dev / offline tests, no GCP credentials required).
-    """
-    resource_name = os.getenv("AGENT_ENGINE_RESOURCE_NAME")
-    if resource_name:
-        logger.info("Routing generation through Agent Platform Runtime: %s", resource_name)
-        return _run_pipeline_remote(resource_name, initial_state)
-
-    logger.info("AGENT_ENGINE_RESOURCE_NAME not set - running graph in-process")
+    """Build and run the Researcher -> Writer -> Enforcer -> Deployer graph."""
     import asyncio
 
     from graph.graph import build_graph
@@ -248,9 +221,7 @@ def generate_content(
                 return {"status": "completed", "generation_id": generation_id}
 
         # Token accounting is per-generation, so start from zero and report what
-        # this run actually cost once it finishes. Captured at the Gemini SDK
-        # boundary (see model.install_token_capture) because the pinned
-        # langchain-google-genai drops usage before any callback sees it.
+        # this run actually cost once it finishes (see model.TokenUsage).
         from model import TokenUsage
         TokenUsage.reset()
 

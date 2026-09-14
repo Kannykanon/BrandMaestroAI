@@ -37,7 +37,7 @@ PLANNING INSTRUCTIONS
 3. Ensure the exact sequence of the CLOSING FORMULA is represented in the final bullets.
 4. Integrate the CRITICAL STRUCTURAL PATTERNS where appropriate.
 5. Do NOT write the actual content — just the structural plan (e.g., "Paragraph 1: State the uncomfortable truth about X").
-6. Base every bullet strictly on the SUBJECT MATTER above. Do not reframe it into a different category (e.g. do not turn a TV series into a game, or a product into a service) — match what the SUBJECT MATTER actually describes.
+6. Base every bullet strictly on the SUBJECT MATTER above. Do not reframe it into a different category (e.g. do not turn a software product into a consulting service, or an event into a product launch) — match what the SUBJECT MATTER actually describes.
 7. OUTPUT SHAPE — decide this before outlining: read the REQUESTED DELIVERABLE literally, and look at whether the STRUCTURAL EXAMPLES above are themselves several short, independent items (each usually just a line or two, sometimes numbered or tagged with its own context) rather than one continuous flowing piece.
    - If the REQUESTED DELIVERABLE implies more than one item (e.g. it says "a set", "a series", "options", "variations", "a few", or names a count), OR the STRUCTURAL EXAMPLES are independent short items rather than one flowing piece: plan that many DISTINCT, self-contained items. Each item gets its own short outline entry and must stand alone — it is not a fragment of one long narrative and will not be read next to the others.
    - Otherwise: plan one continuous document, as normal.
@@ -91,14 +91,14 @@ DRAFTING INSTRUCTIONS
    - The RESEARCH is briefing material. It is the set of facts you are allowed to use. It is NOT copy to be pasted, trimmed, or lightly reworded.
    - Take the FACT and discard the source's wording and sentence shape. State it the way THIS brand states things.
    - Never reuse more than 8 consecutive words from the research in a row. A draft that reads like a tidied-up version of the source document has failed, even if every fact in it is correct.
-   - Source documents often contain internal material — strategy notes, positioning rationale, production logistics, audience targeting decisions, instructions to the marketing team. That material is context for YOU. It is not for publication. Use it to decide how to write; never restate it in the output.
+   - Source documents often contain internal material — strategy notes, positioning rationale, operational logistics, audience targeting decisions, instructions to the marketing team. That material is context for YOU. It is not for publication. Use it to decide how to write; never restate it in the output.
    - Ask of every sentence: would the brand actually publish this, or is it a note the brand wrote to itself? Publish only the former.
-   - The uploaded documents are examples of how this brand WRITES. They are not an asset bank. Facts are yours to reuse exactly — a runtime, a date, a name, an award title, a festival, a quotation, a line of the film's dialogue. Everything else is somebody's phrasing, and reproducing it is the failure this rule exists to stop.
+   - The uploaded documents are examples of how this brand WRITES. They are not an asset bank. Facts are yours to reuse exactly — a date, a price, a name, a product or plan name, an award title, a statistic, a quotation. Everything else is somebody's phrasing, and reproducing it is the failure this rule exists to stop.
    - Four shapes get copied most often, so write all four fresh:
      * the "About <company>" block that closes a release — state the same facts in your own sentence
-     * the one-line premise or logline — the plot is a fact, the sentence describing it is not
-     * the credit block — the names and roles are facts, the sentence joining them is yours
-     * card copy on a trailer sheet — the reference shows you how this brand writes a card, not which cards to use
+     * the one-line product description or tagline — what it does is a fact, the sentence describing it is not
+     * the team or credentials block — the names and roles are facts, the sentence joining them is yours
+     * headlines, calls to action and on-screen or spoken lines in a reference ad or script — the reference shows you how this brand writes them, not which ones to use
 
 Write the draft now."""
 

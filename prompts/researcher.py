@@ -40,8 +40,9 @@ Below is raw source material retrieved from the brand's own documents. Documents
 like these mix two very different kinds of information:
 
   PUBLISHABLE — what the brand tells the world:
-    what the thing is, what happens in it, who is in it, when it arrives,
-    what it is about, its genre, format, themes, and creative intent.
+    what the product, service or offer is, what it does, who it is for,
+    who is involved, when it is available, what it costs where stated,
+    its features, benefits, results and the problem it solves.
 
   INTERNAL — what the brand tells itself:
     marketing instructions and directives ("do not oversell X", "avoid
@@ -54,7 +55,7 @@ Rewrite the source material as a clean brief containing ONLY the publishable
 facts. Rules:
 
 1. Keep every publishable fact, with its specifics intact — names, numbers,
-   dates, episode counts, running times, character details, themes.
+   dates, prices, specifications, features, locations, results.
 2. Remove internal material completely. Do not summarize it, soften it, or
    carry it over in different words. If a sentence exists to tell the marketing
    team what to do, it does not belong in the output at all.

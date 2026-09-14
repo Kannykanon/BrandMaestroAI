@@ -4,6 +4,7 @@ from model import LLMSingleton
 from search import SearchPort
 from prompts.researcher import RESEARCH_SUMMARY, PUBLISHABLE_FACTS_FILTER
 from graph.state import GraphState
+from schema import CONTENT_TYPE_LABELS
 from utils.brand_profile import extract_section
 from utils.documents import has_reference_documents
 
@@ -25,7 +26,7 @@ def researcher_node(state: GraphState, search: SearchPort) -> GraphState:
     `rag` and `analyzer` are resolved per call from state["business_id"] /
     state["content_type"] (see graph/deps.py) rather than pre-bound, so this
     node works unchanged whether the graph is compiled fresh per request
-    (local/Celery path) or once at deploy time (Agent Platform Runtime).
+    or compiled once and reused.
 
     Args:
         state:  Current graph state
@@ -116,7 +117,7 @@ def researcher_node(state: GraphState, search: SearchPort) -> GraphState:
             external = LLMSingleton.get().invoke(
                 RESEARCH_SUMMARY.format(
                     topic=topic,
-                    content_type=content_type,
+                    content_type=CONTENT_TYPE_LABELS.get(content_type, content_type),
                     results=raw_results,
                     brand_context=brand_context
                 )

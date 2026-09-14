@@ -106,10 +106,9 @@ def get_trace_callbacks(graph_flow=None, tags=None):
 def log_token_usage_to_opik(label: str = "generation", extra: dict = None) -> dict:
     """Attach the token counts recorded since the last reset to the current Opik trace.
 
-    Token usage is captured at the Gemini SDK boundary (see
-    model.install_token_capture) because the pinned langchain-google-genai
-    drops it before any callback runs. Opik is where those numbers are useful,
-    so this pushes them onto the active span alongside the graph trace.
+    Token usage is recorded by a LangChain callback on every chat model (see
+    model.TokenUsage). Opik is where those numbers are useful, so this pushes
+    them onto the active span alongside the graph trace.
 
     Returns the snapshot either way, so a caller can log or assert on it even
     when Opik is disabled. Fails open like everything else in this module.
