@@ -24,8 +24,6 @@ dist/
 .vercel/
 
 # Large binaries that must not be in the repo
-frontend/cloudflared
-frontend/cloudflared.exe
 *.tar.gz
 
 # Tooling / evaluation caches

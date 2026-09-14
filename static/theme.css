@@ -946,6 +946,11 @@ input, select, textarea, button {
     gap: 12px;
 }
 
+/* An odd card out spans the row rather than leaving a gap beside it. */
+.format-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+}
+
 .format-card {
     background-color: var(--bg-input);
     border: 1px solid var(--border-color);
@@ -1495,6 +1500,7 @@ input:checked + .slider:before {
 
 .profile-selector {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
 }
 

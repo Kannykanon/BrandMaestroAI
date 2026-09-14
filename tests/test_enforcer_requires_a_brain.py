@@ -59,7 +59,7 @@ def enforcer(monkeypatch):
         )
         base = {
             "business_id": "b1",
-            "content_type": "trailer_copy",
+            "content_type": "ad",
             "topic": "a tortoise and a hare run a race",
             "research": "",
             "content": "We observe that certain events capture attention. [Movie Title]",
@@ -100,7 +100,7 @@ class TestAnEmptyBrainIsRefused:
     def test_the_feedback_names_the_actual_problem(self, enforcer):
         feedback = enforcer("")["feedback"]
         assert "NO BRAND BRAIN" in feedback
-        assert "trailer_copy" in feedback, "say which content type has no brain"
+        assert "'ad'" in feedback, "say which content type has no brain"
         assert "doc_role=voice" in feedback, "say how to fix it"
 
     def test_it_does_not_go_back_to_the_writer(self, enforcer):

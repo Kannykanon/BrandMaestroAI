@@ -10,14 +10,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml .
 
+# Optional extras from pyproject.toml, comma-separated, e.g. EXTRAS=offline
+# for the local embedding model.
+ARG EXTRAS=""
+
 # Generous timeout and retries: the dependency set includes several large
 # wheels, and a single slow read from PyPI otherwise fails the whole build.
-RUN pip install --no-cache-dir --prefix=/install     --timeout 120 --retries 10 .
-
-# No embedding model is baked into the image. Retrieval embeddings run on
-# Gemini text-embedding-004 (see embedding_stategy.GoogleEmbedding), so there
-# is nothing local to download. The optional offline fallback lives in the
-# `offline` dependency group and is not installed here.
+RUN if [ -n "$EXTRAS" ]; then TARGET=".[$EXTRAS]"; else TARGET="."; fi     && pip install --no-cache-dir --prefix=/install --timeout 120 --retries 10 "$TARGET"
 
 FROM python:3.11-slim AS runtime
 
@@ -30,8 +29,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /install /usr/local
 
 COPY . .
-
-RUN chmod +x /app/scripts/render_start.sh
 
 # The application modules live at /app and are imported by bare name
 # (`from brand_metrics import ...`). uvicorn finds them because it is invoked

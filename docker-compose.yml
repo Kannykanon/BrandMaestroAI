@@ -6,9 +6,8 @@ services:
 
   postgres:
     image: pgvector/pgvector:pg16
-    # Load the whole .env so provider settings (LLM_PROVIDER, PROJECT_ID,
-    # LOCATION) reach the container. The explicit environment block below
-    # still wins, and overrides the host-specific values.
+    # Load the whole .env so model provider settings and API keys reach the
+    # container. The explicit environment block below still wins.
     env_file:
       - .env
     environment:
@@ -37,30 +36,22 @@ services:
       retries: 5
 
   # ---------------------------------------------------------------------------
-  # Embedding Init (runs once before workers start)
-  # ---------------------------------------------------------------------------
-
-  # ---------------------------------------------------------------------------
   # Application
   # ---------------------------------------------------------------------------
 
   api:
-    build: .
+    build:
+      context: .
+      args:
+        EXTRAS: ${EXTRAS:-}
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
     ports:
       - "8000:8000"
-    # Load the whole .env so provider settings (LLM_PROVIDER, PROJECT_ID,
-    # LOCATION) reach the container. The explicit environment block below
-    # still wins, and overrides the host-specific values.
+    # Load the whole .env so model provider settings and API keys reach the
+    # container. The explicit environment block below still wins.
     env_file:
       - .env
     environment:
-      # `:-` because a vertex_ai deployment authenticates with ADC and sets no
-      # key. Interpolating without a default makes compose warn once per service
-      # even though nothing on that path reads the value, and five spurious
-      # warnings a run train you to ignore the ones that matter. The ai_studio
-      # path still picks the key up from .env when it is set.
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
       POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
@@ -76,18 +67,19 @@ services:
     restart: unless-stopped
 
   worker_generation:
-    build: .
+    build:
+      context: .
+      args:
+        EXTRAS: ${EXTRAS:-}
     command: celery -A celery_task worker --queues generation --concurrency 8 --loglevel info
     deploy:
       replicas: 2
-    # Load the whole .env so provider settings (LLM_PROVIDER, PROJECT_ID,
-    # LOCATION) reach the container. The explicit environment block below
-    # still wins, and overrides the host-specific values.
+    # Load the whole .env so model provider settings and API keys reach the
+    # container. The explicit environment block below still wins.
     env_file:
       - .env
     environment:
       PYTHONPATH: /app
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
       POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
@@ -101,15 +93,16 @@ services:
     restart: unless-stopped
 
   worker_feedback:
-    build: .
+    build:
+      context: .
+      args:
+        EXTRAS: ${EXTRAS:-}
     command: celery -A celery_task worker --queues feedback --concurrency 8 --loglevel info
-    # Load the whole .env so provider settings (LLM_PROVIDER, PROJECT_ID,
-    # LOCATION) reach the container. The explicit environment block below
-    # still wins, and overrides the host-specific values.
+    # Load the whole .env so model provider settings and API keys reach the
+    # container. The explicit environment block below still wins.
     env_file:
       - .env
     environment:
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
       POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
@@ -121,15 +114,16 @@ services:
     restart: unless-stopped
 
   worker_retraining:
-    build: .
+    build:
+      context: .
+      args:
+        EXTRAS: ${EXTRAS:-}
     command: celery -A celery_task worker --queues retraining --concurrency 2 --loglevel info
-    # Load the whole .env so provider settings (LLM_PROVIDER, PROJECT_ID,
-    # LOCATION) reach the container. The explicit environment block below
-    # still wins, and overrides the host-specific values.
+    # Load the whole .env so model provider settings and API keys reach the
+    # container. The explicit environment block below still wins.
     env_file:
       - .env
     environment:
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
       POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
@@ -141,16 +135,17 @@ services:
     restart: unless-stopped
 
   worker_rag:
-    build: .
+    build:
+      context: .
+      args:
+        EXTRAS: ${EXTRAS:-}
     command: celery -A celery_task worker --queues rag_refresh --concurrency 2 --loglevel info
-    # Load the whole .env so provider settings (LLM_PROVIDER, PROJECT_ID,
-    # LOCATION) reach the container. The explicit environment block below
-    # still wins, and overrides the host-specific values.
+    # Load the whole .env so model provider settings and API keys reach the
+    # container. The explicit environment block below still wins.
     env_file:
       - .env
     environment:
       PYTHONPATH: /app
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       PARALLEL_API_KEY: ${PARALLEL_API_KEY}
       POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
@@ -164,13 +159,15 @@ services:
     restart: unless-stopped
 
   flower:
-    build: .
+    build:
+      context: .
+      args:
+        EXTRAS: ${EXTRAS:-}
     command: celery -A celery_task flower --port=5555
     ports:
       - "5555:5555"
-    # Load the whole .env so provider settings (LLM_PROVIDER, PROJECT_ID,
-    # LOCATION) reach the container. The explicit environment block below
-    # still wins, and overrides the host-specific values.
+    # Load the whole .env so model provider settings and API keys reach the
+    # container. The explicit environment block below still wins.
     env_file:
       - .env
     environment:

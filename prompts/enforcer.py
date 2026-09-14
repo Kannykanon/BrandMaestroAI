@@ -26,7 +26,7 @@ WHAT COUNTS AS A SPECIFIC CLAIM (must be verified):
     title) — check whether that exact name appears in the RESEARCH / SOURCE MATERIAL.
     Inventing a person's name and putting words in their mouth is a hallucination even when the
     sentiment is plausible and even when the content otherwise reads as polished and credible.
-    Quoting an UNNAMED role (e.g. "said the studio's Head of Development") is fine if that role
+    Quoting an UNNAMED role (e.g. "said the company's Head of Product") is fine if that role
     is consistent with the source material — the problem is specifically inventing a NAME.
   - Any other specific fact about the CURRENT topic — a name, date, number, or event — that does
     not appear anywhere in the REQUESTED TOPIC or the RESEARCH / SOURCE MATERIAL. Do not
@@ -76,13 +76,13 @@ Go through the content sentence by sentence and ask of each: is this something
 the brand is telling its audience, or something the brand told itself?
 
 Examples of INTERNAL material appearing in published copy (all failures):
-  - "We decided not to oversell the twist" / "we avoided chosen-one comparisons"
+  - "We decided not to lead with price" / "we avoided comparisons to competitor X"
     -> these are marketing directives to the team
-  - "This audience skews slightly older than our typical genre audience"
+  - "This audience skews slightly older than our typical buyer"
     -> audience targeting decision
-  - "Early testing responded better to atmosphere than plot-forward marketing"
+  - "Early testing responded better to outcome messaging than feature lists"
     -> internal research finding
-  - "Production ran to a five-month filming schedule"
+  - "The launch slipped two sprints because of vendor delays"
     -> logistics, unless the brand's own published material routinely includes it
 
 Set publishability to PASS only if every sentence is something the brand would
@@ -237,14 +237,14 @@ BRAND METRICS:
 {metrics}
 
 
-PERMITTED FACTUAL CLAIMS (CLOSED LIST — the ONLY specific numbers, counts, percentages, dates, and named claims this brand is allowed to make. The shape of these varies by brand: client counts and ROI figures for one, viewership numbers or episode counts for another. Judge against what is listed, not against what you expect a brand to cite):
+PERMITTED FACTUAL CLAIMS (CLOSED LIST — the ONLY specific numbers, counts, percentages, dates, and named claims this brand is allowed to make. The shape of these varies by brand: client counts and ROI figures for one, product specifications or customer ratings for another. Judge against what is listed, not against what you expect a brand to cite):
 {permitted_claims}
 
 ═══════════════════════════════════════════════════
 THIS EVALUATION (the specific piece under review)
 ═══════════════════════════════════════════════════
 
-REQUESTED TOPIC (given directly by the requester — this IS the brief, not a claim to verify. Any name, fact, or detail stated or clearly implied by the topic itself is ground truth for this evaluation, even if it doesn't appear in the RESEARCH. RESEARCH may legitimately be scoped to a different piece of source material than the topic — e.g. a content type's reference documents cover a different product/title than the one this topic asks about — that is not a hallucination):
+REQUESTED TOPIC (given directly by the requester — this IS the brief, not a claim to verify. Any name, fact, or detail stated or clearly implied by the topic itself is ground truth for this evaluation, even if it doesn't appear in the RESEARCH. RESEARCH may legitimately be scoped to a different piece of source material than the topic — e.g. a content type's reference documents cover a different product than the one this topic asks about — that is not a hallucination):
 {topic}
 
 RESEARCH / SOURCE MATERIAL FOR THIS SPECIFIC TOPIC (from RAG over uploaded documents or live web search — this is where a fact, name, quote, or event NOT already established by the REQUESTED TOPIC must come from):

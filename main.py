@@ -4,6 +4,11 @@ from contextlib import asynccontextmanager
 
 import redis
 from dotenv import load_dotenv
+
+# Before any application import: modules read provider settings from the
+# environment, and a local run gets them from .env.
+load_dotenv()
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,42 +17,32 @@ from limiter import limiter, RateLimitExceeded
 from model import LLMSingleton
 from routers import users, conversation, document
 
-load_dotenv()
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# Required regardless of which Gemini backend is in use.
+# Required regardless of which model provider is in use.
 REQUIRED_ENV_VARS = ["POSTGRES_URI", "REDIS_URL", "PARALLEL_API_KEY"]
-
-# The credential requirement depends on the backend, so it cannot be a fixed
-# list. On ai_studio an API key is the credential. On vertex_ai there is no key
-# at all: authentication is Application Default Credentials, which come from a
-# service account attached to the host (Compute Engine, Cloud Run) or from a
-# key file named by GOOGLE_APPLICATION_CREDENTIALS. Demanding GOOGLE_API_KEY
-# there fails startup on a correctly configured host.
-REQUIRED_ENV_VARS_BY_PROVIDER = {
-    "ai_studio": ["GOOGLE_API_KEY"],
-    "vertex_ai": ["PROJECT_ID"],
-}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from database import engine, init_db
+    from embedding_stategy import resolve_embedding_provider
 
-    from model import LLM_PROVIDER
-
-    required = REQUIRED_ENV_VARS + REQUIRED_ENV_VARS_BY_PROVIDER.get(LLM_PROVIDER, [])
-    missing = [var for var in required if not os.getenv(var)]
+    # Credentials depend on the selected provider adapter, so each adapter
+    # declares its own.
+    provider = LLMSingleton.provider_class()
+    missing = [var for var in REQUIRED_ENV_VARS if not os.getenv(var)]
+    missing += [f"{var} (for LLM_PROVIDER={provider.name})" for var in provider.missing_env()]
     if missing:
-        raise RuntimeError(
-            f"Missing required env vars for LLM_PROVIDER={LLM_PROVIDER}: {missing}"
-        )
-    logger.info("Startup config OK (LLM_PROVIDER=%s)", LLM_PROVIDER)
+        raise RuntimeError(f"Missing required env vars: {missing}")
+    logger.info(
+        "Startup config OK (LLM_PROVIDER=%s, embeddings=%s)",
+        provider.name, resolve_embedding_provider(),
+    )
 
     app.state.db_engine = engine
     init_db()

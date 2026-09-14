@@ -309,8 +309,8 @@ def enforcer_node(state: GraphState) -> GraphState:
         for word in shouted:
             feedback += f"  - {word}\n"
         feedback += (
-            "\nWrite them in normal case. The brand's capitals belong to its title and "
-            "to lines that stand on their own, not to adjectives you want to stress. "
+            "\nWrite them in normal case. The brand's capitals belong to its names and "
+            "headlines and to lines that stand on their own, not to adjectives you want to stress. "
             "If a point needs emphasis, get it from what the sentence says."
         )
         return {
