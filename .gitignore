@@ -44,3 +44,6 @@ Thumbs.db
 
 # Local agent/session config
 .claude/
+
+# YouTube Automation local file store (YT_STORAGE_PROVIDER=local)
+.yt_storage/

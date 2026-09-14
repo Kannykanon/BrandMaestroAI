@@ -202,6 +202,10 @@ class Generation(Model):
     status:Mapped[str]        = mapped_column(String, default="pending") 
     score:Mapped[float]         = mapped_column(Float, nullable=True)
     content:Mapped[str]       = mapped_column(Text, nullable=True)        
+    # The enforcer's verdict. status='completed' does not imply approval: when
+    # the revision loop runs out of rounds the deployer still saves the last
+    # draft. NULL on rows saved before this column existed.
+    approved:Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     created_at:Mapped[datetime]    = mapped_column(DateTime, default=datetime.utcnow)
     completed_at:Mapped[datetime]  = mapped_column(DateTime, nullable=True)
 
@@ -492,6 +496,9 @@ def init_db():
                     ("reviewer_learning", "use_search", "ALTER TABLE reviewer_learning ADD COLUMN use_search BOOLEAN NOT NULL DEFAULT FALSE"),
                     ("reviewer_learning", "regeneration_depth", "ALTER TABLE reviewer_learning ADD COLUMN regeneration_depth INTEGER NOT NULL DEFAULT 0"),
                     ("brand_documents", "doc_role", "ALTER TABLE brand_documents ADD COLUMN doc_role VARCHAR(20) NOT NULL DEFAULT 'voice'"),
+                    # Nullable with no default: existing rows have no recorded
+                    # verdict, and must not be mistaken for approved ones.
+                    ("generations", "approved", "ALTER TABLE generations ADD COLUMN approved BOOLEAN"),
                 ):
                     exists = conn.execute(text("""
                         SELECT 1

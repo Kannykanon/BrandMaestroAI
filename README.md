@@ -98,6 +98,12 @@ The vector table name includes the dimension, so switching backend starts a fres
 
 ---
 
+## YouTube Automation (in progress)
+
+An optional module that turns approved `script` generations into storytelling videos and publishes them to YouTube. It lives in `youtube/`, has its own tables, routes (`/youtube/...`) and queues, and marketing never depends on it. Design and build order: [docs/youtube-automation.md](docs/youtube-automation.md).
+
+---
+
 ## Stack
 
 | Layer | What |
@@ -234,6 +240,8 @@ prompts/             Prompt templates
 routers/             API endpoints
 utils/               Brand profile parsing and enforcement checks
 static/              Web UI
+youtube/             YouTube Automation (optional; in progress, see docs/)
+docs/                Design documents
 tests/               Test suite
 ```
 

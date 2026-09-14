@@ -23,6 +23,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# YouTube Automation is an optional module. If it cannot even be imported, the
+# app still serves marketing; only the /youtube routes are missing.
+try:
+    from youtube.router import router as youtube_router
+except Exception as _youtube_import_error:
+    youtube_router = None
+    logger.error("YouTube Automation unavailable: %s", _youtube_import_error)
+
 # Required regardless of which model provider is in use.
 REQUIRED_ENV_VARS = ["POSTGRES_URI", "REDIS_URL", "PARALLEL_API_KEY"]
 
@@ -46,6 +54,15 @@ async def lifespan(app: FastAPI):
 
     app.state.db_engine = engine
     init_db()
+
+    # YouTube Automation is optional: its tables are created separately and a
+    # failure here is logged, never raised, so marketing always starts.
+    if youtube_router is not None:
+        try:
+            from youtube.models import init_youtube_tables
+            init_youtube_tables(engine)
+        except Exception as e:
+            logger.error("YouTube Automation setup skipped: %s", e)
     app.state.llm = LLMSingleton.get()
     app.state.redis = redis.from_url(
         os.getenv("REDIS_URL", "redis://redis:6379/0"),
@@ -111,6 +128,8 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 app.include_router(users.router, prefix="/users", tags=["Users"])
 app.include_router(conversation.router, prefix="/conversation", tags=["Conversation"])
 app.include_router(document.router, prefix="/documents", tags=["Documents"])
+if youtube_router is not None:
+    app.include_router(youtube_router, prefix="/youtube", tags=["YouTube Automation"])
 
 
 @app.get("/health", tags=["Health"])
