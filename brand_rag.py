@@ -17,7 +17,7 @@ from tenacity import (
 
 logger = logging.getLogger(__name__)
 
-from embedding_stategy import EmbeddingPort
+from embedding_stategy import EmbeddingProvider
 from chunking_stategy import get_chunking_strategy
 
 @dataclass
@@ -49,7 +49,7 @@ class BrandRAG:
         self,
         business_id: str,
         content_type: str,
-        embedding: EmbeddingPort,
+        embedding: EmbeddingProvider,
         index_ttl_seconds: int = 3600,
         similarity_top_k: int = 5,
     ):

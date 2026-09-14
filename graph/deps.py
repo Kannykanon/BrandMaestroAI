@@ -18,19 +18,7 @@ at graph-build time.
 from brand_rag import BrandRAG
 from brand_metrics import BrandMetricsSQL
 from learning_memory import FeedbackPortSQL
-from embedding_stategy import EmbeddingPort, build_embedding
-
-# Lazily constructed on first real call and reused after that — importing
-# this module (e.g. to monkeypatch resolve_deps in tests) must not trigger
-# loading/downloading the embedding model as a side effect.
-_embedding = None
-
-
-def _get_embedding() -> EmbeddingPort:
-    global _embedding
-    if _embedding is None:
-        _embedding = build_embedding()
-    return _embedding
+from embedding_stategy import EmbeddingSingleton
 
 
 def resolve_deps(business_id: str, content_type: str):
@@ -43,7 +31,7 @@ def resolve_deps(business_id: str, content_type: str):
     rag = BrandRAG(
         business_id=business_id,
         content_type=content_type,
-        embedding=_get_embedding(),
+        embedding=EmbeddingSingleton.get(),
     )
     analyzer = BrandMetricsSQL(
         business_id=business_id,

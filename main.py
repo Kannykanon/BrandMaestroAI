@@ -30,18 +30,18 @@ REQUIRED_ENV_VARS = ["POSTGRES_URI", "REDIS_URL", "PARALLEL_API_KEY"]
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from database import engine, init_db
-    from embedding_stategy import resolve_embedding_provider
+    from embedding_stategy import EmbeddingSingleton
 
-    # Credentials depend on the selected provider adapter, so each adapter
-    # declares its own.
+    # Credentials depend on the selected adapters, so each adapter declares its own.
     provider = LLMSingleton.provider_class()
+    embedding = EmbeddingSingleton.provider_class()
     missing = [var for var in REQUIRED_ENV_VARS if not os.getenv(var)]
     missing += [f"{var} (for LLM_PROVIDER={provider.name})" for var in provider.missing_env()]
+    missing += [f"{var} (for embeddings={embedding.name})" for var in embedding.missing_env()]
     if missing:
         raise RuntimeError(f"Missing required env vars: {missing}")
     logger.info(
-        "Startup config OK (LLM_PROVIDER=%s, embeddings=%s)",
-        provider.name, resolve_embedding_provider(),
+        "Startup config OK (LLM_PROVIDER=%s, embeddings=%s)", provider.name, embedding.name,
     )
 
     app.state.db_engine = engine
