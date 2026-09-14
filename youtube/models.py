@@ -248,16 +248,48 @@ COLUMN_MIGRATIONS = (
 )
 
 
+def add_column_ddl(dialect: str, table: str, column: str, ddl_type: str) -> str:
+    """The ALTER for one column. On Postgres it cannot fail because the column already exists."""
+    if not table.startswith("yt_"):
+        raise ValueError(f"YouTube migrations may only touch yt_ tables, not {table}")
+    if_not_exists = " IF NOT EXISTS" if dialect == "postgresql" else ""
+    return f"ALTER TABLE {table} ADD COLUMN{if_not_exists} {column} {ddl_type}"
+
+
+def _column_names(engine, table: str) -> set[str]:
+    return {c["name"] for c in inspect(engine).get_columns(table)}
+
+
 def _add_missing_columns(engine) -> None:
-    inspector = inspect(engine)
-    with engine.begin() as conn:
-        for table, column, ddl_type in COLUMN_MIGRATIONS:
-            if not table.startswith("yt_"):
-                raise ValueError(f"YouTube migrations may only touch yt_ tables, not {table}")
-            existing = {c["name"] for c in inspector.get_columns(table)}
-            if column not in existing:
-                logger.info("Adding missing '%s' column to '%s'", column, table)
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
+    """Add each missing column in its own transaction.
+
+    The API runs several worker processes that all start at once, so two of
+    them can find the same column missing and both try to add it. On Postgres
+    IF NOT EXISTS makes that harmless; elsewhere a failed ALTER is accepted if
+    the column turns out to exist after all.
+    """
+    for table, column, ddl_type in COLUMN_MIGRATIONS:
+        ddl = add_column_ddl(engine.dialect.name, table, column, ddl_type)
+        if column in _column_names(engine, table):
+            continue
+        logger.info("Adding missing '%s' column to '%s'", column, table)
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(ddl))
+        except Exception:
+            if column not in _column_names(engine, table):
+                raise
+            logger.info("'%s.%s' was added by another process", table, column)
+
+
+def _create_tables(engine) -> None:
+    """Create missing yt_ tables. A concurrent start may create one first; that is not a failure."""
+    try:
+        YTModel.metadata.create_all(engine)
+    except Exception:
+        # create_all checks before creating, so a second pass succeeds if the
+        # only problem was another process creating the same table meanwhile.
+        YTModel.metadata.create_all(engine)
 
 
 def init_youtube_tables(engine) -> bool:
@@ -267,7 +299,7 @@ def init_youtube_tables(engine) -> bool:
     marketing owns.
     """
     try:
-        YTModel.metadata.create_all(engine)
+        _create_tables(engine)
         _add_missing_columns(engine)
         logger.info("YouTube Automation tables ready")
         return True
