@@ -239,7 +239,8 @@ function switchPanel(panelId) {
         'generator': { t: 'Content Synthesizer', s: 'Generate high-fidelity marketing collateral tailored using deep brand voice RAG filters.' },
         'documents': { t: 'Guidelines & Reference Documents', s: 'Manage reference text sources mapped to feed the Brand Memory vectors.' },
         'patterns': { t: 'Active Model Memory & Synapses', s: 'Explore brand-aligned guidelines and restrictions synthesized directly from human review loops.' },
-        'brain': { t: 'Synthesised Brand Brain', s: 'The voice profile extracted from this brand’s own documents, exactly as the writer and enforcer receive it.' }
+        'brain': { t: 'Synthesised Brand Brain', s: 'The voice profile extracted from this brand’s own documents, exactly as the writer and enforcer receive it.' },
+        'youtube': { t: 'YouTube Studio', s: 'Cast characters, voice approved scripts, and build stories for YouTube.' }
     };
 
     document.getElementById('page-title').innerText = titleMap[panelId].t;
@@ -252,6 +253,11 @@ function switchPanel(panelId) {
 
     if (panelId === 'brain') {
         loadBrandBrain('blog');
+    }
+
+    // YouTube Studio lives in static/youtube.js and may be absent.
+    if (panelId === 'youtube' && window.ytStudio) {
+        window.ytStudio.open();
     }
 }
 

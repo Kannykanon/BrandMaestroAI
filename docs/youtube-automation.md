@@ -1,6 +1,6 @@
 # YouTube Automation — Design
 
-**Status:** Draft, agreed in discussion on 2026-09-14. Not yet built.
+**Status:** Agreed 2026-09-14. Phases 0 and 1 built; phases 2–4 not started.
 **Scope:** Turn approved marketing scripts into storytelling videos with a cast of AI characters, and publish them to one YouTube channel.
 
 ---
@@ -134,12 +134,16 @@ A **character** is reusable across stories.
 
 ## 7. Pipeline
 
-### 7.1 Scene planner (LLM)
-- **Input:** script snapshot, format (long-form or Short), cast list.
-- **Output:** an ordered shot list. Each shot has: the exact line text, speaker (NARRATOR or character), shot type, visual description for the image prompt, and the characters present.
-- **Speakers:** marketing scripts may or may not label them (e.g. `MAYA:`). The planner infers speakers when labels are missing, and the user can reassign them.
-- **Word check (in code, not by asking the model):** join all shot texts and compare with the snapshot after normalising whitespace. Any mismatch fails the plan. Same principle as the enforcer's deterministic gates.
-- **Short length check:** estimate duration from word count (and later from real audio length). If it is over the Shorts limit, warn and suggest long-form; never trim words.
+### 7.1 Scene planner
+
+Built in two parts, so the approved text never passes through a model (`youtube/script_parser.py`, `youtube/planner.py`):
+
+1. **Shots, in code.** Every script line is classified by its shape: `LABEL: line` or a speaker cue on its own line is dialogue; `VO:`/`NARRATOR:` and section labels (`HOOK:`, `CTA:`) are narration; scene headings (`INT. …`), `[brackets]`, `(beats)`, markdown headings and `VISUAL:`/`SFX:` labels are directions, shown but never spoken. Inline parentheticals are delivery notes, not speech. Narration is split at sentence ends into shots of about 25 words (8–10 seconds on screen); consecutive lines from one character are one shot. Unlabelled text is the narrator's.
+2. **Annotations, by the model.** The LLM sees the shots by position and returns, per position, a shot type, a visual description and the characters on screen, plus a short description of each speaker. Its output contains no script text. Invalid values fall back to safe defaults per field; a failed call falls back entirely.
+
+- **Word check (in code):** the parsed lines must cover the script exactly, each spoken line's words must appear in order in its source line, and the shots must read exactly the spoken words in order. Any mismatch fails the plan.
+- **Speakers:** the user can reassign who speaks a shot; its words cannot be edited in YouTube Automation.
+- **Short length check:** duration is estimated from word count, then measured from the audio. Over the Shorts limit it warns and suggests long-form; words are never trimmed.
 
 ### 7.2 Shot types
 
@@ -204,12 +208,12 @@ Same pattern as `LLMProvider` / `LLMSingleton`: an abstract port declares `name`
 
 | Port | Interface (sketch) | Adapters (first → alternatives) | Selected by |
 |---|---|---|---|
-| `VoicePort` | `list_voices()`, `synthesize(text, voice_id) -> Audio(bytes, word_timings)` | Local open-source TTS (e.g. Kokoro, runs on CPU) → Google Cloud TTS, ElevenLabs | `YT_VOICE_PROVIDER` |
+| `VoicePort` | `list_voices()`, `synthesize(text, voice_id) -> Audio` (24 kHz mono), `cost_usd(text)` | **Built:** Kokoro-82M (local, CPU, 28 English voices) and Google Cloud TTS. Later: ElevenLabs | `YT_VOICE_PROVIDER` (default for new characters; each character stores its provider) |
 | `ImagePort` | `generate(prompt, reference_images, aspect) -> Image` | Nano Banana 2 (Vertex) → Seedream 4, FLUX.2 Pro | `YT_IMAGE_PROVIDER` |
 | `AvatarPort` | `animate(image, audio) -> Clip`; optional `animate_pair(image, audio_left, audio_right)` | Kling AI Avatar v2 Standard → InfiniteTalk, Hedra Character-3, self-hosted GPU | `YT_AVATAR_PROVIDER` |
 | `ComposerPort` | `render(shots, format) -> Video` | ffmpeg | — |
 | `PublisherPort` | `upload_private(video, metadata)`, `publish(video_id)`, `status(video_id)` | YouTube Data API | — |
-| `StoragePort` | `put(bytes) -> key`, `get(key)`, `signed_url(key)` | Google Cloud Storage → local disk (development) | `YT_STORAGE_PROVIDER` |
+| `StoragePort` | `put(key, bytes)`, `get(key)`, `exists(key)`, `delete(key)`, `url(key)` | **Built:** Google Cloud Storage and local disk | `YT_STORAGE_PROVIDER` |
 
 Each adapter reports its cost per call (per second, image or character) so the budget in §11 comes from real numbers.
 
@@ -317,6 +321,8 @@ Each phase is useful on its own and ends with a working, testable result.
 | **3. Render** | `AvatarPort` (Kling Standard + InfiniteTalk), dialogue cap, captions, ffmpeg composer, budget gate, render worker off the production VM | A previewable MP4 in both formats, with recorded cost |
 | **4. Publish** | Channel connection, private upload with disclosure, publish button, quota-aware queue, metadata step | A video goes from approved script to a published YouTube video with human sign-off |
 
+**Phase 1 as built:** `yt.plan.plan_project` and `yt.media.voice_project` run on an optional `worker_youtube` compose service (profile `youtube`, not started by the deploy workflow). Each shot is voiced to its own WAV and joined into one track with 0.3 s gaps within a speaker and 0.6 s between speakers; only shots without audio are re-voiced, and recasting a speaker discards only that speaker's audio. Voice samples for casting are generated once per provider and shared. The YouTube Studio panel (`static/youtube.js`) covers scripts, characters and projects.
+
 **Before phase 2:** test Nano Banana 2 against Seedream on the same 5-scene storyboard (under $1).
 **Before phase 3:** test Kling Standard, InfiniteTalk and Hedra on the same 20-second dialogue scene (about $3).
 
@@ -341,7 +347,7 @@ Each phase is useful on its own and ends with a working, testable result.
 
 | # | Question |
 |---|---|
-| Q1 | Which local TTS model and voice set gives enough distinct character voices, or is a cloud voice library needed for variety? |
+| Q1 | ~~Which local TTS model?~~ Kokoro-82M, full-precision model: 28 English voices (American and British, male and female), about real time on a 2017 laptop CPU. Its int8 build was ~10× slower there. Revisit if stories need more voice variety. |
 | Q2 | Does the API audit need to be done before one-click publish works, or can a private upload be made public through the API without it? |
 | Q3 | Exact API field for the synthetic-content disclosure on upload. |
 | Q4 | Default `YT_MAX_TALKING_SECONDS` and `YT_AVATAR_BUDGET_USD` values after the first test videos. |

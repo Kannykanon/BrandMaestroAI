@@ -154,6 +154,10 @@
                     <i class="fa-solid fa-brain"></i>
                     <span>Learning Memory</span>
                 </button>
+                <button class="nav-item" onclick="switchPanel('youtube')" id="nav-youtube">
+                    <i class="fa-brands fa-youtube"></i>
+                    <span>YouTube Studio</span>
+                </button>
             </nav>
 
             <div class="sidebar-footer">
@@ -644,10 +648,83 @@
                     </div>
                 </div>
             </section>
+            <!-- PANEL: YOUTUBE STUDIO (optional module, static/youtube.js) -->
+            <section id="panel-youtube" class="dashboard-panel">
+                <div class="memory-header-card">
+                    <div class="memory-card-details">
+                        <h2>YouTube Studio</h2>
+                        <p>Turn approved marketing scripts into voiced stories. Words come from marketing unchanged; to change them, regenerate the script there.</p>
+                    </div>
+                    <div class="profile-selector">
+                        <button class="btn btn-secondary active" id="yt-tab-scripts" onclick="ytStudio.showTab('scripts')">Scripts</button>
+                        <button class="btn btn-secondary" id="yt-tab-characters" onclick="ytStudio.showTab('characters')">Characters</button>
+                        <button class="btn btn-secondary" id="yt-tab-projects" onclick="ytStudio.showTab('projects')">Projects</button>
+                    </div>
+                </div>
+                <div class="yt-notice hidden" id="yt-notice"></div>
+
+                <div class="yt-tab" id="yt-view-scripts">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <div>
+                                <h2><i class="fa-solid fa-scroll"></i> Approved scripts</h2>
+                                <p class="card-subtitle">Only scripts a person approved, or that the enforcer approved and no person rejected.</p>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" onclick="ytStudio.loadScripts()"><i class="fa-solid fa-rotate"></i> <span>Refresh</span></button>
+                        </div>
+                        <div class="documents-table-wrapper"><table class="data-table">
+                            <thead><tr><th>Topic</th><th>Approval</th><th>Words</th><th>Format</th><th></th></tr></thead>
+                            <tbody id="yt-scripts-body"></tbody>
+                        </table></div>
+                    </div>
+                </div>
+
+                <div class="yt-tab hidden" id="yt-view-characters">
+                    <div class="content-card">
+                        <h2><i class="fa-solid fa-user-plus"></i> New character</h2>
+                        <p class="card-subtitle">Each character has its own voice. Faces arrive in the next phase.</p>
+                        <form id="yt-character-form" onsubmit="ytStudio.createCharacter(event)">
+                            <div class="input-row yt-form-row">
+                                <div class="input-group"><label for="yt-char-name">Name</label><input id="yt-char-name" maxlength="100" required placeholder="e.g. Maya"></div>
+                                <div class="input-group"><label for="yt-char-voice">Voice</label><select id="yt-char-voice" required></select></div>
+                                <div class="input-group"><label for="yt-char-notes">Notes (optional)</label><input id="yt-char-notes" maxlength="2000" placeholder="e.g. calm, late 20s"></div>
+                            </div>
+                            <div class="yt-actions">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="ytStudio.previewSelectedVoice()"><i class="fa-solid fa-play"></i> <span>Hear voice</span></button>
+                                <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> <span>Add character</span></button>
+                            </div>
+                        </form>
+                        <p class="field-hint" id="yt-preview-hint"></p>
+                    </div>
+                    <div class="content-card">
+                        <div class="card-header"><h2><i class="fa-solid fa-users"></i> Characters</h2></div>
+                        <div class="documents-table-wrapper"><table class="data-table">
+                            <thead><tr><th>Name</th><th>Voice</th><th>Notes</th><th></th></tr></thead>
+                            <tbody id="yt-characters-body"></tbody>
+                        </table></div>
+                    </div>
+                </div>
+
+                <div class="yt-tab hidden" id="yt-view-projects">
+                    <div class="content-card" id="yt-projects-card">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-clapperboard"></i> Projects</h2>
+                            <button class="btn btn-secondary btn-sm" onclick="ytStudio.loadProjects()"><i class="fa-solid fa-rotate"></i> <span>Refresh</span></button>
+                        </div>
+                        <div class="documents-table-wrapper"><table class="data-table">
+                            <thead><tr><th>Topic</th><th>Format</th><th>Approval</th><th>Status</th><th>Length</th><th></th></tr></thead>
+                            <tbody id="yt-projects-body"></tbody>
+                        </table></div>
+                    </div>
+                    <div class="content-card hidden" id="yt-project-detail"></div>
+                </div>
+                <audio id="yt-player" class="hidden"></audio>
+            </section>
         </main>
     </div>
 
     <!-- Script imports -->
     <script src="/app.js"></script>
+    <script src="/youtube.js"></script>
 </body>
 </html>

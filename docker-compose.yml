@@ -57,6 +57,8 @@ services:
     volumes:
       - ./static:/app/static
       - fastembed_cache:/app/.cache/fastembed
+      # YouTube Automation files when YT_GCS_BUCKET is not set; shared with worker_youtube.
+      - yt_storage:/app/.yt_storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -152,6 +154,31 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # YouTube Automation worker. Optional: it only starts with the "youtube"
+  # profile, and the deploy workflow does not start it, so marketing deploys
+  # are unaffected. Start it with:
+  #   docker compose --profile youtube up -d --build worker_youtube
+  # Concurrency 1 keeps one voice model in memory (~1 GB while voicing).
+  worker_youtube:
+    profiles: ["youtube"]
+    build: .
+    command: celery -A youtube.tasks worker --queues yt_plan,yt_media --concurrency 1 --loglevel info
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /app
+      POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - kokoro_models:/app/.cache/kokoro
+      - yt_storage:/app/.yt_storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   flower:
     build: .
     command: celery -A celery_task flower --port=5555
@@ -174,3 +201,7 @@ volumes:
   # The local embedding model (EMBEDDING_PROVIDER=local), shared by every
   # service and kept across redeploys so it downloads once.
   fastembed_cache:
+  # YouTube Automation: the Kokoro voice model, and files kept on disk when no
+  # storage bucket is configured.
+  kokoro_models:
+  yt_storage:
