@@ -251,3 +251,64 @@ def test_existing_tables_get_new_columns(tmp_path):
     columns = {c["name"] for c in inspect(engine).get_columns("yt_shots")}
     assert {"delivery", "characters"} <= columns
     assert init_youtube_tables(engine), "running again must be harmless"
+
+
+class TestConcurrentStartup:
+    """The API starts several worker processes at once, and each runs the migration."""
+
+    def test_postgres_column_adds_cannot_collide(self):
+        from youtube.models import add_column_ddl
+
+        assert add_column_ddl("postgresql", "yt_shots", "delivery", "TEXT") == \
+            "ALTER TABLE yt_shots ADD COLUMN IF NOT EXISTS delivery TEXT"
+        assert add_column_ddl("sqlite", "yt_shots", "delivery", "TEXT") == \
+            "ALTER TABLE yt_shots ADD COLUMN delivery TEXT"
+        with pytest.raises(ValueError):
+            add_column_ddl("postgresql", "generations", "approved", "BOOLEAN")
+
+    def test_a_column_added_by_another_process_is_not_an_error(self, tmp_path, monkeypatch):
+        import youtube.models as models
+
+        engine = create_engine(f"sqlite:///{tmp_path / 'race.db'}")
+        assert init_youtube_tables(engine)
+
+        # Simulate the race: this process saw the column missing, but another
+        # process added it before this process's ALTER ran.
+        real = models._column_names
+        seen = {"first": True}
+
+        def stale_then_real(eng, table):
+            names = real(eng, table)
+            if table == "yt_shots" and seen["first"]:
+                seen["first"] = False
+                return names - {"delivery"}
+            return names
+
+        monkeypatch.setattr(models, "_column_names", stale_then_real)
+        assert init_youtube_tables(engine) is True
+
+    def test_a_genuine_failure_is_still_reported(self, tmp_path, monkeypatch):
+        import youtube.models as models
+
+        engine = create_engine(f"sqlite:///{tmp_path / 'broken.db'}")
+        assert init_youtube_tables(engine)
+        monkeypatch.setattr(models, "COLUMN_MIGRATIONS", (("yt_shots", "bad", "NOT A TYPE ((("),))
+        assert init_youtube_tables(engine) is False
+
+    def test_a_table_created_by_another_process_is_not_an_error(self, monkeypatch):
+        import youtube.models as models
+
+        engine = create_engine("sqlite://")
+        calls = {"n": 0}
+        real_create_all = models.YTModel.metadata.create_all
+
+        def first_call_loses_the_race(bind, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                real_create_all(bind, **kwargs)
+                raise RuntimeError('relation "yt_projects" already exists')
+            return real_create_all(bind, **kwargs)
+
+        monkeypatch.setattr(models.YTModel.metadata, "create_all", first_call_loses_the_race)
+        assert init_youtube_tables(engine) is True
+        assert calls["n"] == 2
