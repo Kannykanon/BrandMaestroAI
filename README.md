@@ -102,6 +102,12 @@ The vector table name includes the dimension, so switching backend starts a fres
 
 An optional module that turns approved `script` generations into storytelling videos and publishes them to YouTube. It lives in `youtube/`, has its own tables, routes (`/youtube/...`) and queues, and marketing never depends on it. Design and build order: [docs/youtube-automation.md](docs/youtube-automation.md).
 
+Built so far: approved scripts are split into shots without changing a word, characters are cast with voices (Kokoro locally, or Google Cloud TTS), and each script is voiced into a downloadable track, all from the **YouTube Studio** panel. Its worker is not started by default:
+
+```bash
+docker compose --profile youtube up -d --build worker_youtube
+```
+
 ---
 
 ## Stack

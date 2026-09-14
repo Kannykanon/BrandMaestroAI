@@ -11,16 +11,19 @@ from typing import Optional
 
 from sqlalchemy import (
     DECIMAL,
-    MetaData,
+    JSON,
     Boolean,
     DateTime,
     Float,
     ForeignKey,
     Integer,
+    MetaData,
     String,
     Text,
     UniqueConstraint,
     func,
+    inspect,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -126,6 +129,9 @@ class YTProject(YTModel):
     error: Mapped[Optional[str]] = mapped_column(Text)
     estimated_cost_usd: Mapped[Optional[float]] = mapped_column(DECIMAL(10, 4))
     actual_cost_usd: Mapped[Optional[float]] = mapped_column(DECIMAL(10, 4))
+    # The joined voice track for the whole script.
+    audio_key: Mapped[Optional[str]] = mapped_column(String(500))
+    audio_duration_s: Mapped[Optional[float]] = mapped_column(Float)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -141,6 +147,8 @@ class YTCast(YTModel):
     )
     speaker_label: Mapped[str] = mapped_column(String(100), nullable=False)
     character_id: Mapped[Optional[int]] = mapped_column(ForeignKey("yt_characters.id", ondelete="SET NULL"))
+    # The planner's description of this speaker, a hint when casting.
+    description: Mapped[Optional[str]] = mapped_column(Text)
 
     __table_args__ = (UniqueConstraint("project_id", "speaker_label", name="uq_yt_cast_project_speaker"),)
 
@@ -156,6 +164,10 @@ class YTShot(YTModel):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     speaker_label: Mapped[str] = mapped_column(String(100), nullable=False)
     shot_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Delivery notes from the script, e.g. "whispering". Never spoken.
+    delivery: Mapped[Optional[str]] = mapped_column(Text)
+    # Speaker labels of the characters visible in the shot.
+    characters: Mapped[Optional[list]] = mapped_column(JSON)
     visual_prompt: Mapped[Optional[str]] = mapped_column(Text)
     audio_key: Mapped[Optional[str]] = mapped_column(String(500))
     image_key: Mapped[Optional[str]] = mapped_column(String(500))
@@ -224,14 +236,39 @@ class YTCost(YTModel):
     created_at: Mapped[datetime] = _created_at()
 
 
+# Columns added after a table first shipped. create_all() creates missing
+# tables but never alters existing ones, so each is added if absent. Only yt_
+# tables appear here.
+COLUMN_MIGRATIONS = (
+    ("yt_projects", "audio_key", "VARCHAR(500)"),
+    ("yt_projects", "audio_duration_s", "FLOAT"),
+    ("yt_cast", "description", "TEXT"),
+    ("yt_shots", "delivery", "TEXT"),
+    ("yt_shots", "characters", "JSON"),
+)
+
+
+def _add_missing_columns(engine) -> None:
+    inspector = inspect(engine)
+    with engine.begin() as conn:
+        for table, column, ddl_type in COLUMN_MIGRATIONS:
+            if not table.startswith("yt_"):
+                raise ValueError(f"YouTube migrations may only touch yt_ tables, not {table}")
+            existing = {c["name"] for c in inspector.get_columns(table)}
+            if column not in existing:
+                logger.info("Adding missing '%s' column to '%s'", column, table)
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
+
+
 def init_youtube_tables(engine) -> bool:
-    """Create the yt_ tables if they are missing. Never raises.
+    """Create the yt_ tables and add any missing columns. Never raises.
 
     Uses YTModel's own metadata, so this cannot create or alter anything
     marketing owns.
     """
     try:
         YTModel.metadata.create_all(engine)
+        _add_missing_columns(engine)
         logger.info("YouTube Automation tables ready")
         return True
     except Exception as e:

@@ -39,6 +39,12 @@ ENV PYTHONPATH=/app
 # first use. docker-compose mounts a volume here so it survives redeploys.
 ENV FASTEMBED_CACHE_PATH=/app/.cache/fastembed
 
+# YouTube Automation: where the Kokoro voice model is downloaded on first use,
+# and where files are kept when no storage bucket is configured. docker-compose
+# mounts volumes at both so they survive redeploys.
+ENV YT_KOKORO_MODEL_DIR=/app/.cache/kokoro
+ENV YT_LOCAL_STORAGE_PATH=/app/.yt_storage
+
 # PORT is supplied by the host on most PaaS (Render, Fly, Cloud Run); default
 # to 8000 for local runs and docker-compose.
 ENV PORT=8000

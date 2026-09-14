@@ -81,3 +81,133 @@ def test_routes_require_authentication():
     app = FastAPI()
     app.include_router(yt_router.router, prefix="/youtube")
     assert TestClient(app).get("/youtube/scripts").status_code == 401
+
+
+# ---------------------------------------------------------------------------
+#  Projects, characters and audio through the routes (SQLite, fake voice)
+# ---------------------------------------------------------------------------
+from tests.test_youtube_projects import SCRIPT as SCRIPT_TEXT, FakeVoice  # noqa: E402
+
+
+@pytest.fixture
+def api(tmp_path, monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    import youtube.projects as projects
+    import youtube.tasks as tasks
+    from youtube.models import init_youtube_tables
+    from youtube.storage import LocalStorage
+    from youtube.voice import VoiceRegistry
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
+    init_youtube_tables(engine)
+    Session = sessionmaker(bind=engine, expire_on_commit=False)
+
+    monkeypatch.setattr(VoiceRegistry, "_instances", {"fake": FakeVoice()})
+    monkeypatch.setitem(VoiceRegistry.PROVIDERS, "fake", FakeVoice)
+    monkeypatch.setattr(projects, "get_eligible_script",
+                        lambda db, b, g: SCRIPT_OBJ if (b, g) == ("biz-owner", "gen-1") else None)
+    storage = LocalStorage(root=str(tmp_path / "store"))
+    monkeypatch.setattr(StorageSingleton, "_instance", storage)
+
+    queued = []
+
+    class _Task:
+        def __init__(self, name):
+            self.name = name
+
+        def delay(self, *args, **kwargs):
+            queued.append((self.name, args, kwargs))
+            return SimpleNamespace(id=f"task-{len(queued)}")
+
+    for name in ("plan_project", "voice_project", "voice_previews"):
+        monkeypatch.setattr(tasks, name, _Task(name))
+
+    def get_session():
+        session = Session()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app = FastAPI()
+    app.include_router(yt_router.router, prefix="/youtube")
+    owner = SimpleNamespace(business_id="biz-owner")
+    app.dependency_overrides[get_current_user] = lambda: owner
+    app.dependency_overrides[get_db] = get_session
+    return SimpleNamespace(client=TestClient(app), queued=queued, Session=Session, owner=owner,
+                           storage=storage, projects=projects)
+
+
+SCRIPT_OBJ = EligibleScript("gen-1", "The launch", SCRIPT_TEXT, "enforcer", 8.5, None)
+
+
+def test_project_flow_through_the_routes(api):
+    c = api.client
+    project = c.post("/youtube/projects", json={"generation_id": "gen-1", "format": "long_form"}).json()
+    assert project["status"] == "draft" and project["approval"] == "enforcer"
+    pid = project["id"]
+
+    assert c.post(f"/youtube/projects/{pid}/plan").status_code == 202
+    assert api.queued[-1] == ("plan_project", (pid, "biz-owner"), {})
+    assert c.post(f"/youtube/projects/{pid}/plan").status_code == 409, "a second plan is refused while planning"
+
+    # Run the queued planning step directly, as the worker would.
+    with api.Session() as db:
+        p = api.projects.get_project(db, "biz-owner", pid)
+        api.projects.plan_project(db, p, llm=SimpleNamespace(
+            invoke=lambda prompt: SimpleNamespace(content="{}")))
+
+    assert c.post(f"/youtube/projects/{pid}/voice", json={}).status_code == 400, "cannot voice before casting"
+
+    ids = {}
+    for name, voice in (("Narrator", "deep"), ("Maya", "warm"), ("Leo", "bright")):
+        response = c.post("/youtube/characters", json={"name": name, "voice_id": voice, "voice_provider": "fake"})
+        assert response.status_code == 201
+        ids[name.upper()] = response.json()["id"]
+    cast = c.put(f"/youtube/projects/{pid}/cast", json={"assignments": ids}).json()
+    assert cast["status"] == "cast"
+
+    assert c.post(f"/youtube/projects/{pid}/voice", json={"force": False}).status_code == 202
+    assert api.queued[-1] == ("voice_project", (pid, "biz-owner"), {"force": False})
+
+    with api.Session() as db:
+        p = api.projects.get_project(db, "biz-owner", pid)
+        api.projects.voice_project(db, p, api.storage)
+
+    audio = c.get(f"/youtube/projects/{pid}/audio")
+    assert audio.status_code == 200
+    assert audio.headers["content-type"] == "audio/wav"
+    assert audio.content[:4] == b"RIFF"
+    # Local storage cannot sign a link, so the UI is told to download through the API.
+    assert c.get(f"/youtube/projects/{pid}/audio", params={"as_link": "true"}).json() == {"url": None}
+
+    shot_id = c.get(f"/youtube/projects/{pid}").json()["shots"][0]["id"]
+    assert c.get(f"/youtube/projects/{pid}/shots/{shot_id}/audio").status_code == 200
+
+
+def test_projects_of_other_businesses_are_invisible(api):
+    pid = api.client.post("/youtube/projects", json={"generation_id": "gen-1"}).json()["id"]
+    api.owner.business_id = "someone-else"
+    assert api.client.get(f"/youtube/projects/{pid}").status_code == 404
+    assert api.client.post(f"/youtube/projects/{pid}/plan").status_code == 404
+    assert api.client.get("/youtube/projects").json() == {"projects": []}
+
+
+def test_ineligible_script_and_bad_format_are_rejected(api):
+    assert api.client.post("/youtube/projects", json={"generation_id": "nope"}).status_code == 400
+    assert api.client.post("/youtube/projects",
+                           json={"generation_id": "gen-1", "format": "square"}).status_code == 422
+
+
+def test_voices_list_and_previews(api):
+    body = api.client.get("/youtube/voices", params={"provider": "fake"}).json()
+    assert body["provider"] == "fake"
+    assert [v["id"] for v in body["voices"]] == ["warm", "deep", "bright"]
+    assert not any(v["has_preview"] for v in body["voices"])
+    assert api.client.post("/youtube/voices/previews", json={"provider": "fake"}).status_code == 202
+    assert api.client.get("/youtube/voices", params={"provider": "elevenlabs"}).status_code == 400
+    assert api.client.get("/youtube/voices/fake/warm/preview").status_code == 404
