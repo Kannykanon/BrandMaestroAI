@@ -502,6 +502,7 @@ def serialize_project(db: Session, project: YTProject, include_script: bool = Fa
                 "has_image": bool(s.image_key),
                 "image_version": s.image_key.rsplit("/", 1)[-1] if s.image_key else None,
                 "image_error": s.image_error,
+                "image_issues": s.image_issues or [],
             }
             for s in shots
         ],

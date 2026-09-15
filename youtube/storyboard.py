@@ -417,10 +417,26 @@ def scene_references(db: Session, project: YTProject, shot: YTShot, storage: Sto
     return references, characters
 
 
-def draw_shot(db: Session, project: YTProject, shot: YTShot, storage: StoragePort, port: ImagePort) -> GeneratedImage:
+def draw_shot(db: Session, project: YTProject, shot: YTShot, storage: StoragePort, port: ImagePort,
+              checker="default") -> GeneratedImage:
+    """Draw a shot, check it, and redraw it (at most YT_IMAGE_CHECK_RETRIES times) while problems are found."""
+    from youtube.quality import check_retries, scene_checker
+
     references, characters = scene_references(db, project, shot, storage, port)
     style = db.get(YTStyle, project.style_id) if project.style_id else None
-    image = port.generate(scene_prompt(project, shot, style, characters), references, aspect_ratio(project))
+    base_prompt = prompt = scene_prompt(project, shot, style, characters)
+    checker = scene_checker(port.name) if checker == "default" else checker
+    attempts = 1 + (check_retries() if checker else 0)
+    for attempt in range(attempts):
+        if attempt:
+            _record_cost(db, project.id, port)  # the discarded attempt was paid for too
+        image = port.generate(prompt, references, aspect_ratio(project))
+        issues = checker.check(image.data, image.mime_type, characters) if checker else []
+        if not issues:
+            break
+        logger.info("Project %s shot %s image flagged (attempt %s): %s", project.id, shot.position, attempt + 1, issues)
+        prompt = base_prompt + "\nA previous attempt had these problems; avoid them: " + "; ".join(issues) + "."
+    shot.image_issues = issues or None
     key = _store_image(storage, (project.business_id, "projects", str(project.id), "images", f"shot-{shot.position:04d}"),
                        image.data, image.mime_type)
     _delete(storage, shot.image_key)
@@ -526,6 +542,7 @@ def storyboard_summary(db: Session, project: YTProject, shots: list[YTShot]) -> 
     return {
         "style_id": project.style_id,
         "images_done": sum(1 for s in shots if s.image_key),
+        "images_flagged": sum(1 for s in shots if s.image_key and s.image_issues),
         "image_provider": provider,
         "image_provider_configured": configured,
         "estimate_remaining_usd": round(estimate, 2) if estimate is not None else None,

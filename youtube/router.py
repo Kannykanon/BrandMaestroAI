@@ -97,6 +97,8 @@ class MetadataPatch(BaseModel):
 class UploadIn(BaseModel):
     # The person confirms they watched the render. Nothing reaches YouTube without it.
     reviewed: bool = False
+    # Seconds of the render the person played in the app; recorded, not enforced.
+    watched_seconds: Optional[float] = Field(None, ge=0, le=86400)
 
 
 class PublishIn(BaseModel):
@@ -847,7 +849,7 @@ def start_upload(project_id: int, body: UploadIn, db: Db, current_user: CurrentU
 
     project = _project_or_404(db, current_user, project_id)
     try:
-        upload = _publishing().queue_upload(db, project, body.reviewed)
+        upload = _publishing().queue_upload(db, project, body.reviewed, watched_seconds=body.watched_seconds)
     except ValueError as e:
         raise _bad_request(e)
     task = _enqueue(upload_video, upload.id, current_user.business_id)

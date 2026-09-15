@@ -192,10 +192,10 @@ An optional module that turns approved `script` generations into short stories o
 | 2. Plan | The script is split into shots **in code**, so approved words never pass through a model; a word check proves nothing changed. A model only adds shot types and visuals. | — |
 | 3. Cast | Characters with a voice each. On-screen characters get face photos (only after confirming the right to use them) and an approved character sheet. A style lock gives every scene one look. | You |
 | 4. Voice | Each line in its character's voice, joined into one track. | — |
-| 5. Storyboard | One image per shot, drawn from the approved sheets so faces stay consistent. Redraw any shot. | You approve |
+| 5. Storyboard | One image per shot, drawn from the approved sheets so faces stay consistent. Each image is checked automatically (borders in code; text, panels, blurred strips and repeated people by Gemini) and redrawn once if flagged; anything left is marked. Redraw any shot. | You approve |
 | 6. Render | Speaking shots are lip-synced for up to 6 s each; narration plays over the still with a slow pan. Captions are burned in, loudness normalised, thumbnail made. A budget check runs before paying for animation. | You confirm if over budget |
-| 7. YouTube details | Title, description and tags drafted from the script and Brand Brain; category and made-for-kids set by you. | You edit |
-| 8. Upload | Only after you confirm you watched the video. Uploaded **private**, resumable, marked as containing AI-generated content, waits for quota when the day's is used up. | You |
+| 7. YouTube details | Title, description and tags drafted from the script and Brand Brain, then checked for hype, promises, numbers and contact details not in the script, and the brand's banned punctuation. A flagged draft is rewritten once; remaining issues are shown, and edits are checked too. | You edit |
+| 8. Upload | Only after you confirm you watched the video; the app records how much you played and asks again if it was under 80%. Uploaded **private**, resumable, marked as containing AI-generated content, waits for quota when the day's is used up. | You |
 | 9. Publish | Make public now, or schedule. The result is read back from YouTube. | You |
 
 ### Providers (plug and adapter, like `model.py`)
