@@ -2219,3 +2219,17 @@ body {
 .yt-video-poster:focus-visible { outline: 2px solid var(--primary-red); outline-offset: -2px; }
 .yt-video-play { position: absolute; inset: 0; margin: auto; width: 64px; height: 64px; border-radius: 50%; background: rgba(0, 0, 0, 0.6); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 24px; }
 .yt-video-poster:hover .yt-video-play { background: rgba(0, 0, 0, 0.8); }
+
+/* YouTube Studio: publishing */
+.yt-metadata { display: grid; gap: 10px; margin: 8px 0 14px; max-width: 900px; }
+.yt-metadata textarea { width: 100%; resize: vertical; }
+.yt-kids { border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 8px 12px; display: flex; gap: 18px; flex-wrap: wrap; }
+.yt-kids legend { font-size: 12px; color: var(--text-muted); padding: 0 4px; }
+.yt-kids label, .yt-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.yt-upload-box { border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 12px 14px; margin-bottom: 14px; max-width: 900px; display: grid; gap: 10px; }
+.yt-problems { margin: 0; padding-left: 18px; color: var(--text-muted); font-size: 13px; }
+.yt-schedule { background: var(--bg-input); color: inherit; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 4px 6px; color-scheme: dark; }
+.yt-steps { padding-left: 20px; display: grid; gap: 8px; }
+.yt-steps code, #yt-channel-card code { word-break: break-all; }
+#panel-youtube a:not(.btn) { color: var(--accent-red-light); text-decoration: none; }
+#panel-youtube a:not(.btn):hover { text-decoration: underline; }

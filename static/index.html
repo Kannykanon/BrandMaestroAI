@@ -653,13 +653,14 @@
                 <div class="memory-header-card">
                     <div class="memory-card-details">
                         <h2>YouTube Studio</h2>
-                        <p>Turn approved marketing scripts into voiced stories. Words come from marketing unchanged; to change them, regenerate the script there.</p>
+                        <p>Turn approved marketing scripts into stories on your YouTube channel. Words come from marketing unchanged; to change them, regenerate the script there.</p>
                     </div>
                     <div class="profile-selector">
                         <button class="btn btn-secondary active" id="yt-tab-scripts" onclick="ytStudio.showTab('scripts')">Scripts</button>
                         <button class="btn btn-secondary" id="yt-tab-characters" onclick="ytStudio.showTab('characters')">Characters</button>
                         <button class="btn btn-secondary" id="yt-tab-styles" onclick="ytStudio.showTab('styles')">Styles</button>
                         <button class="btn btn-secondary" id="yt-tab-projects" onclick="ytStudio.showTab('projects')">Projects</button>
+                        <button class="btn btn-secondary" id="yt-tab-channel" onclick="ytStudio.showTab('channel')">Channel</button>
                     </div>
                 </div>
                 <div class="yt-notice hidden" id="yt-notice"></div>
@@ -737,6 +738,10 @@
                         </table></div>
                     </div>
                     <div class="content-card hidden" id="yt-project-detail"></div>
+                </div>
+
+                <div class="yt-tab hidden" id="yt-view-channel">
+                    <div class="content-card" id="yt-channel-card"></div>
                 </div>
                 <audio id="yt-player" class="hidden"></audio>
             </section>

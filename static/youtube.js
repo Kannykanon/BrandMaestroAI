@@ -20,8 +20,12 @@
         fileUrls: {},
     };
 
-    const BUSY = new Set(['planning', 'voicing', 'drawing', 'rendering']);
-    const TABS = ['scripts', 'characters', 'styles', 'projects'];
+    const BUSY = new Set(['planning', 'voicing', 'drawing', 'rendering', 'uploading']);
+    const TABS = ['scripts', 'characters', 'styles', 'projects', 'channel'];
+    const UPLOAD_LABELS = {
+        queued: 'queued', waiting_quota: 'waiting for quota', uploading: 'uploading', uploaded: 'private on YouTube',
+        scheduled: 'scheduled', published: 'public', failed: 'failed', cancelled: 'cancelled',
+    };
     const FORMAT_LABELS = { long_form: 'Long-form 16:9', short: 'Short 9:16' };
     const SHOT_TYPES = ['narration', 'dialogue', 'two_character', 'cutaway'];
 
@@ -166,6 +170,7 @@
         if (tab === 'characters') loadCharacters();
         if (tab === 'styles') loadStyles();
         if (tab === 'projects') loadProjects();
+        if (tab === 'channel') loadChannel();
     }
 
     async function open() {
@@ -739,6 +744,180 @@
             </table></div>` : ''}`;
     }
 
+    function localTime(iso) {
+        return iso ? escapeHTML(new Date(iso).toLocaleString()) : '—';
+    }
+
+    function publishSection(p, busy) {
+        const pub = p.publishing;
+        const video = p.video || { renders: [] };
+        if (!pub || !video.renders.length) return '';
+        const m = pub.metadata;
+        const locked = busy || pub.uploads.some(u => ['queued', 'waiting_quota', 'uploading'].includes(u.status));
+        const categories = Object.entries(m.categories)
+            .map(([id, label]) => `<option value="${attr(id)}" ${id === m.category_id ? 'selected' : ''}>${escapeHTML(label)}</option>`)
+            .join('') + (m.categories[m.category_id] ? '' : `<option value="${attr(m.category_id)}" selected>Category ${escapeHTML(m.category_id)}</option>`);
+        const problems = pub.upload_problems || [];
+        const canUpload = !problems.length && !busy;
+        const kids = value => m.made_for_kids === value ? 'checked' : '';
+
+        const uploadRow = u => {
+            const progress = u.status === 'uploading' && u.progress != null ? ` ${Math.round(u.progress * 100)}%` : '';
+            const when = u.status === 'waiting_quota' && u.retry_at ? `<div class="yt-muted">retries ${localTime(u.retry_at)}</div>`
+                : (u.status === 'scheduled' && u.publish_at ? `<div class="yt-muted">goes public ${localTime(u.publish_at)}</div>`
+                    : (u.status === 'published' && u.published_at ? `<div class="yt-muted">${localTime(u.published_at)}</div>` : ''));
+            const onYouTube = ['uploaded', 'scheduled'].includes(u.status);
+            return `
+                <tr>
+                    <td>#${u.id}<div class="yt-muted">render #${u.render_id}</div></td>
+                    <td>${escapeHTML(u.title || '')}${u.error ? `<div class="yt-error">${escapeHTML(u.error)}</div>` : ''}${u.thumbnail_error ? `<div class="yt-muted">Thumbnail: ${escapeHTML(u.thumbnail_error)}</div>` : ''}</td>
+                    <td><span class="output-status ${['queued', 'waiting_quota', 'uploading'].includes(u.status) ? 'running' : ''}">${escapeHTML(UPLOAD_LABELS[u.status] || u.status)}${progress}</span>${when}</td>
+                    <td>${u.watch_url ? `<a href="${attr(u.watch_url)}" target="_blank" rel="noopener">Watch</a> · <a href="${attr(u.studio_url)}" target="_blank" rel="noopener">Studio</a>` : '—'}</td>
+                    <td><div class="yt-actions">
+                        ${onYouTube ? `<button class="btn btn-primary btn-sm" onclick="ytStudio.publishUpload(${p.id}, ${u.id})"><i class="fa-solid fa-globe"></i> <span>Publish now</span></button>
+                            <input type="datetime-local" id="yt-schedule-${u.id}" class="yt-schedule" aria-label="Publish time">
+                            <button class="btn btn-secondary btn-sm" onclick="ytStudio.scheduleUpload(${p.id}, ${u.id})"><i class="fa-regular fa-clock"></i> <span>Schedule</span></button>` : ''}
+                        ${u.youtube_video_id ? `<button class="btn btn-secondary btn-sm" title="Check status on YouTube" onclick="ytStudio.refreshUpload(${p.id}, ${u.id})"><i class="fa-solid fa-rotate"></i></button>` : ''}
+                        ${['queued', 'waiting_quota'].includes(u.status) ? `<button class="btn btn-secondary btn-sm" onclick="ytStudio.cancelUpload(${p.id}, ${u.id})"><span>Cancel</span></button>` : ''}
+                        ${(u.status === 'failed' && !u.youtube_video_id) || u.status === 'waiting_quota' ? `<button class="btn btn-secondary btn-sm" onclick="ytStudio.retryUpload(${p.id}, ${u.id})"><span>Try again</span></button>` : ''}
+                    </div></td>
+                </tr>`;
+        };
+
+        return `
+            <div class="yt-section-title">YouTube ${pub.channel.connected ? `<span class="yt-muted">→ ${escapeHTML(pub.channel.title || 'connected channel')}</span>` : ''}</div>
+            ${pub.channel.connected ? '' : `<p class="yt-muted">No channel connected. <a href="#" onclick="ytStudio.showTab('channel'); return false;">Connect one in the Channel tab</a>.</p>`}
+            <div class="yt-metadata" id="yt-metadata-${p.id}">
+                <div class="input-group">
+                    <label for="yt-meta-title-${p.id}">Title <span class="yt-muted" id="yt-meta-count-${p.id}">${(m.title || '').length}/${m.limits.title}</span></label>
+                    <input id="yt-meta-title-${p.id}" maxlength="${m.limits.title}" value="${attr(m.title || '')}" ${locked ? 'disabled' : ''}
+                        oninput="document.getElementById('yt-meta-count-${p.id}').textContent = this.value.length + '/${m.limits.title}'">
+                </div>
+                <div class="input-group">
+                    <label for="yt-meta-description-${p.id}">Description</label>
+                    <textarea id="yt-meta-description-${p.id}" rows="5" ${locked ? 'disabled' : ''}>${escapeHTML(m.description || '')}</textarea>
+                </div>
+                <div class="input-row yt-form-row">
+                    <div class="input-group">
+                        <label for="yt-meta-tags-${p.id}">Tags (comma-separated)</label>
+                        <input id="yt-meta-tags-${p.id}" value="${attr((m.tags || []).join(', '))}" ${locked ? 'disabled' : ''}>
+                    </div>
+                    <div class="input-group">
+                        <label for="yt-meta-category-${p.id}">Category</label>
+                        <select id="yt-meta-category-${p.id}" ${locked ? 'disabled' : ''}>${categories}</select>
+                    </div>
+                </div>
+                <fieldset class="yt-kids" ${locked ? 'disabled' : ''}>
+                    <legend>Audience (YouTube requires this)</legend>
+                    <label><input type="radio" name="yt-kids-${p.id}" value="no" ${kids(false)}> Not made for kids</label>
+                    <label><input type="radio" name="yt-kids-${p.id}" value="yes" ${kids(true)}> Made for kids</label>
+                </fieldset>
+                <p class="yt-muted"><i class="fa-solid fa-circle-info"></i> Every upload is marked as containing realistic altered or synthetic content, as YouTube requires for AI-generated people and scenes.</p>
+                <div class="yt-actions">
+                    <button class="btn btn-secondary btn-sm" ${locked ? 'disabled' : ''} onclick="ytStudio.draftMetadata(${p.id}, ${m.title ? 'true' : 'false'})"><i class="fa-solid fa-wand-magic-sparkles"></i> <span>Write with AI</span></button>
+                    <button class="btn btn-secondary btn-sm" ${locked ? 'disabled' : ''} onclick="ytStudio.saveMetadata(${p.id})"><i class="fa-regular fa-floppy-disk"></i> <span>Save details</span></button>
+                </div>
+            </div>
+            <div class="yt-upload-box">
+                ${problems.length ? `<ul class="yt-problems">${problems.map(x => `<li>${escapeHTML(x)}</li>`).join('')}</ul>` : ''}
+                <label class="yt-check"><input type="checkbox" id="yt-reviewed-${p.id}" ${canUpload ? '' : 'disabled'}
+                    onchange="document.getElementById('yt-upload-btn-${p.id}').disabled = !this.checked">
+                    I watched the current video and it is ready for YouTube</label>
+                <div class="yt-actions">
+                    <button class="btn btn-primary btn-sm" id="yt-upload-btn-${p.id}" disabled onclick="ytStudio.uploadVideo(${p.id})">
+                        <i class="fa-brands fa-youtube"></i> <span>Upload as private</span></button>
+                    <span class="yt-muted">You publish it after checking it on YouTube.</span>
+                </div>
+            </div>
+            ${pub.uploads.length ? `
+            <div class="documents-table-wrapper"><table class="data-table">
+                <thead><tr><th>Upload</th><th>Title</th><th>Status</th><th>YouTube</th><th></th></tr></thead>
+                <tbody>${pub.uploads.map(uploadRow).join('')}</tbody>
+            </table></div>` : ''}`;
+    }
+
+    // --- Channel ------------------------------------------------------------------
+
+    async function loadChannel() {
+        const card = document.getElementById('yt-channel-card');
+        card.innerHTML = '<p class="yt-muted"><i class="fa-solid fa-spinner fa-spin"></i></p>';
+        try {
+            const ch = await api('/channel');
+            const q = ch.quota;
+            const quotaLine = `<p class="yt-muted">Today’s YouTube quota: ${q.uploads.used}/${q.uploads.limit} uploads · ${q.units.used}/${q.units.limit} API units · resets ${localTime(q.resets_at)}</p>`;
+            const audit = `<p class="yt-warning"><i class="fa-solid fa-triangle-exclamation"></i> Until your Google Cloud project passes YouTube’s API compliance audit, YouTube locks every video uploaded through the API as private, and it cannot be made public even in YouTube Studio. Uploading and reviewing work before the audit.</p>`;
+            let body;
+            if (!ch.configured) {
+                body = `
+                    <p>YouTube sign-in is not set up on this server (missing ${escapeHTML(ch.missing.join(', '))}).</p>
+                    <ol class="yt-steps">
+                        <li>In the Google Cloud console for this project, enable <strong>YouTube Data API v3</strong>.</li>
+                        <li>On the OAuth consent screen, set the publishing status to <strong>In production</strong>. In “Testing”, the sign-in expires after 7 days and uploads stop.</li>
+                        <li>Create an OAuth client of type <strong>Web application</strong> with this authorized redirect URI:<br><code>${escapeHTML(ch.redirect_uri)}</code></li>
+                        <li>Set <code>YT_GOOGLE_CLIENT_ID</code>, <code>YT_GOOGLE_CLIENT_SECRET</code> and <code>YT_OAUTH_REDIRECT_URI</code> in the server’s <code>.env</code>, then restart it.</li>
+                    </ol>`;
+            } else if (!ch.connected) {
+                body = `
+                    <p>Connect the YouTube channel videos are uploaded to. You sign in with Google and allow uploading and managing videos.</p>
+                    <div class="yt-actions"><button class="btn btn-primary btn-sm" onclick="ytStudio.connectChannel()"><i class="fa-brands fa-youtube"></i> <span>Connect YouTube channel</span></button></div>
+                    <p class="yt-muted">Redirect URI registered on the OAuth client must be: <code>${escapeHTML(ch.redirect_uri)}</code></p>`;
+            } else {
+                body = `
+                    <p><i class="fa-brands fa-youtube"></i> <strong><a href="${attr(ch.channel_url)}" target="_blank" rel="noopener">${escapeHTML(ch.channel_title || ch.channel_id)}</a></strong>
+                        <span class="yt-muted">connected ${localTime(ch.connected_at)}</span></p>
+                    ${ch.token_error ? `<p class="yt-error">Google refused the saved sign-in: ${escapeHTML(ch.token_error)}</p>` : ''}
+                    <div class="yt-actions">
+                        ${ch.token_error ? `<button class="btn btn-primary btn-sm" onclick="ytStudio.connectChannel()"><span>Connect again</span></button>` : ''}
+                        <button class="btn btn-secondary btn-sm" onclick="ytStudio.disconnectChannel()"><i class="fa-solid fa-link-slash"></i> <span>Disconnect</span></button>
+                    </div>`;
+            }
+            card.innerHTML = `<h2><i class="fa-brands fa-youtube"></i> YouTube channel</h2>${body}${ch.configured ? quotaLine : ''}${audit}`;
+        } catch (err) {
+            card.innerHTML = `<p class="yt-error">${escapeHTML(err.message)}</p>`;
+        }
+    }
+
+    async function connectChannel() {
+        try {
+            const { url } = await api('/channel/connect', { method: 'POST' });
+            window.location.assign(url);
+        } catch (err) {
+            toastError(err);
+        }
+    }
+
+    async function disconnectChannel() {
+        if (!confirm('Disconnect the YouTube channel? Queued uploads will fail until a channel is connected again. Videos already on YouTube stay there.')) return;
+        try {
+            await api('/channel', { method: 'DELETE' });
+            loadChannel();
+        } catch (err) {
+            toastError(err);
+        }
+    }
+
+    // After Google sign-in the server redirects to /?yt_channel=connected (or =error).
+    function handleChannelReturn() {
+        const params = new URLSearchParams(window.location.search);
+        const outcome = params.get('yt_channel');
+        if (!outcome) return;
+        const message = params.get('yt_message') || 'Connecting the channel failed';
+        history.replaceState(null, '', window.location.pathname + window.location.hash);
+        let tries = 0;
+        const wait = setInterval(() => {
+            tries += 1;
+            if (typeof appState !== 'undefined' && appState.user && typeof switchPanel === 'function') {
+                clearInterval(wait);
+                state.tab = 'channel';
+                switchPanel('youtube');
+                showToast(outcome === 'connected' ? 'YouTube channel connected' : escapeHTML(message),
+                    outcome === 'connected' ? 'success' : 'error');
+            } else if (tries > 150) {
+                clearInterval(wait);
+            }
+        }, 200);
+    }
+
     function renderProject(p) {
         const card = document.getElementById('yt-project-detail');
         const busy = BUSY.has(p.status);
@@ -809,7 +988,8 @@
                     </tr>`).join('')}</tbody>
             </table></div>
             ${renderStoryboard(p, busy)}
-            ${videoSection(p, busy)}` : ''}
+            ${videoSection(p, busy)}
+            ${publishSection(p, busy)}` : ''}
         `;
         hydrateImages(card);
     }
@@ -948,8 +1128,95 @@
         }
     }
 
+    function metadataForm(projectId) {
+        const value = id => document.getElementById(`yt-meta-${id}-${projectId}`).value;
+        const kids = document.querySelector(`input[name="yt-kids-${projectId}"]:checked`);
+        const body = {
+            title: value('title'),
+            description: value('description'),
+            tags: value('tags').split(',').map(t => t.trim()).filter(Boolean),
+            category_id: value('category'),
+        };
+        if (kids) body.made_for_kids = kids.value === 'yes';
+        return body;
+    }
+
+    async function saveMetadata(projectId, quiet = false) {
+        try {
+            renderProject(await api(`/projects/${projectId}/metadata`, { method: 'PATCH', body: JSON.stringify(metadataForm(projectId)) }));
+            if (!quiet) showToast('YouTube details saved', 'success');
+            return true;
+        } catch (err) {
+            toastError(err);
+            return false;
+        }
+    }
+
+    async function draftMetadata(projectId, hasTitle) {
+        if (hasTitle && !confirm('Replace the title, description and tags with a new draft?')) return;
+        try {
+            showToast('Writing the YouTube details…', 'success');
+            renderProject(await api(`/projects/${projectId}/metadata/generate`, { method: 'POST' }));
+        } catch (err) {
+            toastError(err);
+        }
+    }
+
+    async function uploadVideo(projectId) {
+        const reviewed = document.getElementById(`yt-reviewed-${projectId}`).checked;
+        if (!await saveMetadata(projectId, true)) return;
+        try {
+            await api(`/projects/${projectId}/upload`, { method: 'POST', body: JSON.stringify({ reviewed }) });
+            showToast('Uploading to YouTube as private. This page updates as it goes.', 'success');
+            loadProjects();
+        } catch (err) {
+            toastError(err);
+            openProject(projectId);
+        }
+    }
+
+    async function uploadAction(projectId, uploadId, action, body = {}) {
+        try {
+            renderProject(await api(`/projects/${projectId}/uploads/${uploadId}/${action}`, { method: 'POST', body: JSON.stringify(body) }));
+            return true;
+        } catch (err) {
+            toastError(err);
+            openProject(projectId);
+            return false;
+        }
+    }
+
+    async function publishUpload(projectId, uploadId) {
+        if (!confirm('Make this video public on YouTube now?')) return;
+        if (await uploadAction(projectId, uploadId, 'publish')) showToast('The video is public', 'success');
+    }
+
+    async function scheduleUpload(projectId, uploadId) {
+        const input = document.getElementById(`yt-schedule-${uploadId}`);
+        if (!input.value) {
+            showToast('Choose when the video goes public', 'error');
+            return;
+        }
+        const when = new Date(input.value);
+        if (await uploadAction(projectId, uploadId, 'publish', { publish_at: when.toISOString() })) {
+            showToast(`Scheduled for ${escapeHTML(when.toLocaleString())}`, 'success');
+        }
+    }
+
+    function refreshUpload(projectId, uploadId) {
+        uploadAction(projectId, uploadId, 'refresh');
+    }
+
+    function cancelUpload(projectId, uploadId) {
+        uploadAction(projectId, uploadId, 'cancel');
+    }
+
+    async function retryUpload(projectId, uploadId) {
+        if (await uploadAction(projectId, uploadId, 'retry')) loadProjects();
+    }
+
     async function deleteProject(projectId) {
-        if (!confirm('Delete this project with its audio, images and videos? The marketing script is not affected.')) return;
+        if (!confirm('Delete this project with its audio, images and videos? Videos already on YouTube stay there. The marketing script is not affected.')) return;
         try {
             await api(`/projects/${projectId}`, { method: 'DELETE' });
             forgetFiles(`/projects/${projectId}`);
@@ -970,6 +1237,10 @@
         loadProjects, openProject, planProject, voiceProject, castSpeaker, changeSpeaker, deleteProject,
         setProjectStyle, generateStoryboard, changeShotType, redrawShot, approveStoryboard,
         renderVideo, watchRender,
+        loadChannel, connectChannel, disconnectChannel,
+        saveMetadata, draftMetadata, uploadVideo, publishUpload, scheduleUpload, refreshUpload, cancelUpload, retryUpload,
         play, download,
     };
+
+    handleChannelReturn();
 })();

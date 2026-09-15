@@ -1,7 +1,8 @@
 """Celery tasks for YouTube Automation, on the yt_ queues (see youtube/queues.py).
 
-Start a worker with:
-    celery -A youtube.tasks worker --queues yt_plan,yt_media --concurrency 1
+Start workers with:
+    celery -A youtube.tasks worker --queues yt_plan,yt_media,yt_publish --concurrency 1
+    celery -A youtube.tasks worker --queues yt_render --concurrency 1
 """
 import logging
 
@@ -95,6 +96,35 @@ def render_project(project_id: int, business_id: str, confirm_over_budget: bool 
                 "rendering")
 
 
+@celery_app.task(name="yt.publish.upload_video", acks_late=True, soft_time_limit=7200, time_limit=7320)
+def upload_video(upload_id: int, business_id: str):
+    """Upload a queued video as private. When quota is used up, the task schedules itself for after the reset."""
+    from youtube import publishing
+    from youtube.models import YTProject, YTRender, YTUpload
+    from youtube.storage import StorageSingleton
+
+    with get_db_session() as db:
+        upload = db.get(YTUpload, upload_id)
+        render = db.get(YTRender, upload.render_id) if upload else None
+        project = db.get(YTProject, render.project_id) if render else None
+        if project is None or project.business_id != business_id:
+            logger.warning("YouTube upload %s not found for business %s", upload_id, business_id)
+            return {"status": "missing"}
+        if not publishing.claim_upload(db, upload_id):
+            return {"status": "skipped"}  # not due yet, or another worker has it
+        db.refresh(upload)
+        try:
+            outcome = publishing.run_upload(db, upload, StorageSingleton.get())
+        except Exception as e:
+            logger.exception("YouTube upload %s failed", upload_id)
+            db.rollback()
+            upload = db.get(YTUpload, upload_id)
+            outcome = publishing.fail_upload(db, upload, f"Uploading failed: {e}")
+        if outcome.retry_at is not None:
+            upload_video.apply_async((upload_id, business_id), eta=outcome.retry_at)
+        return {"status": outcome.status, "retry_at": outcome.retry_at.isoformat() if outcome.retry_at else None}
+
+
 @celery_app.task(name="yt.media.voice_previews", acks_late=True, soft_time_limit=3600, time_limit=3720)
 def voice_previews(provider: str | None = None, force: bool = False):
     from youtube.storage import StorageSingleton
@@ -104,4 +134,4 @@ def voice_previews(provider: str | None = None, force: bool = False):
 
 
 __all__ = ["celery_app", "plan_project", "voice_project", "voice_previews", "storyboard_project", "character_sheet",
-           "render_project"]
+           "render_project", "upload_video"]

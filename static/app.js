@@ -240,7 +240,7 @@ function switchPanel(panelId) {
         'documents': { t: 'Guidelines & Reference Documents', s: 'Manage reference text sources mapped to feed the Brand Memory vectors.' },
         'patterns': { t: 'Active Model Memory & Synapses', s: 'Explore brand-aligned guidelines and restrictions synthesized directly from human review loops.' },
         'brain': { t: 'Synthesised Brand Brain', s: 'The voice profile extracted from this brand’s own documents, exactly as the writer and enforcer receive it.' },
-        'youtube': { t: 'YouTube Studio', s: 'Cast characters, voice approved scripts, and build stories for YouTube.' }
+        'youtube': { t: 'YouTube Studio', s: 'Cast characters, voice approved scripts, render, and publish stories to YouTube.' }
     };
 
     document.getElementById('page-title').innerText = titleMap[panelId].t;
