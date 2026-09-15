@@ -24,7 +24,24 @@ from youtube.models import YTAsset, YTProject, YTShot
 from youtube.projects import ProjectError
 from youtube.storage import StoragePort, business_key
 
-ASSET_KINDS = ("product", "logo")
+ASSET_KINDS = ("product", "logo", "music")
+AUDIO_TYPES = {"mp3": "audio/mpeg", "wav": "audio/wav", "m4a": "audio/mp4", "ogg": "audio/ogg", "flac": "audio/flac"}
+
+
+def audio_type(data: bytes) -> Optional[str]:
+    """The extension of an audio file, from its first bytes, or None if it is not a supported one."""
+    head = data[:12]
+    if head[:3] == b"ID3" or (len(head) > 1 and head[0] == 0xFF and head[1] & 0xE0 == 0xE0):
+        return "mp3"
+    if head[:4] == b"RIFF" and head[8:12] == b"WAVE":
+        return "wav"
+    if head[4:8] == b"ftyp":
+        return "m4a"
+    if head[:4] == b"OggS":
+        return "ogg"
+    if head[:4] == b"fLaC":
+        return "flac"
+    return None
 MAX_ASSETS = 50
 END_CARD_DEFAULTS = {"enabled": False, "headline": "", "url": "", "logo_asset_id": None,
                      "background": "#111111", "seconds": 3.0}
@@ -55,12 +72,19 @@ def create_asset(db: Session, business_id: str, name: str, kind: str, data: byte
     if db.execute(select(YTAsset.id).where(YTAsset.business_id == business_id, YTAsset.name == name,
                                            YTAsset.kind == kind)).first():
         raise ProjectError(f"A {kind} named {name!r} already exists")
-    try:
-        mime, _, _ = inspect_image(data, wide_ok=kind == "logo")
-    except ValueError as e:
-        raise ProjectError(str(e)) from e
-    from youtube.storyboard import EXTENSIONS
-    key = business_key(business_id, "assets", f"{kind}-{uuid.uuid4().hex[:12]}.{EXTENSIONS.get(mime, 'png')}")
+    if kind == "music":
+        ext = audio_type(data)
+        if ext is None:
+            raise ProjectError("Upload music as MP3, WAV, M4A, OGG or FLAC")
+        mime = AUDIO_TYPES[ext]
+    else:
+        try:
+            mime, _, _ = inspect_image(data, wide_ok=kind == "logo")
+        except ValueError as e:
+            raise ProjectError(str(e)) from e
+        from youtube.storyboard import EXTENSIONS
+        ext = EXTENSIONS.get(mime, "png")
+    key = business_key(business_id, "assets", f"{kind}-{uuid.uuid4().hex[:12]}.{ext}")
     storage.put(key, data, content_type=mime)
     asset = YTAsset(business_id=business_id, name=name, kind=kind, storage_key=key)
     db.add(asset)
@@ -80,6 +104,10 @@ def delete_asset(db: Session, asset: YTAsset, storage: Optional[StoragePort]) ->
             if shot.asset_ids and asset.id in shot.asset_ids:
                 shot.asset_ids = [i for i in shot.asset_ids if i != asset.id]
                 changed = True
+        audio = project.audio or {}
+        if audio.get("music_asset_id") == asset.id:
+            project.audio = {**audio, "music_asset_id": None}
+            projects.settle_status(db, project)
         card = project.end_card or {}
         if card.get("logo_asset_id") == asset.id:
             project.end_card = {**card, "logo_asset_id": None}

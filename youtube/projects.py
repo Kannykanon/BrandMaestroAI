@@ -307,6 +307,7 @@ def plan_project(db: Session, project: YTProject, llm=None, storage: Optional[St
             delivery=shot.delivery or None,
             characters=plan.characters,
             visual_prompt=plan.visual,
+            sound=plan.sound or None,
             status="planned",
         ))
     project.audio_key, project.audio_duration_s = None, None
@@ -456,6 +457,16 @@ def estimated_duration_s(project: YTProject, shots: list[YTShot]) -> float:
     return sum(len(s.text.split()) for s in shots) / SPEECH_WORDS_PER_SECOND
 
 
+def _audio_summary(project: YTProject) -> dict:
+    from youtube.sound import SoundRegistry, audio_settings
+    try:
+        port = SoundRegistry.get()
+        provider = {"sound_provider": port.name, "sound_enabled": port.enabled, "sound_missing": port.missing_env()}
+    except ValueError as e:
+        provider = {"sound_provider": None, "sound_enabled": False, "sound_missing": [str(e)]}
+    return {**audio_settings(project), **provider}
+
+
 def serialize_project(db: Session, project: YTProject, include_script: bool = False) -> dict:
     shots = _shots(db, project)
     cast_rows = _cast(db, project)
@@ -474,6 +485,7 @@ def serialize_project(db: Session, project: YTProject, include_script: bool = Fa
         "topic": project.topic,
         "asset_ids": [p.id for p in products],
         "end_card": serialize_end_card(project),
+        "audio": _audio_summary(project),
         "source_generation_id": project.source_generation_id,
         "approval": project.approval_label,
         "format": project.format,
@@ -509,6 +521,7 @@ def serialize_project(db: Session, project: YTProject, include_script: bool = Fa
                 "image_version": s.image_key.rsplit("/", 1)[-1] if s.image_key else None,
                 "image_error": s.image_error,
                 "image_issues": s.image_issues or [],
+                "sound": s.sound,
                 "asset_ids": s.asset_ids,
                 "products": [p.id for p in shot_products(db, project, s, products)],
             }

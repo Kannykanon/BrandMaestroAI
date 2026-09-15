@@ -60,6 +60,8 @@ class ShotPatch(BaseModel):
     visual: Optional[str] = Field(None, max_length=2000)
     # Products this shot shows; null goes back to matching product names in the line and visual.
     asset_ids: Optional[list[int]] = Field(None, max_length=20)
+    # Ambience under the shot, e.g. "heavy rain, distant thunder"; empty for none.
+    sound: Optional[str] = Field(None, max_length=200)
 
 
 class RightsIn(BaseModel):
@@ -80,6 +82,7 @@ class ProjectPatch(BaseModel):
     style_id: Optional[int] = None
     asset_ids: Optional[list[int]] = Field(None, max_length=20)
     end_card: Optional[dict] = None
+    audio: Optional[dict] = None
 
 
 class StoryboardIn(BaseModel):
@@ -474,6 +477,9 @@ def update_shot(project_id: int, shot_id: int, body: ShotPatch, db: Db, current_
         if "asset_ids" in body.model_fields_set:
             from youtube import brand_assets
             brand_assets.set_shot_products(db, project, shot_id, body.asset_ids)
+        if "sound" in body.model_fields_set:
+            from youtube import sound
+            sound.set_shot_sound(db, project, shot_id, body.sound or "")
     except ValueError as e:
         raise _bad_request(e)
     return p.serialize_project(db, project)
@@ -665,6 +671,9 @@ def update_project(project_id: int, body: ProjectPatch, db: Db, current_user: Cu
             brand_assets.set_project_products(db, project, body.asset_ids or [])
         if "end_card" in fields:
             brand_assets.set_end_card(db, project, body.end_card or {})
+        if "audio" in fields:
+            from youtube import sound
+            sound.set_project_audio(db, project, body.audio or {})
     except ValueError as e:
         raise _bad_request(e)
     return _projects().serialize_project(db, project)
@@ -1015,8 +1024,10 @@ def delete_asset(asset_id: int, db: Db, current_user: CurrentUser):
 @router.get("/assets/{asset_id}/image")
 def asset_image(asset_id: int, db: Db, current_user: CurrentUser, as_link: bool = False):
     asset = _asset_or_404(db, current_user, asset_id)
+    ext = asset.storage_key.rsplit(".", 1)[-1].lower()
+    media_type = _assets().AUDIO_TYPES.get(ext) or _storyboard().mime_for_key(asset.storage_key)
     return _file_response(asset.storage_key, asset.storage_key.rsplit("/", 1)[-1], as_link,
-                          media_type=_storyboard().mime_for_key(asset.storage_key), inline=True)
+                          media_type=media_type, inline=True)
 
 
 @router.get("/projects/{project_id}/end-card/preview")

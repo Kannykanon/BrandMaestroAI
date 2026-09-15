@@ -156,6 +156,8 @@ class YTProject(YTModel):
     # Product assets this video features, and its end card (see youtube/brand_assets.py).
     asset_ids: Mapped[Optional[list]] = mapped_column(JSON)
     end_card: Mapped[Optional[dict]] = mapped_column(JSON)
+    # Music track and bed volumes (see youtube/sound.py).
+    audio: Mapped[Optional[dict]] = mapped_column(JSON)
     video_title: Mapped[Optional[str]] = mapped_column(String(100))
     video_description: Mapped[Optional[str]] = mapped_column(Text)
     video_tags: Mapped[Optional[list]] = mapped_column(JSON)
@@ -203,6 +205,8 @@ class YTShot(YTModel):
     clip_key: Mapped[Optional[str]] = mapped_column(String(500))
     # Why the last image attempt for this shot failed, if it did.
     image_error: Mapped[Optional[str]] = mapped_column(Text)
+    # Ambience under the shot, e.g. "heavy rain, distant thunder"; NULL for none.
+    sound: Mapped[Optional[str]] = mapped_column(String(120))
     # Products this shot shows, chosen by a person; NULL means "those its line or visual names".
     asset_ids: Mapped[Optional[list]] = mapped_column(JSON)
     # Problems the automatic image check still sees after its redraws.
@@ -234,6 +238,8 @@ class YTRender(YTModel):
     avatar_provider: Mapped[Optional[str]] = mapped_column(String(50))
     # The end card this render was made with (NULL for none), to tell when it is out of date.
     end_card: Mapped[Optional[dict]] = mapped_column(JSON)
+    # The music, ambience and volumes this render was mixed with.
+    mix: Mapped[Optional[dict]] = mapped_column(JSON)
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -377,6 +383,9 @@ COLUMN_MIGRATIONS = (
     ("yt_projects", "end_card", "JSON"),
     ("yt_shots", "asset_ids", "JSON"),
     ("yt_renders", "end_card", "JSON"),
+    ("yt_projects", "audio", "JSON"),
+    ("yt_shots", "sound", "VARCHAR(120)"),
+    ("yt_renders", "mix", "JSON"),
 )
 
 

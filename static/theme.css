@@ -2258,3 +2258,7 @@ body {
 /* Make a video from approved content */
 .yt-make-video { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; margin: 14px 0; padding: 14px 16px; border: 1px solid var(--border-color); border-left: 3px solid var(--primary-red); border-radius: var(--border-radius-sm); background: var(--bg-input); }
 .yt-make-video select { background: var(--bg-input); color: inherit; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 4px 6px; }
+/* Sound */
+.yt-music-icon { display: flex; width: 72px; height: 72px; align-items: center; justify-content: center; font-size: 26px; background: var(--bg-input); border-radius: 4px; color: var(--accent-red-light); }
+.yt-sound { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 4px 0; }
+.yt-sound input { flex: 1; background: var(--bg-input); color: inherit; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 4px 6px; font-size: 12px; }

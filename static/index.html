@@ -742,12 +742,12 @@
                     </div>
                     <div class="content-card">
                         <h2><i class="fa-solid fa-box-open"></i> Products &amp; logos</h2>
-                        <p class="card-subtitle">Upload each product photo once, named as scripts call it. Shots that name a product show it, copied from its photo. Logos go on end cards.</p>
+                        <p class="card-subtitle">Upload each product photo once, named as scripts call it. Shots that name a product show it, copied from its photo. Logos go on end cards. Music tracks play under videos; use only music you have the rights to (for example from the YouTube Audio Library).</p>
                         <form id="yt-asset-form" onsubmit="ytStudio.createAsset(event)">
                             <div class="input-row yt-form-row">
                                 <div class="input-group"><label for="yt-asset-name">Name</label><input id="yt-asset-name" maxlength="100" required placeholder="e.g. Crumb Sourdough Loaf"></div>
-                                <div class="input-group"><label for="yt-asset-kind">Kind</label><select id="yt-asset-kind"><option value="product">Product</option><option value="logo">Logo</option></select></div>
-                                <div class="input-group"><label for="yt-asset-file">Image</label><input id="yt-asset-file" type="file" accept="image/jpeg,image/png,image/webp" required></div>
+                                <div class="input-group"><label for="yt-asset-kind">Kind</label><select id="yt-asset-kind"><option value="product">Product</option><option value="logo">Logo</option><option value="music">Music track</option></select></div>
+                                <div class="input-group"><label for="yt-asset-file">Image</label><input id="yt-asset-file" type="file" accept="image/jpeg,image/png,image/webp,audio/mpeg,audio/wav,audio/mp4,audio/ogg,audio/flac,.mp3,.wav,.m4a,.ogg,.flac" required></div>
                             </div>
                             <div class="yt-actions"><button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-upload"></i> <span>Add asset</span></button></div>
                         </form>
