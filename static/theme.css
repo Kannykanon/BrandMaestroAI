@@ -2210,3 +2210,12 @@ body {
 
 #panel-youtube select { background-color: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 4px 6px; max-width: 220px; font: inherit; font-size: 12px; }
 #panel-youtube select option { background-color: var(--bg-input); color: var(--text-primary); }
+
+/* YouTube Studio: rendered video */
+.yt-video { position: relative; max-width: 720px; margin: 0 0 14px; border-radius: var(--border-radius-sm); overflow: hidden; background: #000; aspect-ratio: 16 / 9; }
+.yt-video.short { max-width: 300px; aspect-ratio: 9 / 16; }
+.yt-video video, .yt-video img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.yt-video-poster { all: unset; cursor: pointer; display: block; width: 100%; height: 100%; position: relative; }
+.yt-video-poster:focus-visible { outline: 2px solid var(--primary-red); outline-offset: -2px; }
+.yt-video-play { position: absolute; inset: 0; margin: auto; width: 64px; height: 64px; border-radius: 50%; background: rgba(0, 0, 0, 0.6); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+.yt-video-poster:hover .yt-video-play { background: rgba(0, 0, 0, 0.8); }

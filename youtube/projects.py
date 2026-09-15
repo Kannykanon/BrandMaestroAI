@@ -12,7 +12,8 @@ step that ran, because voicing and storyboarding can happen in either order:
     voiced               the voice track exists
     storyboard_ready     every shot has an image
     storyboard_approved  a person approved the storyboard, with images and audio
-    planning | voicing | drawing   a background step is running
+    rendered             a video was rendered from the storyboard as approved now
+    planning | voicing | drawing | rendering   a background step is running
     failed               the last background step failed (see error)
 
 Any change to what the storyboard shows or says clears its approval.
@@ -39,7 +40,7 @@ SPEECH_WORDS_PER_SECOND = 2.5
 GAP_SAME_SPEAKER_S = 0.3
 GAP_SPEAKER_CHANGE_S = 0.6
 
-BUSY_STATUSES = {"planning", "voicing", "drawing"}
+BUSY_STATUSES = {"planning", "voicing", "drawing", "rendering"}
 
 
 class ProjectError(ValueError):
@@ -234,7 +235,8 @@ def settle_status(db: Session, project: YTProject) -> str:
     elif not cast_ready(db, project):
         status = "planned"
     elif project.storyboard_approved_at and project.audio_key and all(s.image_key for s in shots):
-        status = "storyboard_approved"
+        from youtube.render import latest_render, render_is_current
+        status = "rendered" if render_is_current(latest_render(db, project), project) else "storyboard_approved"
     elif all(s.image_key for s in shots):
         status = "storyboard_ready"
     elif project.audio_key:
@@ -273,7 +275,7 @@ def plan_project(db: Session, project: YTProject, llm=None, storage: Optional[St
     annotations = annotate_shots(shots, project.format, llm=llm)
 
     old = _shots(db, project)
-    _delete_files(storage, [k for s in old for k in (s.audio_key, s.image_key)] + [project.audio_key])
+    _delete_files(storage, [k for s in old for k in (s.audio_key, s.image_key, s.clip_key)] + [project.audio_key])
     for shot in old:
         db.delete(shot)
     db.flush()  # remove the old rows before new ones reuse their positions
@@ -329,9 +331,18 @@ def set_cast(db: Session, project: YTProject, assignments: dict[str, Optional[in
     return project
 
 
+def clear_clip(shot: YTShot) -> None:
+    """A talking clip is made from a shot's audio and image; when either changes, it is stale.
+
+    The file is left for delete_project or the next render of this shot to remove.
+    """
+    shot.clip_provider, shot.clip_duration_s = None, None
+
+
 def _invalidate_audio(db: Session, project: YTProject, shots: list[YTShot]) -> None:
     for shot in shots:
         shot.audio_key, shot.duration_s, shot.status = None, None, "planned"
+        clear_clip(shot)
     project.audio_key, project.audio_duration_s = None, None
 
 
@@ -388,6 +399,7 @@ def voice_project(db: Session, project: YTProject, storage: StoragePort, force: 
         audio = provider.synthesize(shot.text, character.voice_id)
         storage.put(key, audio.to_wav(), content_type="audio/wav")
         shot.audio_key, shot.duration_s, shot.status = key, audio.duration_s, "voiced"
+        clear_clip(shot)
         db.add(YTCost(project_id=project.id, stage="voice", provider=provider.name,
                       units=float(len(shot.text)), unit="character", cost_usd=provider.cost_usd(shot.text)))
         db.commit()  # keep finished shots if a later one fails
@@ -413,7 +425,10 @@ def voice_project(db: Session, project: YTProject, storage: StoragePort, force: 
 def delete_project(db: Session, project: YTProject, storage: Optional[StoragePort]) -> None:
     _require_not_busy(project)
     shots = _shots(db, project)
-    _delete_files(storage, [k for s in shots for k in (s.audio_key, s.image_key)] + [project.audio_key])
+    from youtube.models import YTRender
+    renders = db.execute(select(YTRender).where(YTRender.project_id == project.id)).scalars().all()
+    _delete_files(storage, [k for s in shots for k in (s.audio_key, s.image_key, s.clip_key)]
+                  + [project.audio_key] + [k for r in renders for k in (r.video_key, r.thumbnail_key)])
     db.delete(project)
     db.commit()
 
@@ -477,8 +492,10 @@ def serialize_project(db: Session, project: YTProject, include_script: bool = Fa
         ],
         "created_at": project.created_at.isoformat() if project.created_at else None,
     }
+    from youtube.render import render_summary
     from youtube.storyboard import storyboard_summary
     data["storyboard"] = storyboard_summary(db, project, shots)
+    data["video"] = render_summary(db, project)
     if include_script:
         data["script"] = project.script_snapshot
     return data

@@ -20,7 +20,7 @@
         fileUrls: {},
     };
 
-    const BUSY = new Set(['planning', 'voicing', 'drawing']);
+    const BUSY = new Set(['planning', 'voicing', 'drawing', 'rendering']);
     const TABS = ['scripts', 'characters', 'styles', 'projects'];
     const FORMAT_LABELS = { long_form: 'Long-form 16:9', short: 'Short 9:16' };
     const SHOT_TYPES = ['narration', 'dialogue', 'two_character', 'cutaway'];
@@ -33,8 +33,13 @@
         const response = await fetch(`${API_BASE}/youtube${path}`, { ...options, headers });
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            const detail = Array.isArray(body.detail) ? body.detail.map(d => d.msg).join('; ') : body.detail;
-            throw new Error(detail || `Request failed (${response.status})`);
+            let detail = body.detail;
+            if (Array.isArray(detail)) detail = detail.map(d => d.msg).join('; ');
+            else if (detail && typeof detail === 'object') detail = detail.message;
+            const error = new Error(detail || `Request failed (${response.status})`);
+            error.status = response.status;
+            error.body = body;
+            throw error;
         }
         return response.status === 204 ? null : response.json();
     }
@@ -70,6 +75,11 @@
 
     function money(value) {
         return value == null ? '—' : `$${Number(value).toFixed(2)}`;
+    }
+
+    function formatBytes(bytes) {
+        if (!bytes) return '—';
+        return bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
     }
 
     // Files need the bearer token, which <audio> and <img> cannot send. Ask for
@@ -679,6 +689,56 @@
                 </div>`).join('')}</div>` : ''}`;
     }
 
+    function videoSection(p, busy) {
+        const video = p.video || { renders: [], estimate: {} };
+        const est = video.estimate || {};
+        const sb = p.storyboard;
+        const latest = video.renders[0];
+        const canRender = sb.approved && !busy && !est.error && est.provider_configured;
+        const hint = est.error ? est.error
+            : (!est.provider_configured ? `The avatar provider ${est.avatar_provider} is not configured`
+                : (!sb.approved ? 'Approve the storyboard first' : ''));
+        const animation = est.error ? '' : (est.lip_sync
+            ? `${est.talking_shots} talking shot${est.talking_shots === 1 ? '' : 's'} (${est.talking_seconds}s, up to ${est.max_talking_seconds}s each) animated with ${escapeHTML(est.avatar_provider)}`
+            : 'Talking shots use the still image (no lip sync)');
+        const cost = est.error ? '' : (est.new_clips
+            ? `about ${money(est.avatar_cost_usd)} for ${est.new_clips} new clip${est.new_clips === 1 ? '' : 's'}${est.over_budget ? ` <span class="yt-warning">over the ${money(est.budget_usd)} budget</span>` : ''}`
+            : (est.lip_sync ? 'no new clips to pay for' : 'free'));
+        const renderRow = r => `
+            <tr>
+                <td>#${r.id} ${r.current ? '<span class="badge badge-approved">current</span>' : '<span class="badge badge-neutral" title="The storyboard changed after this render">out of date</span>'}</td>
+                <td>${r.created_at ? escapeHTML(new Date(r.created_at).toLocaleString()) : '—'}</td>
+                <td>${formatSeconds(r.duration_s)}</td>
+                <td>${formatBytes(r.size_bytes)}</td>
+                <td>${escapeHTML(r.avatar_provider || '')}</td>
+                <td><div class="yt-actions">
+                    <button class="btn btn-secondary btn-sm" title="Watch" onclick="ytStudio.watchRender(${p.id}, ${r.id}, ${jsArg(r.version)})"><i class="fa-solid fa-play"></i></button>
+                    <button class="btn btn-secondary btn-sm" title="Download MP4" onclick="ytStudio.download('/projects/${p.id}/renders/${r.id}/video', 'project-${p.id}-render-${r.id}.mp4', ${jsArg(r.version)})"><i class="fa-solid fa-download"></i></button>
+                </div></td>
+            </tr>`;
+
+        return `
+            <div class="yt-section-title">Video ${latest && latest.current ? '<span class="badge badge-approved">rendered</span>' : ''}</div>
+            <p class="yt-muted">${animation}${cost ? ` · ${cost}` : ''}${est.video_seconds ? ` · ${formatSeconds(est.video_seconds)} long` : ''}</p>
+            <div class="yt-actions" style="margin:10px 0 14px">
+                <button class="btn btn-primary btn-sm" ${canRender ? '' : 'disabled'} title="${attr(hint)}"
+                    onclick="ytStudio.renderVideo(${p.id})"><i class="fa-solid fa-film"></i>
+                    <span>${p.status === 'rendering' ? 'Rendering…' : (latest ? 'Render again' : 'Render video')}</span></button>
+                ${p.status === 'rendering' ? '<span class="yt-muted">This takes a few minutes; the page updates when it finishes.</span>' : ''}
+            </div>
+            ${latest ? `
+            <div class="yt-video ${p.format === 'short' ? 'short' : ''}" id="yt-video-${p.id}">
+                <button class="yt-video-poster" title="Watch" onclick="ytStudio.watchRender(${p.id}, ${latest.id}, ${jsArg(latest.version)})">
+                    ${imgTag(`/projects/${p.id}/renders/${latest.id}/thumbnail`, latest.version, 'Video thumbnail')}
+                    <span class="yt-video-play"><i class="fa-solid fa-play"></i></span>
+                </button>
+            </div>
+            <div class="documents-table-wrapper"><table class="data-table">
+                <thead><tr><th>Render</th><th>Made</th><th>Length</th><th>Size</th><th>Avatar</th><th></th></tr></thead>
+                <tbody>${video.renders.map(renderRow).join('')}</tbody>
+            </table></div>` : ''}`;
+    }
+
     function renderProject(p) {
         const card = document.getElementById('yt-project-detail');
         const busy = BUSY.has(p.status);
@@ -748,7 +808,8 @@
                         <td>${s.has_audio ? `<button class="btn btn-secondary btn-sm" title="Play ${formatSeconds(s.duration_s)}" onclick="ytStudio.play('/projects/${p.id}/shots/${s.id}/audio', ${jsArg(s.duration_s)})"><i class="fa-solid fa-play"></i></button>` : ''}</td>
                     </tr>`).join('')}</tbody>
             </table></div>
-            ${renderStoryboard(p, busy)}` : ''}
+            ${renderStoryboard(p, busy)}
+            ${videoSection(p, busy)}` : ''}
         `;
         hydrateImages(card);
     }
@@ -856,8 +917,39 @@
         }
     }
 
+    async function renderVideo(projectId) {
+        const start = confirmOverBudget => api(`/projects/${projectId}/render`, {
+            method: 'POST', body: JSON.stringify({ confirm_over_budget: confirmOverBudget }),
+        });
+        try {
+            try {
+                await start(false);
+            } catch (err) {
+                if (err.status !== 409 || !err.body || !err.body.detail || !err.body.detail.estimate) throw err;
+                if (!confirm(`${err.message}\n\nRender anyway?`)) return;
+                await start(true);
+            }
+            showToast('Rendering started. This page updates when the video is ready.', 'success');
+            loadProjects();
+        } catch (err) {
+            toastError(err);
+        }
+    }
+
+    async function watchRender(projectId, renderId, version) {
+        const holder = document.getElementById(`yt-video-${projectId}`);
+        if (!holder) return;
+        try {
+            const url = await fileUrl(`/projects/${projectId}/renders/${renderId}/video`, version);
+            holder.innerHTML = `<video controls autoplay playsinline src="${attr(url)}"></video>`;
+            holder.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } catch (err) {
+            toastError(err);
+        }
+    }
+
     async function deleteProject(projectId) {
-        if (!confirm('Delete this project with its audio and images? The marketing script is not affected.')) return;
+        if (!confirm('Delete this project with its audio, images and videos? The marketing script is not affected.')) return;
         try {
             await api(`/projects/${projectId}`, { method: 'DELETE' });
             forgetFiles(`/projects/${projectId}`);
@@ -877,6 +969,7 @@
         loadStyles, createStyle, saveStyle, uploadStyleReference, removeStyleReference, deleteStyle,
         loadProjects, openProject, planProject, voiceProject, castSpeaker, changeSpeaker, deleteProject,
         setProjectStyle, generateStoryboard, changeShotType, redrawShot, approveStoryboard,
+        renderVideo, watchRender,
         play, download,
     };
 })();

@@ -52,3 +52,14 @@ EXPOSE 8000
 
 # The FastAPI application object is `app` in main.py.
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
+
+# YouTube Automation render worker: the app plus ffmpeg (with libass for burned-in
+# captions) and the DejaVu font the captions use. Built only when asked for
+# (docker compose's worker_render sets target: render), so the API and marketing
+# workers do not carry ffmpeg.
+FROM runtime AS render
+RUN apt-get update && apt-get install -y --no-install-recommends     ffmpeg     fonts-dejavu-core     && rm -rf /var/lib/apt/lists/*
+
+# The default image. It must stay the last stage: `docker build .` and every
+# compose service without a target build the last stage.
+FROM runtime AS app

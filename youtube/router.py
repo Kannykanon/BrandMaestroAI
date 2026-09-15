@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from auth import get_current_user
 from database import get_db
 from youtube.eligibility import get_eligible_script, list_eligible_scripts
+from youtube.avatar import AvatarRegistry
 from youtube.images import MAX_UPLOAD_BYTES, ImageRegistry
 from youtube.storage import StorageSingleton
 from youtube.voice import VoiceRegistry
@@ -76,6 +77,10 @@ class ProjectPatch(BaseModel):
 
 class StoryboardIn(BaseModel):
     force: bool = False
+
+
+class RenderIn(BaseModel):
+    confirm_over_budget: bool = False
 
 
 class VoiceIn(BaseModel):
@@ -192,10 +197,20 @@ async def youtube_status(current_user: CurrentUser):
     except ValueError as e:
         image_status = {"provider": None, "configured": False, "error": str(e)}
 
+    try:
+        from youtube.media import ffmpeg_available
+        avatar_port = AvatarRegistry.get()
+        avatar_status = {"provider": avatar_port.name, "configured": not avatar_port.missing_env(),
+                         "missing": avatar_port.missing_env(), "lip_sync": avatar_port.lip_sync,
+                         "usd_per_second": avatar_port.usd_per_second, "ffmpeg": ffmpeg_available()}
+    except ValueError as e:
+        avatar_status = {"provider": None, "configured": False, "error": str(e)}
+
     return {
         "storage": storage_status,
         "voice": voice_status,
         "images": image_status,
+        "avatar": avatar_status,
         # Filled in by later phases.
         "channel_connected": False,
     }
@@ -629,3 +644,82 @@ def approve_storyboard(project_id: int, db: Db, current_user: CurrentUser):
     except ValueError as e:
         raise _bad_request(e)
     return _projects().serialize_project(db, project)
+
+
+# ---------------------------------------------------------------------------
+#  Render
+# ---------------------------------------------------------------------------
+def _render():
+    from youtube import render
+    return render
+
+
+@router.get("/projects/{project_id}/render/estimate")
+def render_estimate(project_id: int, db: Db, current_user: CurrentUser):
+    """What rendering would animate and cost, and anything that must be fixed first."""
+    r = _render()
+    project = _project_or_404(db, current_user, project_id)
+    return {**r.estimate(db, project), "problems": r.render_problems(db, project)}
+
+
+@router.post("/projects/{project_id}/render", status_code=status.HTTP_202_ACCEPTED)
+def start_render(project_id: int, body: RenderIn, db: Db, current_user: CurrentUser):
+    """Queue a render. Above the avatar budget, confirm_over_budget must be true."""
+    from youtube.tasks import render_project
+
+    r, p = _render(), _projects()
+    project = _project_or_404(db, current_user, project_id)
+    problems = r.render_problems(db, project)
+    if problems:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="; ".join(problems))
+    cost = r.estimate(db, project)
+    if cost["over_budget"] and not body.confirm_over_budget:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={
+            "message": f"Animating would cost about ${cost['avatar_cost_usd']:.2f}, over the "
+                       f"${cost['budget_usd']:.2f} budget. Confirm to render anyway.",
+            "estimate": cost,
+        })
+    try:
+        p.mark_busy(db, project, "rendering")
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    task = _enqueue(render_project, project.id, current_user.business_id,
+                    confirm_over_budget=body.confirm_over_budget)
+    return {"task_id": task.id, "status": "rendering", "estimate": cost}
+
+
+def _render_or_404(db: Session, project, render_id: int):
+    from youtube.models import YTRender
+
+    render = db.get(YTRender, render_id)
+    if render is None or render.project_id != project.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such render")
+    return render
+
+
+@router.get("/projects/{project_id}/renders/{render_id}/video")
+def render_video(project_id: int, render_id: int, db: Db, current_user: CurrentUser, as_link: bool = False):
+    project = _project_or_404(db, current_user, project_id)
+    render = _render_or_404(db, project, render_id)
+    return _file_response(render.video_key, f"project-{project.id}-render-{render.id}.mp4", as_link,
+                          media_type="video/mp4")
+
+
+@router.get("/projects/{project_id}/renders/{render_id}/thumbnail")
+def render_thumbnail(project_id: int, render_id: int, db: Db, current_user: CurrentUser, as_link: bool = False):
+    project = _project_or_404(db, current_user, project_id)
+    render = _render_or_404(db, project, render_id)
+    return _file_response(render.thumbnail_key, f"project-{project.id}-thumbnail-{render.id}.jpg", as_link,
+                          media_type="image/jpeg", inline=True)
+
+
+@router.get("/projects/{project_id}/shots/{shot_id}/clip")
+def shot_clip(project_id: int, shot_id: int, db: Db, current_user: CurrentUser, as_link: bool = False):
+    from youtube.models import YTShot
+
+    project = _project_or_404(db, current_user, project_id)
+    shot = db.get(YTShot, shot_id)
+    if shot is None or shot.project_id != project.id or not shot.clip_key:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No talking clip for that shot")
+    return _file_response(shot.clip_key, f"project-{project.id}-shot-{shot.position}.mp4", as_link,
+                          media_type="video/mp4", inline=True)
