@@ -198,3 +198,14 @@ class TestWordCheck:
     def test_windows_line_endings(self):
         _, shots = plan_shots("MAYA: Hi.\r\nLEO: Hello.")
         assert [(s.speaker, s.text) for s in shots] == [("MAYA", "Hi."), ("LEO", "Hello.")]
+
+
+def test_ad_copy_labels_are_read_as_narration_not_speakers():
+    from youtube.script_parser import plan_shots
+
+    ad = ("**Headline:** Fresh sourdough, baked at dawn\n"
+          "**Body:** Crumb & Co bakes every loaf by hand.\n"
+          "**CTA:** Order yours today")
+    _, shots = plan_shots(ad)
+    assert {s.speaker for s in shots} == {"NARRATOR"}
+    assert " ".join(s.text for s in shots) == "Fresh sourdough, baked at dawn Crumb & Co bakes every loaf by hand. Order yours today"

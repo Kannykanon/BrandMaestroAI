@@ -614,6 +614,12 @@ async function submitFeedback(e) {
 
         showToast('Feedback submitted! Model alignment retrained.', 'success');
 
+        // Optional: offer to turn an approved script or ad into a video.
+        if (humanApproved && window.ytStudio && typeof window.ytStudio.offerVideo === 'function') {
+            const genRecord = appState.generations.find(g => g.id === generationId);
+            window.ytStudio.offerVideo(generationId, contentType, genRecord ? genRecord.topic : '');
+        }
+
         // Hide feedback container and clear comments
         document.getElementById('feedback-card-container').classList.add('hidden');
         document.getElementById('feedback-comments').value = '';

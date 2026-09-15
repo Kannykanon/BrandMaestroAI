@@ -80,6 +80,7 @@ flowchart TD
 
 **3. Approve it** (content writing, then the handoff)
 - A person approves or rejects the script. A rejection can regenerate it, and the feedback teaches future drafts.
+- Approving a **Script** or an **Ad** shows a **Make a video** button: pick Short or Long-form and it creates the YouTube Studio project and plans its shots. Ads are read as narration (Headline, Body and CTA labels are not spoken as names).
 - **YouTube Studio → Scripts** lists every script a person approved, and every script the Enforcer approved and no person rejected. Each is labelled with which kind it is.
 - Creating a project takes a **snapshot**: later edits or deletions in content writing never change a video in progress, and deleting a video project never touches the script.
 

@@ -80,7 +80,7 @@ def test_listing_query_scopes_to_business_scripts_and_completed():
     sql = str(eligible_scripts_query("biz-1").compile(
         dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
     assert "generations.business_id = 'biz-1'" in sql
-    assert "generations.content_type = 'script'" in sql
+    assert "generations.content_type IN ('script', 'ad')" in sql
     assert "generations.status = 'completed'" in sql
     assert "LEFT OUTER JOIN reviewer_learning" in sql
     assert "reviewer_learning.human_approved IS true" in sql
@@ -108,3 +108,12 @@ def test_row_conversion_drops_ineligible_or_empty_rows():
     assert _to_eligible(_generation(approved=None), None) is None
     assert _to_eligible(_generation(), False) is None
     assert _to_eligible(_generation(content="   "), True) is None
+
+
+def test_ads_are_eligible_and_say_so():
+    from youtube.eligibility import _to_eligible
+
+    ad = _generation(content_type="ad", content="**Headline:** Fresh bread")
+    summary = _to_eligible(ad, True).to_summary()
+    assert summary["content_type"] == "ad" and summary["approval"] == "human"
+    assert _to_eligible(_generation(), None).content_type == "script"

@@ -25,6 +25,8 @@ from sqlalchemy.orm import Session
 from youtube.models import APPROVAL_ENFORCER, APPROVAL_HUMAN
 
 SCRIPT_CONTENT_TYPE = "script"
+# Content types that can become a video: scripts, and ads (read as narration).
+VIDEO_CONTENT_TYPES = (SCRIPT_CONTENT_TYPE, "ad")
 
 
 def approval_label(human_approved: Optional[bool], enforcer_approved: Optional[bool]) -> Optional[str]:
@@ -54,6 +56,7 @@ class EligibleScript:
     label: str
     score: Optional[float]
     completed_at: Optional[datetime]
+    content_type: str = SCRIPT_CONTENT_TYPE
 
     @property
     def word_count(self) -> int:
@@ -64,6 +67,7 @@ class EligibleScript:
             "generation_id": self.generation_id,
             "topic": self.topic,
             "approval": self.label,
+            "content_type": self.content_type,
             "score": float(self.score) if self.score is not None else None,
             "word_count": self.word_count,
             "preview": self.content[:preview_chars],
@@ -79,7 +83,7 @@ def eligible_scripts_query(business_id: str):
         .outerjoin(ReviewerLearning, ReviewerLearning.generation_id == Generation.generation_id)
         .where(
             Generation.business_id == business_id,
-            Generation.content_type == SCRIPT_CONTENT_TYPE,
+            Generation.content_type.in_(VIDEO_CONTENT_TYPES),
             Generation.status == "completed",
             Generation.content.is_not(None),
             eligibility_condition(Generation, ReviewerLearning),
@@ -101,6 +105,7 @@ def _to_eligible(generation, human_approved) -> Optional[EligibleScript]:
         label=label,
         score=generation.score,
         completed_at=generation.completed_at,
+        content_type=getattr(generation, "content_type", SCRIPT_CONTENT_TYPE),
     )
 
 
