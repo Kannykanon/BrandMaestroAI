@@ -55,6 +55,9 @@ dependencies = [
     # YouTube Automation voices (youtube/voice.py).
     "kokoro-onnx>=0.6.1",
     "google-cloud-texttospeech>=2.16",
+    # YouTube Automation images (youtube/images.py).
+    "google-genai>=1.30",
+    "pillow>=10.4",
     "psycopg2-binary>=2.9.12",
     "structlog>=25.5.0",
     "parallel-web>=1.3.0,<2.0.0",

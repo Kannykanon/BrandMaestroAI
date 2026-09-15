@@ -54,6 +54,37 @@ def voice_project(project_id: int, business_id: str, force: bool = False):
                 "voicing")
 
 
+@celery_app.task(name="yt.media.storyboard_project", acks_late=True, soft_time_limit=3600, time_limit=3720)
+def storyboard_project(project_id: int, business_id: str, force: bool = False, shot_ids: list | None = None):
+    from youtube import storyboard
+
+    return _run(project_id, business_id,
+                lambda db, project, storage: storyboard.generate_storyboard(
+                    db, project, storage, force=force, shot_ids=shot_ids),
+                "drawing")
+
+
+@celery_app.task(name="yt.media.character_sheet", acks_late=True, soft_time_limit=600, time_limit=660)
+def character_sheet(character_id: int, business_id: str):
+    from youtube import projects, storyboard
+    from youtube.storage import StorageSingleton
+
+    with get_db_session() as db:
+        character = projects.get_character(db, business_id, character_id)
+        if character is None:
+            return {"status": "missing"}
+        try:
+            storyboard.generate_sheet(db, character, StorageSingleton.get())
+            return {"status": "ready"}
+        except Exception as e:
+            logger.exception("Character sheet failed for character %s", character_id)
+            db.rollback()
+            character = projects.get_character(db, business_id, character_id)
+            if character is not None:
+                storyboard.fail_sheet(db, character, f"Sheet generation failed: {e}")
+            return {"status": "failed", "error": str(e)}
+
+
 @celery_app.task(name="yt.media.voice_previews", acks_late=True, soft_time_limit=3600, time_limit=3720)
 def voice_previews(provider: str | None = None, force: bool = False):
     from youtube.storage import StorageSingleton
@@ -62,4 +93,4 @@ def voice_previews(provider: str | None = None, force: bool = False):
     return generate_previews(StorageSingleton.get(), provider, force=force)
 
 
-__all__ = ["celery_app", "plan_project", "voice_project", "voice_previews"]
+__all__ = ["celery_app", "plan_project", "voice_project", "voice_previews", "storyboard_project", "character_sheet"]

@@ -35,6 +35,7 @@ PROJECT_STATUSES = (
     "planned",
     "cast",
     "voiced",
+    "drawing",
     "storyboard_ready",
     "storyboard_approved",
     "animated",
@@ -80,6 +81,8 @@ class YTCharacter(YTModel):
     rights_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # none | generating | ready | approved | failed
     sheet_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="none")
+    # Why the last character sheet attempt failed, if it did.
+    sheet_error: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (UniqueConstraint("business_id", "name", name="uq_yt_characters_business_name"),)
@@ -132,6 +135,8 @@ class YTProject(YTModel):
     # The joined voice track for the whole script.
     audio_key: Mapped[Optional[str]] = mapped_column(String(500))
     audio_duration_s: Mapped[Optional[float]] = mapped_column(Float)
+    # When a person approved the storyboard. Cleared by any change to it.
+    storyboard_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -172,6 +177,8 @@ class YTShot(YTModel):
     audio_key: Mapped[Optional[str]] = mapped_column(String(500))
     image_key: Mapped[Optional[str]] = mapped_column(String(500))
     clip_key: Mapped[Optional[str]] = mapped_column(String(500))
+    # Why the last image attempt for this shot failed, if it did.
+    image_error: Mapped[Optional[str]] = mapped_column(Text)
     duration_s: Mapped[Optional[float]] = mapped_column(Float)
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
 
@@ -245,6 +252,9 @@ COLUMN_MIGRATIONS = (
     ("yt_cast", "description", "TEXT"),
     ("yt_shots", "delivery", "TEXT"),
     ("yt_shots", "characters", "JSON"),
+    ("yt_projects", "storyboard_approved_at", "TIMESTAMP WITH TIME ZONE"),
+    ("yt_shots", "image_error", "TEXT"),
+    ("yt_characters", "sheet_error", "TEXT"),
 )
 
 

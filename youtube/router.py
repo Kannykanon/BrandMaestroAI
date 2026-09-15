@@ -6,13 +6,14 @@ reports progress.
 """
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
 from youtube.eligibility import get_eligible_script, list_eligible_scripts
+from youtube.images import MAX_UPLOAD_BYTES, ImageRegistry
 from youtube.storage import StorageSingleton
 from youtube.voice import VoiceRegistry
 
@@ -50,7 +51,31 @@ class CastIn(BaseModel):
 
 
 class ShotPatch(BaseModel):
-    speaker: str = Field(..., min_length=1, max_length=100)
+    speaker: Optional[str] = Field(None, min_length=1, max_length=100)
+    shot_type: Optional[str] = None
+    visual: Optional[str] = Field(None, max_length=2000)
+
+
+class RightsIn(BaseModel):
+    confirmed: bool
+
+
+class StyleIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    prompt: str = Field(..., min_length=1, max_length=2000)
+
+
+class StylePatch(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    prompt: Optional[str] = Field(None, min_length=1, max_length=2000)
+
+
+class ProjectPatch(BaseModel):
+    style_id: Optional[int] = None
+
+
+class StoryboardIn(BaseModel):
+    force: bool = False
 
 
 class VoiceIn(BaseModel):
@@ -81,8 +106,9 @@ def _project_or_404(db: Session, user, project_id: int):
     return project
 
 
-def _audio_response(key: str, filename: str, as_link: bool = False):
-    """Stream an audio file, or with as_link return {"url": ...} for the browser to load directly.
+def _file_response(key: str, filename: str, as_link: bool = False, media_type: str = "audio/wav",
+                   inline: bool = False):
+    """Stream a stored file, or with as_link return {"url": ...} for the browser to load directly.
 
     Browsers cannot attach the bearer token to an <audio> element, and a
     redirect to a storage bucket would need CORS on the bucket. So the UI asks
@@ -93,7 +119,7 @@ def _audio_response(key: str, filename: str, as_link: bool = False):
     if as_link:
         try:
             if not storage.exists(key):
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file is missing")
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File is missing")
             return {"url": storage.url(key)}
         except HTTPException:
             raise
@@ -102,9 +128,37 @@ def _audio_response(key: str, filename: str, as_link: bool = False):
     try:
         data = storage.get(key)
     except FileNotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file is missing")
-    return Response(content=data, media_type="audio/wav",
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File is missing")
+    disposition = "inline" if inline else "attachment"
+    return Response(content=data, media_type=media_type,
+                    headers={"Content-Disposition": f'{disposition}; filename="{filename}"'})
+
+
+async def _read_upload(file: UploadFile) -> bytes:
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                            detail=f"Images can be at most {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
+    return data
+
+
+def _storyboard():
+    from youtube import storyboard
+    return storyboard
+
+
+def _character_or_404(db: Session, user, character_id: int):
+    character = _projects().get_character(db, user.business_id, character_id)
+    if character is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such character")
+    return character
+
+
+def _style_or_404(db: Session, user, style_id: int):
+    style = _storyboard().get_style(db, user.business_id, style_id)
+    if style is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such style")
+    return style
 
 
 def _enqueue(task, *args, **kwargs):
@@ -131,9 +185,17 @@ async def youtube_status(current_user: CurrentUser):
     except ValueError as e:
         voice_status = {"default_provider": None, "error": str(e)}
 
+    try:
+        image_port = ImageRegistry.get()
+        image_status = {"provider": image_port.name, "configured": not image_port.missing_env(),
+                        "missing": image_port.missing_env(), "usd_per_image": image_port.cost_usd()}
+    except ValueError as e:
+        image_status = {"provider": None, "configured": False, "error": str(e)}
+
     return {
         "storage": storage_status,
         "voice": voice_status,
+        "images": image_status,
         # Filled in by later phases.
         "channel_connected": False,
     }
@@ -203,7 +265,7 @@ def voice_preview(provider: str, voice_id: str, current_user: CurrentUser, as_li
         key = preview_key(provider, voice_id)
     except ValueError as e:
         raise _bad_request(e)
-    return _audio_response(key, f"{voice_id}.wav", as_link)
+    return _file_response(key, f"{voice_id}.wav", as_link)
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +274,7 @@ def voice_preview(provider: str, voice_id: str, current_user: CurrentUser, as_li
 @router.get("/characters")
 def list_characters(db: Db, current_user: CurrentUser):
     p = _projects()
-    return {"characters": [p.serialize_character(c) for c in p.list_characters(db, current_user.business_id)]}
+    return {"characters": [p.serialize_character(c, db) for c in p.list_characters(db, current_user.business_id)]}
 
 
 @router.post("/characters", status_code=status.HTTP_201_CREATED)
@@ -317,11 +379,14 @@ def set_cast(project_id: int, body: CastIn, db: Db, current_user: CurrentUser):
 
 @router.patch("/projects/{project_id}/shots/{shot_id}")
 def update_shot(project_id: int, shot_id: int, body: ShotPatch, db: Db, current_user: CurrentUser):
-    """Change who speaks a shot. The words cannot be edited here: that happens in marketing."""
+    """Change who speaks a shot, its type, or what it shows. Its words cannot be edited here."""
     p = _projects()
     project = _project_or_404(db, current_user, project_id)
     try:
-        p.reassign_speaker(db, project, shot_id, body.speaker)
+        if body.speaker is not None:
+            p.reassign_speaker(db, project, shot_id, body.speaker)
+        if body.shot_type is not None or body.visual is not None:
+            _storyboard().update_shot(db, project, shot_id, visual=body.visual, shot_type=body.shot_type)
     except ValueError as e:
         raise _bad_request(e)
     return p.serialize_project(db, project)
@@ -349,7 +414,7 @@ def project_audio(project_id: int, db: Db, current_user: CurrentUser, as_link: b
     project = _project_or_404(db, current_user, project_id)
     if not project.audio_key:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This project has not been voiced yet")
-    return _audio_response(project.audio_key, f"project-{project.id}-voice.wav", as_link)
+    return _file_response(project.audio_key, f"project-{project.id}-voice.wav", as_link)
 
 
 @router.get("/projects/{project_id}/shots/{shot_id}/audio")
@@ -360,4 +425,207 @@ def shot_audio(project_id: int, shot_id: int, db: Db, current_user: CurrentUser,
     shot = db.get(YTShot, shot_id)
     if shot is None or shot.project_id != project.id or not shot.audio_key:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No audio for that shot")
-    return _audio_response(shot.audio_key, f"project-{project.id}-shot-{shot.position}.wav", as_link)
+    return _file_response(shot.audio_key, f"project-{project.id}-shot-{shot.position}.wav", as_link)
+
+
+# ---------------------------------------------------------------------------
+#  Faces and character sheets
+# ---------------------------------------------------------------------------
+@router.post("/characters/{character_id}/rights")
+def confirm_rights(character_id: int, body: RightsIn, db: Db, current_user: CurrentUser):
+    """Confirm (or withdraw) that you have the right to use this character's face."""
+    character = _character_or_404(db, current_user, character_id)
+    character = _storyboard().confirm_rights(db, character, body.confirmed)
+    return _projects().serialize_character(character, db)
+
+
+@router.post("/characters/{character_id}/faces", status_code=status.HTTP_201_CREATED)
+async def upload_face(character_id: int, db: Db, current_user: CurrentUser, file: UploadFile = File(...)):
+    character = _character_or_404(db, current_user, character_id)
+    data = await _read_upload(file)
+    try:
+        _storyboard().add_face(db, character, data, StorageSingleton.get())
+    except ValueError as e:
+        raise _bad_request(e)
+    return _projects().serialize_character(character, db)
+
+
+@router.get("/characters/{character_id}/images/{image_id}")
+def character_image(character_id: int, image_id: int, db: Db, current_user: CurrentUser, as_link: bool = False):
+    sb = _storyboard()
+    character = _character_or_404(db, current_user, character_id)
+    image = sb.get_character_image(db, character, image_id)
+    if image is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such image")
+    return _file_response(image.storage_key, image.storage_key.rsplit("/", 1)[-1], as_link,
+                          media_type=sb.mime_for_key(image.storage_key), inline=True)
+
+
+@router.delete("/characters/{character_id}/images/{image_id}")
+def delete_character_image(character_id: int, image_id: int, db: Db, current_user: CurrentUser):
+    sb = _storyboard()
+    character = _character_or_404(db, current_user, character_id)
+    image = sb.get_character_image(db, character, image_id)
+    if image is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such image")
+    sb.delete_character_image(db, character, image, StorageSingleton.get())
+    return _projects().serialize_character(character, db)
+
+
+@router.post("/characters/{character_id}/sheet", status_code=status.HTTP_202_ACCEPTED)
+def generate_character_sheet(character_id: int, db: Db, current_user: CurrentUser):
+    """Queue a character sheet from the face photos. It replaces any earlier sheet."""
+    from youtube.tasks import character_sheet
+
+    character = _character_or_404(db, current_user, character_id)
+    port = ImageRegistry.get()
+    if port.missing_env():
+        raise _bad_request(ValueError(f"The image provider {port.name} is not configured"))
+    try:
+        _storyboard().start_sheet(db, character)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    task = _enqueue(character_sheet, character.id, current_user.business_id)
+    return {"task_id": task.id, "sheet_status": "generating"}
+
+
+@router.post("/characters/{character_id}/sheet/approve")
+def approve_character_sheet(character_id: int, db: Db, current_user: CurrentUser):
+    character = _character_or_404(db, current_user, character_id)
+    try:
+        _storyboard().approve_sheet(db, character)
+    except ValueError as e:
+        raise _bad_request(e)
+    return _projects().serialize_character(character, db)
+
+
+# ---------------------------------------------------------------------------
+#  Style locks
+# ---------------------------------------------------------------------------
+@router.get("/styles")
+def list_styles(db: Db, current_user: CurrentUser):
+    sb = _storyboard()
+    return {"styles": [sb.serialize_style(s) for s in sb.list_styles(db, current_user.business_id)]}
+
+
+@router.post("/styles", status_code=status.HTTP_201_CREATED)
+def create_style(body: StyleIn, db: Db, current_user: CurrentUser):
+    sb = _storyboard()
+    try:
+        return sb.serialize_style(sb.create_style(db, current_user.business_id, body.name, body.prompt))
+    except ValueError as e:
+        raise _bad_request(e)
+
+
+@router.patch("/styles/{style_id}")
+def update_style(style_id: int, body: StylePatch, db: Db, current_user: CurrentUser):
+    sb = _storyboard()
+    style = _style_or_404(db, current_user, style_id)
+    try:
+        return sb.serialize_style(sb.update_style(db, style, body.name, body.prompt))
+    except ValueError as e:
+        raise _bad_request(e)
+
+
+@router.delete("/styles/{style_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_style(style_id: int, db: Db, current_user: CurrentUser):
+    _storyboard().delete_style(db, _style_or_404(db, current_user, style_id), StorageSingleton.get())
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/styles/{style_id}/reference")
+async def upload_style_reference(style_id: int, db: Db, current_user: CurrentUser, file: UploadFile = File(...)):
+    sb = _storyboard()
+    style = _style_or_404(db, current_user, style_id)
+    data = await _read_upload(file)
+    try:
+        return sb.serialize_style(sb.set_style_reference(db, style, data, StorageSingleton.get()))
+    except ValueError as e:
+        raise _bad_request(e)
+
+
+@router.delete("/styles/{style_id}/reference")
+def delete_style_reference(style_id: int, db: Db, current_user: CurrentUser):
+    sb = _storyboard()
+    style = _style_or_404(db, current_user, style_id)
+    return sb.serialize_style(sb.set_style_reference(db, style, None, StorageSingleton.get()))
+
+
+@router.get("/styles/{style_id}/reference")
+def style_reference(style_id: int, db: Db, current_user: CurrentUser, as_link: bool = False):
+    sb = _storyboard()
+    style = _style_or_404(db, current_user, style_id)
+    if not style.reference_storage_key:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This style has no reference image")
+    return _file_response(style.reference_storage_key, style.reference_storage_key.rsplit("/", 1)[-1], as_link,
+                          media_type=sb.mime_for_key(style.reference_storage_key), inline=True)
+
+
+# ---------------------------------------------------------------------------
+#  Storyboard
+# ---------------------------------------------------------------------------
+@router.patch("/projects/{project_id}")
+def update_project(project_id: int, body: ProjectPatch, db: Db, current_user: CurrentUser):
+    """Choose the project's style lock (null for the default style)."""
+    project = _project_or_404(db, current_user, project_id)
+    try:
+        _storyboard().set_project_style(db, project, body.style_id)
+    except ValueError as e:
+        raise _bad_request(e)
+    return _projects().serialize_project(db, project)
+
+
+def _queue_storyboard(db: Session, user, project_id: int, force: bool = False, shot_ids=None):
+    from youtube.tasks import storyboard_project
+
+    p, sb = _projects(), _storyboard()
+    project = _project_or_404(db, user, project_id)
+    problems = sb.storyboard_problems(db, project)
+    if problems:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="; ".join(problems))
+    try:
+        p.mark_busy(db, project, "drawing")
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    task = _enqueue(storyboard_project, project.id, user.business_id, force=force, shot_ids=shot_ids)
+    return {"task_id": task.id, "status": "drawing"}
+
+
+@router.post("/projects/{project_id}/storyboard", status_code=status.HTTP_202_ACCEPTED)
+def generate_storyboard(project_id: int, body: StoryboardIn, db: Db, current_user: CurrentUser):
+    """Queue images for every shot without one (or every shot, with force)."""
+    return _queue_storyboard(db, current_user, project_id, force=body.force)
+
+
+@router.post("/projects/{project_id}/shots/{shot_id}/image", status_code=status.HTTP_202_ACCEPTED)
+def redraw_shot(project_id: int, shot_id: int, db: Db, current_user: CurrentUser):
+    """Queue a new image for one shot, using its current visual description."""
+    from youtube.models import YTShot
+
+    project = _project_or_404(db, current_user, project_id)
+    shot = db.get(YTShot, shot_id)
+    if shot is None or shot.project_id != project.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such shot")
+    return _queue_storyboard(db, current_user, project_id, shot_ids=[shot_id])
+
+
+@router.get("/projects/{project_id}/shots/{shot_id}/image")
+def shot_image(project_id: int, shot_id: int, db: Db, current_user: CurrentUser, as_link: bool = False):
+    from youtube.models import YTShot
+
+    project = _project_or_404(db, current_user, project_id)
+    shot = db.get(YTShot, shot_id)
+    if shot is None or shot.project_id != project.id or not shot.image_key:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No image for that shot")
+    return _file_response(shot.image_key, shot.image_key.rsplit("/", 1)[-1], as_link,
+                          media_type=_storyboard().mime_for_key(shot.image_key), inline=True)
+
+
+@router.post("/projects/{project_id}/storyboard/approve")
+def approve_storyboard(project_id: int, db: Db, current_user: CurrentUser):
+    project = _project_or_404(db, current_user, project_id)
+    try:
+        _storyboard().approve_storyboard(db, project)
+    except ValueError as e:
+        raise _bad_request(e)
+    return _projects().serialize_project(db, project)
