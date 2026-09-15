@@ -13,6 +13,7 @@
         voiceProvider: null,
         characters: [],
         styles: [],
+        assets: [],
         characterId: null,
         projectId: null,
         pollTimer: null,
@@ -531,6 +532,88 @@
         } catch (err) {
             list.innerHTML = `<p class="yt-error">${escapeHTML(err.message)}</p>`;
         }
+        loadAssets();
+    }
+
+    async function loadAssets() {
+        const list = document.getElementById('yt-assets-list');
+        try {
+            state.assets = (await api('/assets')).assets;
+            list.innerHTML = state.assets.length ? state.assets.map(a => `
+                <div class="yt-asset">
+                    <div class="yt-thumb">${imgTag(`/assets/${a.id}/image`, a.version, a.name)}</div>
+                    <div><strong>${escapeHTML(a.name)}</strong><div class="yt-muted">${a.kind}</div></div>
+                    <button class="btn btn-sm btn-danger" title="Delete" onclick="ytStudio.deleteAsset(${a.id})"><i class="fa-regular fa-trash-can"></i></button>
+                </div>`).join('') : '<p class="yt-muted">No products or logos yet.</p>';
+            hydrateImages(list);
+        } catch (err) {
+            list.innerHTML = `<p class="yt-error">${escapeHTML(err.message)}</p>`;
+        }
+    }
+
+    async function createAsset(event) {
+        event.preventDefault();
+        const form = new FormData();
+        form.append('name', document.getElementById('yt-asset-name').value.trim());
+        form.append('kind', document.getElementById('yt-asset-kind').value);
+        form.append('file', document.getElementById('yt-asset-file').files[0]);
+        try {
+            await api('/assets', { method: 'POST', body: form });
+            document.getElementById('yt-asset-form').reset();
+            loadAssets();
+        } catch (err) {
+            toastError(err);
+        }
+    }
+
+    async function deleteAsset(assetId) {
+        if (!confirm('Delete this asset? Projects using it will need their storyboard approved again.')) return;
+        try {
+            await api(`/assets/${assetId}`, { method: 'DELETE' });
+            loadAssets();
+        } catch (err) {
+            toastError(err);
+        }
+    }
+
+    async function patchProject(projectId, body, message) {
+        try {
+            renderProject(await api(`/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify(body) }));
+            if (message) showToast(message, 'success');
+        } catch (err) {
+            toastError(err);
+            openProject(projectId);
+        }
+    }
+
+    function toggleProjectProduct(projectId, assetId, on, current) {
+        const ids = new Set(current);
+        if (on) ids.add(assetId); else ids.delete(assetId);
+        patchProject(projectId, { asset_ids: [...ids] });
+    }
+
+    async function toggleShotProduct(projectId, shotId, assetId, on, current) {
+        const ids = new Set(current);
+        if (on) ids.add(assetId); else ids.delete(assetId);
+        try {
+            renderProject(await api(`/projects/${projectId}/shots/${shotId}`, {
+                method: 'PATCH', body: JSON.stringify({ asset_ids: [...ids] }),
+            }));
+        } catch (err) {
+            toastError(err);
+        }
+    }
+
+    function saveEndCard(projectId) {
+        const value = id => document.getElementById(`yt-card-${id}-${projectId}`);
+        patchProject(projectId, { end_card: {
+            enabled: value('enabled').checked,
+            headline: value('headline').value,
+            url: value('url').value,
+            logo_asset_id: value('logo').value ? Number(value('logo').value) : null,
+            background: value('background').value,
+            seconds: Number(value('seconds').value),
+        } }, 'End card saved');
     }
 
     async function createStyle(event) {
@@ -635,6 +718,7 @@
             await loadVoices();
             state.characters = (await api('/characters')).characters;
             state.styles = (await api('/styles')).styles;
+            state.assets = (await api('/assets')).assets;
             const project = await api(`/projects/${projectId}`);
             renderProject(project);
             if (BUSY.has(project.status)) {
@@ -645,6 +729,53 @@
         } catch (err) {
             card.innerHTML = `<p class="yt-error">${escapeHTML(err.message)}</p>`;
         }
+    }
+
+    function productPicker(p, busy) {
+        const products = state.assets.filter(a => a.kind === 'product');
+        if (!products.length) return '<p class="yt-muted">Add product photos in the Styles tab to show real products in shots.</p>';
+        return `<div class="yt-actions yt-products"><span class="yt-muted">Products in this video:</span>
+            ${products.map(a => `<label class="yt-check"><input type="checkbox" ${busy ? 'disabled' : ''} ${p.asset_ids.includes(a.id) ? 'checked' : ''}
+                onchange="ytStudio.toggleProjectProduct(${p.id}, ${a.id}, this.checked, ${jsArg(p.asset_ids)})"> ${escapeHTML(a.name)}</label>`).join('')}</div>`;
+    }
+
+    function shotProducts(p, s, busy) {
+        const products = state.assets.filter(a => p.asset_ids.includes(a.id));
+        if (!products.length) return '';
+        return `<div class="yt-actions yt-products"><span class="yt-muted">Shows${s.asset_ids === null ? ' (by name)' : ''}:</span>
+            ${products.map(a => `<label class="yt-check"><input type="checkbox" ${busy ? 'disabled' : ''} ${s.products.includes(a.id) ? 'checked' : ''}
+                onchange="ytStudio.toggleShotProduct(${p.id}, ${s.id}, ${a.id}, this.checked, ${jsArg(s.products)})"> ${escapeHTML(a.name)}</label>`).join('')}</div>`;
+    }
+
+    function endCardForm(p, busy) {
+        const card = p.end_card;
+        const logos = state.assets.filter(a => a.kind === 'logo');
+        const version = encodeURIComponent(JSON.stringify(card));
+        return `
+            <details class="yt-end-card" ${card.enabled ? 'open' : ''}>
+                <summary><strong>End card</strong> <span class="yt-muted">${card.enabled ? `on · ${card.seconds}s` : 'off'}</span></summary>
+                <div class="yt-end-card-body">
+                    <div class="yt-metadata">
+                        <label class="yt-check"><input type="checkbox" id="yt-card-enabled-${p.id}" ${card.enabled ? 'checked' : ''} ${busy ? 'disabled' : ''}> Add an end card after the last shot</label>
+                        <div class="input-group"><label for="yt-card-headline-${p.id}">Call to action</label>
+                            <input id="yt-card-headline-${p.id}" maxlength="60" value="${attr(card.headline)}" placeholder="e.g. Order yours today" ${busy ? 'disabled' : ''}></div>
+                        <div class="input-group"><label for="yt-card-url-${p.id}">Website or offer</label>
+                            <input id="yt-card-url-${p.id}" maxlength="80" value="${attr(card.url)}" placeholder="e.g. crumb.example/shop" ${busy ? 'disabled' : ''}></div>
+                        <div class="input-row yt-form-row">
+                            <div class="input-group"><label for="yt-card-logo-${p.id}">Logo</label>
+                                <select id="yt-card-logo-${p.id}" ${busy ? 'disabled' : ''}><option value="">None</option>
+                                ${logos.map(l => `<option value="${l.id}" ${l.id === card.logo_asset_id ? 'selected' : ''}>${escapeHTML(l.name)}</option>`).join('')}</select></div>
+                            <div class="input-group"><label for="yt-card-background-${p.id}">Background</label>
+                                <input id="yt-card-background-${p.id}" type="color" value="${attr(card.background)}" ${busy ? 'disabled' : ''}></div>
+                            <div class="input-group"><label for="yt-card-seconds-${p.id}">Seconds</label>
+                                <input id="yt-card-seconds-${p.id}" type="number" min="2" max="6" step="0.5" value="${attr(card.seconds)}" ${busy ? 'disabled' : ''}></div>
+                        </div>
+                        <div class="yt-actions"><button class="btn btn-secondary btn-sm" ${busy ? 'disabled' : ''} onclick="ytStudio.saveEndCard(${p.id})"><i class="fa-regular fa-floppy-disk"></i> <span>Save end card</span></button>
+                            <span class="yt-muted">Changing it makes the last render out of date.</span></div>
+                    </div>
+                    ${card.enabled ? `<div class="yt-card-preview ${p.format === 'short' ? 'short' : ''}">${imgTag(`/projects/${p.id}/end-card/preview`, version, 'End card preview')}</div>` : ''}
+                </div>
+            </details>`;
     }
 
     function renderStoryboard(p, busy) {
@@ -663,6 +794,7 @@
                 <select id="yt-project-style" ${busy ? 'disabled' : ''} onchange="ytStudio.setProjectStyle(${p.id}, this.value)">${styleOptions}</select>
                 <span class="yt-muted">${sb.images_done}/${p.shots.length} images · spent ${money(sb.spent_usd)}${sb.estimate_remaining_usd ? ` · about ${money(sb.estimate_remaining_usd)} to finish` : ''}</span>
             </div>
+            ${productPicker(p, busy)}
             <div class="yt-actions" style="margin:10px 0 14px">
                 <button class="btn btn-secondary btn-sm" ${busy || !sb.image_provider_configured || !p.shots.length ? 'disabled' : ''}
                     onclick="ytStudio.generateStoryboard(${p.id}, false)"><i class="fa-regular fa-images"></i>
@@ -687,6 +819,7 @@
                         <div class="yt-muted">“${escapeHTML(s.text)}”</div>
                         ${s.image_error ? `<div class="yt-error">${escapeHTML(s.image_error)}</div>` : ''}
                         ${s.has_image && s.image_issues.length ? `<div class="yt-warning" title="Found by the automatic image check after its redraw"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHTML(s.image_issues.join('; '))}</div>` : ''}
+                        ${shotProducts(p, s, busy)}
                         <textarea id="yt-visual-${s.id}" ${busy ? 'disabled' : ''} maxlength="2000" title="What the shot shows">${escapeHTML(s.visual || '')}</textarea>
                         <div class="yt-actions">
                             <button class="btn btn-secondary btn-sm" ${busy || !sb.image_provider_configured ? 'disabled' : ''} onclick="ytStudio.redrawShot(${p.id}, ${s.id})">
@@ -727,6 +860,7 @@
         return `
             <div class="yt-section-title">Video ${latest && latest.current ? '<span class="badge badge-approved">rendered</span>' : ''}</div>
             <p class="yt-muted">${animation}${cost ? ` · ${cost}` : ''}${est.video_seconds ? ` · ${formatSeconds(est.video_seconds)} long` : ''}</p>
+            ${endCardForm(p, busy)}
             <div class="yt-actions" style="margin:10px 0 14px">
                 <button class="btn btn-primary btn-sm" ${canRender ? '' : 'disabled'} title="${attr(hint)}"
                     onclick="ytStudio.renderVideo(${p.id})"><i class="fa-solid fa-film"></i>
@@ -1249,6 +1383,7 @@
         previewVoice, previewSelectedVoice, generatePreviews,
         openCharacter, closeCharacter, confirmRights, uploadFace, deleteCharacterImage, generateSheet, approveSheet,
         loadStyles, createStyle, saveStyle, uploadStyleReference, removeStyleReference, deleteStyle,
+        loadAssets, createAsset, deleteAsset, toggleProjectProduct, toggleShotProduct, saveEndCard,
         loadProjects, openProject, planProject, voiceProject, castSpeaker, changeSpeaker, deleteProject,
         setProjectStyle, generateStoryboard, changeShotType, redrawShot, approveStoryboard,
         renderVideo, watchRender,
