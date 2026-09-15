@@ -122,15 +122,89 @@ def still_segment(image: Path, frames: int, out: Path, settings: RenderSettings,
                 *settings._encode(), str(out)])
 
 
-def clip_segment(clip: Path, frames: int, out: Path, settings: RenderSettings) -> None:
+def _channel_stats(image) -> list[tuple[float, float]]:
+    from PIL import ImageStat
+
+    small = image.convert("RGB").resize((256, max(int(256 * image.height / image.width), 1)))
+    stat = ImageStat.Stat(small)
+    return list(zip(stat.mean, stat.stddev))
+
+
+def color_match_filter(reference: Path, clip: Path, workdir: Path) -> Optional[str]:
+    """An lutrgb filter that gives the clip the colour and contrast of the still it was animated from.
+
+    Avatar models return softer, cooler frames than the image they were given, which
+    shows at the cut from a still shot to a talking one. Each channel's mean and spread
+    are matched to the still, with the correction limited so a bad sample cannot wreck a shot.
+    """
+    from PIL import Image
+
+    sample = workdir / f"{clip.stem}-sample.png"
+    try:
+        run_ffmpeg(["-ss", "0.5", "-i", str(clip), "-frames:v", "1", str(sample)])
+        with Image.open(reference) as ref, Image.open(sample) as frame:
+            target, source = _channel_stats(ref), _channel_stats(frame)
+    except Exception as e:
+        logger.warning("Colour match skipped for %s: %s", clip.name, e)
+        return None
+    parts = []
+    for name, (t_mean, t_std), (s_mean, s_std) in zip("rgb", target, source):
+        gain = min(max(t_std / s_std, 0.75), 1.35) if s_std > 1 else 1.0
+        parts.append(f"{name}='clip((val-{s_mean:.2f})*{gain:.3f}+{t_mean:.2f},0,255)'")
+    return "format=rgb24,lutrgb=" + ":".join(parts)
+
+
+def clip_segment(clip: Path, frames: int, out: Path, settings: RenderSettings,
+                 match_to: Optional[Path] = None) -> None:
     """Fit a talking clip to the frame (cover, centred) and cut it to `frames` frames.
 
-    If the clip is shorter than needed, its last frame is held.
+    Upscaled with Lanczos and lightly sharpened, then colour-matched to match_to (the
+    shot's still) when given. If the clip is shorter than needed, its last frame is held.
     """
     w, h = settings.width, settings.height
-    filters = (f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1,"
-               f"fps={settings.fps},tpad=stop_mode=clone:stop_duration=10")
-    run_ffmpeg(["-i", str(clip), "-vf", filters, "-frames:v", str(frames), *settings._encode(), str(out)])
+    filters = [f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos", f"crop={w}:{h}",
+               "unsharp=5:5:0.6:5:5:0.0"]
+    if match_to is not None:
+        matched = color_match_filter(match_to, clip, out.parent)
+        if matched:
+            filters += [matched, "format=yuv420p"]
+    filters += ["setsar=1", f"fps={settings.fps}", "tpad=stop_mode=clone:stop_duration=10"]
+    run_ffmpeg(["-i", str(clip), "-vf", ",".join(filters), "-frames:v", str(frames), *settings._encode(), str(out)])
+
+
+def mix_audio(voice: Path, total_s: float, out: Path, music: Optional[Path] = None, music_volume: float = 0.15,
+              beds: Optional[list[tuple[Path, float, float]]] = None, ambience_volume: float = 0.35) -> None:
+    """Lay music and ambience beds under the voice, ducked whenever someone speaks.
+
+    beds: (file, start seconds, length seconds). The result is as long as the voice track.
+    """
+    beds = beds or []
+    args, chains, labels = ["-i", str(voice)], [], []
+    fmt = "aformat=sample_rates=48000:channel_layouts=stereo"
+    index = 1
+    if music is not None:
+        args += ["-stream_loop", "-1", "-i", str(music)]
+        fade_start = max(total_s - 2.0, 0.0)
+        chains.append(f"[{index}:a]{fmt},atrim=0:{total_s:.3f},asetpts=PTS-STARTPTS,volume={music_volume:.3f},"
+                      f"afade=t=in:d=1,afade=t=out:st={fade_start:.3f}:d=2[m]")
+        labels.append("[m]")
+        index += 1
+    for n, (path, start, length) in enumerate(beds):
+        args += ["-stream_loop", "-1", "-i", str(path)]
+        fade = min(0.4, length / 3)
+        chains.append(f"[{index}:a]{fmt},atrim=0:{length:.3f},asetpts=PTS-STARTPTS,volume={ambience_volume:.3f},"
+                      f"afade=t=in:d={fade:.3f},afade=t=out:st={max(length - fade, 0):.3f}:d={fade:.3f},"
+                      f"adelay=delays={int(start * 1000)}:all=1[b{n}]")
+        labels.append(f"[b{n}]")
+        index += 1
+    if not labels:
+        raise MediaError("Nothing to mix under the voice")
+    chains.append(f"{''.join(labels)}amix=inputs={len(labels)}:normalize=0:duration=longest,apad,"
+                  f"atrim=0:{total_s:.3f}[bed]")
+    chains.append(f"[0:a]{fmt},asplit=2[voice][key]")
+    chains.append("[bed][key]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=400[ducked]")
+    chains.append("[voice][ducked]amix=inputs=2:normalize=0:duration=first[out]")
+    run_ffmpeg([*args, "-filter_complex", ";".join(chains), "-map", "[out]", "-ar", "48000", "-ac", "2", str(out)])
 
 
 def join_and_finish(segments: list[Path], audio: Path, captions_ass: Optional[str], out: Path,

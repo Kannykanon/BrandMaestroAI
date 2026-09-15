@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from youtube import projects, storyboard
 from youtube.audio import Audio, SAMPLE_RATE, concatenate, silence
@@ -129,6 +129,33 @@ def estimate(db: Session, project: YTProject, port: Optional[AvatarPort] = None)
     }
 
 
+def _mix_beds(db: Session, project: YTProject, storage: StoragePort, items: list[TimedShot], voice: Path,
+              total_s: float, work: Path) -> Path:
+    """Music and ambience under the voice, when the project has either. Otherwise the voice alone."""
+    from youtube.brand_assets import get_asset
+    from youtube.media import mix_audio
+    from youtube.sound import ambience_beds, audio_settings
+
+    settings = audio_settings(project)
+    music = get_asset(db, project.business_id, settings["music_asset_id"]) if settings["music_asset_id"] else None
+    beds = ambience_beds(db, project, items, storage)
+    if music is None and not beds:
+        return voice
+    music_path = None
+    if music is not None:
+        music_path = work / f"music.{music.storage_key.rsplit('.', 1)[-1]}"
+        music_path.write_bytes(storage.get(music.storage_key))
+    bed_files = []
+    for n, bed in enumerate(beds):
+        path = work / f"ambience-{bed.key.rsplit('/', 1)[-1]}"
+        if not path.exists():
+            path.write_bytes(storage.get(bed.key))
+        bed_files.append((path, bed.start_s, bed.length_s))
+    mixed = work / "mixed.wav"
+    mix_audio(voice, total_s, mixed, music_path, settings["music_volume"], bed_files, settings["ambience_volume"])
+    return mixed
+
+
 def _card_seconds(project: YTProject) -> float:
     from youtube.brand_assets import active_end_card
     card = active_end_card(project)
@@ -155,6 +182,13 @@ def render_problems(db: Session, project: YTProject, port: Optional[AvatarPort] 
         problems.append("Every shot needs a storyboard image")
     if port.missing_env():
         problems.append(f"The avatar provider {port.name} is not configured (missing {', '.join(port.missing_env())})")
+    try:
+        from youtube.sound import SoundRegistry
+        sound = SoundRegistry.get()
+        if sound.enabled and sound.missing_env() and any(s.sound for s in shots):
+            problems.append(f"The sound provider {sound.name} is not configured (missing {', '.join(sound.missing_env())})")
+    except ValueError as e:
+        problems.append(str(e))
     if check_ffmpeg and not ffmpeg_available():
         problems.append("ffmpeg is not available on the render worker")
     return problems
@@ -238,7 +272,7 @@ def compose(db: Session, project: YTProject, storage: StoragePort, port: AvatarP
                 clip = work / f"clip-{shot.position:04d}.mp4"
                 clip.write_bytes(storage.get(shot.clip_key))
                 out = work / f"seg-{len(segments):04d}.mp4"
-                clip_segment(clip, next_frames(talk_s), out, settings)
+                clip_segment(clip, next_frames(talk_s), out, settings, match_to=image)
                 segments.append(out)
             remaining = item.length_s - talk_s
             if remaining > 0.01:
@@ -258,7 +292,9 @@ def compose(db: Session, project: YTProject, storage: StoragePort, port: AvatarP
         # The voice track plus a short silent tail (and silence under the end card).
         track = Audio.from_wav(storage.get(project.audio_key))
         audio = work / "voice.wav"
-        audio.write_bytes(concatenate([track, silence(END_TAIL_S + card_s)]).to_wav())
+        voice_track = concatenate([track, silence(END_TAIL_S + card_s)])
+        audio.write_bytes(voice_track.to_wav())
+        audio = _mix_beds(db, project, storage, items, audio, voice_track.duration_s, work)
 
         final = work / "final.mp4"
         join_and_finish(segments, audio, captions_for(items, settings), final, settings, work)
@@ -309,7 +345,8 @@ def render_project(db: Session, project: YTProject, storage: StoragePort, port: 
     # the storyboard approval time, and some databases store whole seconds only.
     render = YTRender(project_id=project.id, format=project.format, video_key=video_key, thumbnail_key=thumb_key,
                       status="completed", duration_s=duration, size_bytes=len(video), avatar_provider=port.name,
-                      end_card=_active_card(project), created_at=datetime.now(timezone.utc))
+                      end_card=_active_card(project), mix=_mix_snapshot(db, project),
+                      created_at=datetime.now(timezone.utc))
     db.add(render)
     db.flush()
     _keep_latest(db, project, storage)
@@ -329,6 +366,14 @@ def _naive_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
 
 
+def _mix_snapshot(db: Session, project: YTProject) -> Optional[dict]:
+    from youtube.sound import mix_snapshot
+    try:
+        return mix_snapshot(db, project)
+    except ValueError:
+        return None
+
+
 def _active_card(project: YTProject) -> Optional[dict]:
     from youtube.brand_assets import active_end_card
     return active_end_card(project)
@@ -339,6 +384,8 @@ def render_is_current(render: Optional[YTRender], project: YTProject) -> bool:
     if render is None or not project.storyboard_approved_at or not render.created_at:
         return False
     if (render.end_card or None) != _active_card(project):
+        return False
+    if getattr(render, "mix", None) is not None and render.mix != _mix_snapshot(object_session(project), project):
         return False
     return _naive_utc(render.created_at) >= _naive_utc(project.storyboard_approved_at)
 

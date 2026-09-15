@@ -25,11 +25,12 @@ For each shot below, decide:
     * A character's line is "dialogue", or "two_character" when the other person in the exchange should be visible in the same frame.
 - "visual": one or two sentences describing the image on screen: setting, action, framing, mood. Describe one single moment, like one frame of a film, not a sequence of actions. Describe what we see, not what is said.
 - "characters": the speaker labels of every character visible in the shot, including in narration shots. Empty only when none of them can be seen.
+- "sound": the ambient sound of the scene in a few words (e.g. "heavy rain, distant thunder", "busy cafe chatter"), or "" if it should be quiet. No music, no speech.
 
 Also describe each speaker's likely appearance and manner in a few words under "speakers", using only what the script implies.
 
 Return JSON only, in this shape:
-{{"shots": [{{"position": 1, "shot_type": "narration", "visual": "...", "characters": []}}], "speakers": {{"MAYA": "..."}}}}
+{{"shots": [{{"position": 1, "shot_type": "narration", "visual": "...", "characters": [], "sound": "..."}}], "speakers": {{"MAYA": "..."}}}}
 
 VIDEO FORMAT: {format}
 SPEAKERS: {speakers}
@@ -45,6 +46,7 @@ class ShotPlan:
     shot_type: str
     visual: str
     characters: list[str] = field(default_factory=list)
+    sound: str = ""
 
 
 @dataclass
@@ -104,6 +106,10 @@ def _validate(raw: dict, shots: list[Shot]) -> PlanAnnotations:
         visual = item.get("visual")
         if isinstance(visual, str) and visual.strip():
             plan.visual = visual.strip()[:1000]
+
+        sound = item.get("sound")
+        if isinstance(sound, str):
+            plan.sound = " ".join(sound.split())[:120]
 
         characters = item.get("characters")
         if isinstance(characters, list):

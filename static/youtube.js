@@ -572,7 +572,7 @@
             state.assets = (await api('/assets')).assets;
             list.innerHTML = state.assets.length ? state.assets.map(a => `
                 <div class="yt-asset">
-                    <div class="yt-thumb">${imgTag(`/assets/${a.id}/image`, a.version, a.name)}</div>
+                    <div class="yt-thumb">${a.kind === 'music' ? '<span class="yt-music-icon"><i class="fa-solid fa-music"></i></span>' : imgTag(`/assets/${a.id}/image`, a.version, a.name)}</div>
                     <div><strong>${escapeHTML(a.name)}</strong><div class="yt-muted">${a.kind}</div></div>
                     <button class="btn btn-sm btn-danger" title="Delete" onclick="ytStudio.deleteAsset(${a.id})"><i class="fa-regular fa-trash-can"></i></button>
                 </div>`).join('') : '<p class="yt-muted">No products or logos yet.</p>';
@@ -778,6 +778,55 @@
                 onchange="ytStudio.toggleShotProduct(${p.id}, ${s.id}, ${a.id}, this.checked, ${jsArg(s.products)})"> ${escapeHTML(a.name)}</label>`).join('')}</div>`;
     }
 
+    function soundForm(p, busy) {
+        const audio = p.audio;
+        const tracks = state.assets.filter(a => a.kind === 'music');
+        const withSound = p.shots.filter(s => s.sound).length;
+        const provider = audio.sound_enabled
+            ? (audio.sound_missing.length ? `<span class="yt-warning">Sound effects need ${escapeHTML(audio.sound_missing.join(', '))}</span>`
+                : `${withSound} shot(s) have ambience, generated with ${escapeHTML(audio.sound_provider)}`)
+            : 'Generated ambience is off on this server (YT_SOUND_PROVIDER); music still plays';
+        const track = tracks.find(t => t.id === audio.music_asset_id);
+        return `
+            <details class="yt-end-card" ${audio.music_asset_id || withSound ? 'open' : ''}>
+                <summary><strong>Sound</strong> <span class="yt-muted">${track ? `music: ${escapeHTML(track.name)}` : 'no music'} · ${withSound} ambience</span></summary>
+                <div class="yt-metadata" style="margin-top:10px">
+                    <div class="input-row yt-form-row">
+                        <div class="input-group"><label for="yt-audio-music-${p.id}">Music</label>
+                            <select id="yt-audio-music-${p.id}" ${busy ? 'disabled' : ''}><option value="">None</option>
+                            ${tracks.map(t => `<option value="${t.id}" ${t.id === audio.music_asset_id ? 'selected' : ''}>${escapeHTML(t.name)}</option>`).join('')}</select></div>
+                        <div class="input-group"><label for="yt-audio-music-volume-${p.id}">Music volume <span class="yt-muted">${Math.round(audio.music_volume * 100)}%</span></label>
+                            <input id="yt-audio-music-volume-${p.id}" type="range" min="0" max="0.6" step="0.01" value="${audio.music_volume}" ${busy ? 'disabled' : ''}
+                                oninput="this.previousElementSibling.querySelector('span').textContent = Math.round(this.value * 100) + '%'"></div>
+                        <div class="input-group"><label for="yt-audio-ambience-volume-${p.id}">Ambience volume <span class="yt-muted">${Math.round(audio.ambience_volume * 100)}%</span></label>
+                            <input id="yt-audio-ambience-volume-${p.id}" type="range" min="0" max="1" step="0.01" value="${audio.ambience_volume}" ${busy ? 'disabled' : ''}
+                                oninput="this.previousElementSibling.querySelector('span').textContent = Math.round(this.value * 100) + '%'"></div>
+                    </div>
+                    <p class="yt-muted">Both are lowered automatically whenever someone speaks. ${provider}. Edit each shot's sound in the storyboard.</p>
+                    ${tracks.length ? '' : '<p class="yt-muted">Upload a music track in Styles → Products &amp; logos.</p>'}
+                    <div class="yt-actions"><button class="btn btn-secondary btn-sm" ${busy ? 'disabled' : ''} onclick="ytStudio.saveAudio(${p.id})"><i class="fa-regular fa-floppy-disk"></i> <span>Save sound</span></button>
+                        <span class="yt-muted">Changing it makes the last render out of date.</span></div>
+                </div>
+            </details>`;
+    }
+
+    function saveAudio(projectId) {
+        const value = id => document.getElementById(`yt-audio-${id}-${projectId}`).value;
+        patchProject(projectId, { audio: {
+            music_asset_id: value('music') ? Number(value('music')) : null,
+            music_volume: Number(value('music-volume')),
+            ambience_volume: Number(value('ambience-volume')),
+        } }, 'Sound saved');
+    }
+
+    async function saveShotSound(projectId, shotId, sound) {
+        try {
+            renderProject(await api(`/projects/${projectId}/shots/${shotId}`, { method: 'PATCH', body: JSON.stringify({ sound }) }));
+        } catch (err) {
+            toastError(err);
+        }
+    }
+
     function endCardForm(p, busy) {
         const card = p.end_card;
         const logos = state.assets.filter(a => a.kind === 'logo');
@@ -851,6 +900,11 @@
                         ${s.image_error ? `<div class="yt-error">${escapeHTML(s.image_error)}</div>` : ''}
                         ${s.has_image && s.image_issues.length ? `<div class="yt-warning" title="Found by the automatic image check after its redraw"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHTML(s.image_issues.join('; '))}</div>` : ''}
                         ${shotProducts(p, s, busy)}
+                        <label class="yt-sound" title="Ambient sound under this shot; empty for none">
+                            <i class="fa-solid fa-volume-low"></i>
+                            <input value="${attr(s.sound || '')}" maxlength="120" placeholder="Sound, e.g. heavy rain, distant thunder" ${busy ? 'disabled' : ''}
+                                onchange="ytStudio.saveShotSound(${p.id}, ${s.id}, this.value)">
+                        </label>
                         <textarea id="yt-visual-${s.id}" ${busy ? 'disabled' : ''} maxlength="2000" title="What the shot shows">${escapeHTML(s.visual || '')}</textarea>
                         <div class="yt-actions">
                             <button class="btn btn-secondary btn-sm" ${busy || !sb.image_provider_configured ? 'disabled' : ''} onclick="ytStudio.redrawShot(${p.id}, ${s.id})">
@@ -892,6 +946,7 @@
             <div class="yt-section-title">Video ${latest && latest.current ? '<span class="badge badge-approved">rendered</span>' : ''}</div>
             <p class="yt-muted">${animation}${cost ? ` · ${cost}` : ''}${est.video_seconds ? ` · ${formatSeconds(est.video_seconds)} long` : ''}</p>
             ${endCardForm(p, busy)}
+            ${soundForm(p, busy)}
             <div class="yt-actions" style="margin:10px 0 14px">
                 <button class="btn btn-primary btn-sm" ${canRender ? '' : 'disabled'} title="${attr(hint)}"
                     onclick="ytStudio.renderVideo(${p.id})"><i class="fa-solid fa-film"></i>
@@ -1469,7 +1524,7 @@
         previewVoice, previewSelectedVoice, generatePreviews,
         openCharacter, closeCharacter, confirmRights, uploadFace, deleteCharacterImage, generateSheet, approveSheet,
         loadStyles, createStyle, saveStyle, uploadStyleReference, removeStyleReference, deleteStyle,
-        loadAssets, createAsset, deleteAsset, toggleProjectProduct, toggleShotProduct, saveEndCard,
+        loadAssets, createAsset, deleteAsset, toggleProjectProduct, toggleShotProduct, saveEndCard, saveAudio, saveShotSound,
         loadProjects, openProject, planProject, voiceProject, castSpeaker, changeSpeaker, deleteProject,
         setProjectStyle, generateStoryboard, changeShotType, redrawShot, approveStoryboard,
         renderVideo, watchRender,
