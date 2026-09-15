@@ -68,6 +68,7 @@
     }
 
     function approvalBadge(label) {
+        if (label === 'imported') return '<span class="badge badge-neutral" title="Imported by a person; not written or checked by content writing">Imported</span>';
         return label === 'human'
             ? '<span class="badge badge-human" title="A person approved this script">Human-approved</span>'
             : '<span class="badge badge-enforcer" title="Approved by the enforcer; no person has reviewed it">Enforcer-approved · not reviewed</span>';
@@ -207,7 +208,7 @@
             const { scripts } = await api('/scripts');
             if (!scripts.length) {
                 body.innerHTML = `<tr><td colspan="5" class="table-empty"><i class="fa-regular fa-folder-open"></i>
-                    <p>No approved scripts yet. Generate a <strong>Script</strong> in the Content Generator and approve it.</p></td></tr>`;
+                    <p>No scripts yet. Import your own above, or generate a <strong>Script</strong> in the Content Generator and approve it.</p></td></tr>`;
                 return;
             }
             body.innerHTML = scripts.map(s => `
@@ -219,11 +220,41 @@
                         <option value="long_form">Long-form 16:9</option>
                         <option value="short">Short 9:16</option>
                     </select></td>
-                    <td><button class="btn btn-primary btn-sm" onclick="ytStudio.createProject(${jsArg(s.generation_id)}, this)">
-                        <i class="fa-solid fa-clapperboard"></i> <span>Create project</span></button></td>
+                    <td><div class="yt-actions"><button class="btn btn-primary btn-sm" onclick="ytStudio.createProject(${jsArg(s.generation_id)}, this)">
+                        <i class="fa-solid fa-clapperboard"></i> <span>Create project</span></button>
+                        ${s.approval === 'imported' ? `<button class="btn btn-sm btn-danger" title="Delete imported script" onclick="ytStudio.deleteImport(${jsArg(s.generation_id)})"><i class="fa-regular fa-trash-can"></i></button>` : ''}</div></td>
                 </tr>`).join('');
         } catch (err) {
             body.innerHTML = `<tr><td colspan="5" class="table-empty"><p>${escapeHTML(err.message)}</p></td></tr>`;
+        }
+    }
+
+    async function importScript(event) {
+        event.preventDefault();
+        const form = new FormData();
+        const title = document.getElementById('yt-import-title').value.trim();
+        const file = document.getElementById('yt-import-file').files[0];
+        if (title) form.append('title', title);
+        if (file) form.append('file', file);
+        else form.append('content', document.getElementById('yt-import-content').value);
+        try {
+            const script = await api('/scripts/import', { method: 'POST', body: form });
+            document.getElementById('yt-import-form').reset();
+            document.getElementById('yt-import').open = false;
+            showToast(`Imported "${escapeHTML(script.topic)}" (${script.word_count} words). Create a project from it below.`, 'success');
+            loadScripts();
+        } catch (err) {
+            toastError(err);
+        }
+    }
+
+    async function deleteImport(scriptId) {
+        if (!confirm('Delete this imported script? Projects already made from it keep their copy.')) return;
+        try {
+            await api(`/scripts/${encodeURIComponent(scriptId)}`, { method: 'DELETE' });
+            loadScripts();
+        } catch (err) {
+            toastError(err);
         }
     }
 
@@ -1378,7 +1409,7 @@
     }
 
     window.ytStudio = {
-        open, showTab, loadScripts, createProject,
+        open, showTab, loadScripts, createProject, importScript, deleteImport,
         loadCharacters, createCharacter, changeVoice, deleteCharacter,
         previewVoice, previewSelectedVoice, generatePreviews,
         openCharacter, closeCharacter, confirmRights, uploadFace, deleteCharacterImage, generateSheet, approveSheet,

@@ -188,7 +188,7 @@ An optional module that turns approved `script` generations into short stories o
 
 | Step | What happens | Who decides |
 |---|---|---|
-| 1. Pick a script | Human-approved scripts, or enforcer-approved ones no person rejected, each labelled by kind. The project keeps a snapshot. | You |
+| 1. Pick a script | Human-approved scripts, enforcer-approved ones no person rejected, or **your own script**, pasted or uploaded (.txt / .md) in **Scripts → Import your own script** and labelled *Imported*. The project keeps a snapshot. | You |
 | 2. Plan | The script is split into shots **in code**, so approved words never pass through a model; a word check proves nothing changed. A model only adds shot types and visuals. | — |
 | 3. Cast and products | Characters with a voice each. Product photos and logos are uploaded once per business (**Styles → Products & logos**); a project lists the products it features, and a shot shows a product when its line or visual names it, or when you tick it for that shot. On-screen characters get face photos (only after confirming the right to use them) and an approved character sheet. A style lock gives every scene one look. | You |
 | 4. Voice | Each line in its character's voice, joined into one track. | — |

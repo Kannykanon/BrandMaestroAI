@@ -159,7 +159,9 @@ def create_project(db: Session, business_id: str, generation_id: str, video_form
     """Snapshot an eligible marketing script into a new project."""
     if video_format not in FORMATS:
         raise ProjectError(f"format must be one of {', '.join(FORMATS)}")
-    script = get_eligible_script(db, business_id, generation_id)
+    from youtube import imports
+    script = (imports.get_import(db, business_id, generation_id) if imports.is_import_id(generation_id)
+              else get_eligible_script(db, business_id, generation_id))
     if script is None:
         raise ProjectError("That script does not exist, belongs to another business, or is not approved")
     project = YTProject(

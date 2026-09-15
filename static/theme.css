@@ -2251,3 +2251,7 @@ body {
 .yt-card-preview { width: 320px; aspect-ratio: 16 / 9; background: #000; border-radius: 6px; overflow: hidden; }
 .yt-card-preview.short { width: 180px; aspect-ratio: 9 / 16; }
 .yt-card-preview img { width: 100%; height: 100%; object-fit: contain; display: block; }
+/* YouTube Studio: import a script */
+.yt-import summary { cursor: pointer; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.yt-import form { margin-top: 12px; display: grid; gap: 10px; max-width: 900px; }
+.yt-import textarea { width: 100%; resize: vertical; font-family: 'Fira Code', monospace; font-size: 13px; }

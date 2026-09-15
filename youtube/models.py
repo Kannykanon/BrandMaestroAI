@@ -64,6 +64,7 @@ FORMATS = ("long_form", "short")
 # Which kind of approval made a script eligible (see youtube/eligibility.py).
 APPROVAL_HUMAN = "human"
 APPROVAL_ENFORCER = "enforcer"
+APPROVAL_IMPORTED = "imported"  # brought in by a person, not written or checked by content writing
 
 SHOT_TYPES = ("narration", "dialogue", "two_character", "cutaway")
 
@@ -233,6 +234,18 @@ class YTRender(YTModel):
     avatar_provider: Mapped[Optional[str]] = mapped_column(String(50))
     # The end card this render was made with (NULL for none), to tell when it is out of date.
     end_card: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class YTImportedScript(YTModel):
+    """A script a person pasted or uploaded into YouTube Studio themselves."""
+
+    __tablename__ = "yt_imported_scripts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = _created_at()
 
 
