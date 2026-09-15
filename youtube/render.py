@@ -124,8 +124,15 @@ def estimate(db: Session, project: YTProject, port: Optional[AvatarPort] = None)
         "budget_usd": budget,
         "over_budget": cost > budget,
         "max_talking_seconds": max_talking_seconds(),
-        "video_seconds": round(sum(i.length_s for i in items), 1) if items else 0.0,
+        "video_seconds": round(sum(i.length_s for i in items) + _card_seconds(project), 1) if items else 0.0,
+        "end_card": _card_seconds(project) > 0,
     }
+
+
+def _card_seconds(project: YTProject) -> float:
+    from youtube.brand_assets import active_end_card
+    card = active_end_card(project)
+    return float(card["seconds"]) if card else 0.0
 
 
 def render_problems(db: Session, project: YTProject, port: Optional[AvatarPort] = None,
@@ -239,10 +246,19 @@ def compose(db: Session, project: YTProject, storage: StoragePort, port: AvatarP
                 still_segment(image, next_frames(remaining), out, settings, direction=index)
                 segments.append(out)
 
-        # The voice track plus a short silent tail, so the last image does not cut off with the last word.
+        card_s = _card_seconds(project)
+        if card_s:
+            from youtube.brand_assets import render_end_card
+            card = work / "end-card.png"
+            card.write_bytes(render_end_card(db, project, storage, settings.width, settings.height))
+            out = work / f"seg-{len(segments):04d}.mp4"
+            still_segment(card, next_frames(card_s), out, settings, pan=False)
+            segments.append(out)
+
+        # The voice track plus a short silent tail (and silence under the end card).
         track = Audio.from_wav(storage.get(project.audio_key))
         audio = work / "voice.wav"
-        audio.write_bytes(concatenate([track, silence(END_TAIL_S)]).to_wav())
+        audio.write_bytes(concatenate([track, silence(END_TAIL_S + card_s)]).to_wav())
 
         final = work / "final.mp4"
         join_and_finish(segments, audio, captions_for(items, settings), final, settings, work)
@@ -293,7 +309,7 @@ def render_project(db: Session, project: YTProject, storage: StoragePort, port: 
     # the storyboard approval time, and some databases store whole seconds only.
     render = YTRender(project_id=project.id, format=project.format, video_key=video_key, thumbnail_key=thumb_key,
                       status="completed", duration_s=duration, size_bytes=len(video), avatar_provider=port.name,
-                      created_at=datetime.now(timezone.utc))
+                      end_card=_active_card(project), created_at=datetime.now(timezone.utc))
     db.add(render)
     db.flush()
     _keep_latest(db, project, storage)
@@ -313,9 +329,16 @@ def _naive_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
 
 
+def _active_card(project: YTProject) -> Optional[dict]:
+    from youtube.brand_assets import active_end_card
+    return active_end_card(project)
+
+
 def render_is_current(render: Optional[YTRender], project: YTProject) -> bool:
-    """Whether a render reflects the storyboard as it is approved now."""
+    """Whether a render reflects the storyboard as it is approved now, and the end card as it is set now."""
     if render is None or not project.storyboard_approved_at or not render.created_at:
+        return False
+    if (render.end_card or None) != _active_card(project):
         return False
     return _naive_utc(render.created_at) >= _naive_utc(project.storyboard_approved_at)
 

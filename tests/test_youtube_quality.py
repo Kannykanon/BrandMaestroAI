@@ -113,7 +113,7 @@ class ScriptedChecker(SceneChecker):
     def __init__(self, verdicts):
         self.verdicts, self.calls = list(verdicts), 0
 
-    def check(self, image_bytes, mime_type, characters):
+    def check(self, image_bytes, mime_type, characters, products=()):
         self.calls += 1
         return self.verdicts.pop(0) if self.verdicts else []
 

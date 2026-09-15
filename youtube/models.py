@@ -152,6 +152,9 @@ class YTProject(YTModel):
     # When a person approved the storyboard. Cleared by any change to it.
     storyboard_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # YouTube metadata, written by a person or drafted by the metadata step.
+    # Product assets this video features, and its end card (see youtube/brand_assets.py).
+    asset_ids: Mapped[Optional[list]] = mapped_column(JSON)
+    end_card: Mapped[Optional[dict]] = mapped_column(JSON)
     video_title: Mapped[Optional[str]] = mapped_column(String(100))
     video_description: Mapped[Optional[str]] = mapped_column(Text)
     video_tags: Mapped[Optional[list]] = mapped_column(JSON)
@@ -199,6 +202,8 @@ class YTShot(YTModel):
     clip_key: Mapped[Optional[str]] = mapped_column(String(500))
     # Why the last image attempt for this shot failed, if it did.
     image_error: Mapped[Optional[str]] = mapped_column(Text)
+    # Products this shot shows, chosen by a person; NULL means "those its line or visual names".
+    asset_ids: Mapped[Optional[list]] = mapped_column(JSON)
     # Problems the automatic image check still sees after its redraws.
     image_issues: Mapped[Optional[list]] = mapped_column(JSON)
     # Which avatar provider made clip_key, and how many seconds it animates.
@@ -226,6 +231,21 @@ class YTRender(YTModel):
     duration_s: Mapped[Optional[float]] = mapped_column(Float)
     size_bytes: Mapped[Optional[int]] = mapped_column(Integer)
     avatar_provider: Mapped[Optional[str]] = mapped_column(String(50))
+    # The end card this render was made with (NULL for none), to tell when it is out of date.
+    end_card: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class YTAsset(YTModel):
+    """A product photo or logo a business uploads once and uses across videos."""
+
+    __tablename__ = "yt_assets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # product | logo
+    storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -340,6 +360,10 @@ COLUMN_MIGRATIONS = (
     ("yt_channel", "token_error", "TEXT"),
     ("yt_shots", "image_issues", "JSON"),
     ("yt_uploads", "watched_seconds", "FLOAT"),
+    ("yt_projects", "asset_ids", "JSON"),
+    ("yt_projects", "end_card", "JSON"),
+    ("yt_shots", "asset_ids", "JSON"),
+    ("yt_renders", "end_card", "JSON"),
 )
 
 

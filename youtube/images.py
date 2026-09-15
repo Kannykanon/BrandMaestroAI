@@ -94,8 +94,11 @@ class GeneratedImage:
 # ---------------------------------------------------------------------------
 #  Uploads and references
 # ---------------------------------------------------------------------------
-def inspect_image(data: bytes) -> tuple[str, int, int]:
-    """(mime type, width, height) of an uploaded image. Raises ValueError if it is not acceptable."""
+def inspect_image(data: bytes, wide_ok: bool = False) -> tuple[str, int, int]:
+    """(mime type, width, height) of an uploaded image. Raises ValueError if it is not acceptable.
+
+    wide_ok allows a short side under the minimum (logos are often wide and short).
+    """
     from PIL import Image, UnidentifiedImageError
 
     if not data:
@@ -111,7 +114,9 @@ def inspect_image(data: bytes) -> tuple[str, int, int]:
         raise ValueError("The file is not a readable image") from e
     if fmt not in UPLOAD_MIME_TYPES:
         raise ValueError("Upload a JPEG, PNG or WebP image")
-    if min(width, height) < MIN_UPLOAD_SIDE:
+    if wide_ok and max(width, height) < MIN_UPLOAD_SIDE:
+        raise ValueError(f"Logos must be at least {MIN_UPLOAD_SIDE}px on their longest side")
+    if not wide_ok and min(width, height) < MIN_UPLOAD_SIDE:
         raise ValueError(f"Images must be at least {MIN_UPLOAD_SIDE}px on each side")
     return UPLOAD_MIME_TYPES[fmt], width, height
 

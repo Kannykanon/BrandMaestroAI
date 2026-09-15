@@ -114,8 +114,9 @@ def border_issues(image_bytes: bytes) -> list[str]:
 
 VISION_PROMPT = """You are checking one storyboard frame for a video. It should be a single continuous scene.
 Characters meant to be in it: {characters}.
+Products meant to be in it: {products}. Text printed on those products (their labels, packaging or logos) does not count as text.
 Answer in JSON only, with true or false for each:
-{{"text": <any words, letters, captions, signs or watermarks are visible>,
+{{"text": <any other words, letters, captions, signs or watermarks are visible>,
  "panels": <the frame is split into panels, has an inset, or looks like a collage>,
  "blurred_band": <a strip along an edge is blurred, stretched or filled rather than part of the scene>,
  "repeated_person": <the same person appears more than once>,
@@ -135,7 +136,7 @@ class SceneChecker:
 
     name = "basic"
 
-    def check(self, image_bytes: bytes, mime_type: str, characters: list[str]) -> list[str]:
+    def check(self, image_bytes: bytes, mime_type: str, characters: list[str], products: tuple = ()) -> list[str]:
         try:
             return border_issues(image_bytes)
         except Exception as e:
@@ -158,7 +159,7 @@ class GeminiSceneChecker(SceneChecker):
                                         location=_env("YT_IMAGE_CHECK_LOCATION") or "global")
         return self._client
 
-    def check(self, image_bytes, mime_type, characters):
+    def check(self, image_bytes, mime_type, characters, products=()):
         issues = super().check(image_bytes, mime_type, characters)
         try:
             from google.genai import types
@@ -166,7 +167,8 @@ class GeminiSceneChecker(SceneChecker):
             response = self._get_client().models.generate_content(
                 model=_env("YT_IMAGE_CHECK_MODEL") or "gemini-2.5-flash",
                 contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-                          VISION_PROMPT.format(characters=", ".join(characters) or "none named")],
+                          VISION_PROMPT.format(characters=", ".join(characters) or "none named",
+                                               products=", ".join(products) or "none")],
                 config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0),
             )
             verdict = json.loads(response.text)

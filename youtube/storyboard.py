@@ -366,7 +366,7 @@ def storyboard_problems(db: Session, project: YTProject, port: Optional[ImagePor
 
 
 def scene_prompt(project: YTProject, shot: YTShot, style: Optional[YTStyle],
-                 characters: list[tuple[str, YTCharacter]]) -> str:
+                 characters: list[tuple[str, YTCharacter]], products: Optional[list] = None) -> str:
     orientation = "vertical" if project.format == "short" else "horizontal"
     lines = [f"Create one {orientation} image ({aspect_ratio(project)}) for a video storyboard.", "",
              f"STYLE: {style.prompt if style else DEFAULT_STYLE}", "",
@@ -378,6 +378,10 @@ def scene_prompt(project: YTProject, shot: YTShot, style: Optional[YTStyle],
             lines.append(f"- {label}: {character.name}.{notes}")
     else:
         lines.append("ON SCREEN: no specific characters. People may appear only as unrecognisable background figures.")
+    if products:
+        lines += ["", "PRODUCTS (reproduce each exactly as in its reference photo: shape, proportions, colours, "
+                      "materials, label and logo; place it naturally in the scene, clearly visible and in focus):"]
+        lines += [f"- {p.name}" for p in products]
     lines.append("")
     speaker_names = dict(characters)
     if shot.shot_type == "dialogue" and shot.speaker_label in speaker_names:
@@ -392,12 +396,14 @@ def scene_prompt(project: YTProject, shot: YTShot, style: Optional[YTStyle],
               "Show one single moment as one continuous frame: no split screens, panels, insets or collages, and each person appears at most once.",
               "Fill the whole frame edge to edge: no black bars, letterboxing or borders.",
               "Keep the bottom quarter free of important detail (but still part of the scene); captions go there.",
-              "Do not add any text, letters, captions, speech bubbles, logos or watermarks."]
+              ("Do not add any text, letters, captions, speech bubbles, logos or watermarks, other than what is "
+               "printed on the products themselves." if products else
+               "Do not add any text, letters, captions, speech bubbles, logos or watermarks.")]
     return "\n".join(lines)
 
 
 def scene_references(db: Session, project: YTProject, shot: YTShot, storage: StoragePort,
-                     port: ImagePort) -> tuple[list[ImageInput], list[tuple[str, YTCharacter]]]:
+                     port: ImagePort, products: Optional[list] = None) -> tuple[list[ImageInput], list[tuple[str, YTCharacter]]]:
     cast = _cast_characters(db, project)
     characters: list[tuple[str, YTCharacter]] = []
     references: list[ImageInput] = []
@@ -409,6 +415,12 @@ def scene_references(db: Session, project: YTProject, shot: YTShot, storage: Sto
         characters.append((label, character))
         references.append(prepare_reference(storage.get(sheet.storage_key),
                                             f"Reference sheet for {label} ({character.name}):"))
+    from youtube.brand_assets import flatten_on_white
+    for product in products or []:
+        if len(references) >= port.max_references:
+            break
+        references.append(prepare_reference(flatten_on_white(storage.get(product.storage_key)),
+                                            f"Product reference for {product.name} (reproduce this exact product):"))
     style = db.get(YTStyle, project.style_id) if project.style_id else None
     if style and style.reference_storage_key and len(references) < port.max_references:
         references.append(prepare_reference(
@@ -420,18 +432,21 @@ def scene_references(db: Session, project: YTProject, shot: YTShot, storage: Sto
 def draw_shot(db: Session, project: YTProject, shot: YTShot, storage: StoragePort, port: ImagePort,
               checker="default") -> GeneratedImage:
     """Draw a shot, check it, and redraw it (at most YT_IMAGE_CHECK_RETRIES times) while problems are found."""
+    from youtube.brand_assets import shot_products
     from youtube.quality import check_retries, scene_checker
 
-    references, characters = scene_references(db, project, shot, storage, port)
+    products = shot_products(db, project, shot)
+    references, characters = scene_references(db, project, shot, storage, port, products)
     style = db.get(YTStyle, project.style_id) if project.style_id else None
-    base_prompt = prompt = scene_prompt(project, shot, style, characters)
+    base_prompt = prompt = scene_prompt(project, shot, style, characters, products)
     checker = scene_checker(port.name) if checker == "default" else checker
     attempts = 1 + (check_retries() if checker else 0)
     for attempt in range(attempts):
         if attempt:
             _record_cost(db, project.id, port)  # the discarded attempt was paid for too
         image = port.generate(prompt, references, aspect_ratio(project))
-        issues = checker.check(image.data, image.mime_type, characters) if checker else []
+        issues = (checker.check(image.data, image.mime_type, characters, products=[p.name for p in products])
+                  if checker else [])
         if not issues:
             break
         logger.info("Project %s shot %s image flagged (attempt %s): %s", project.id, shot.position, attempt + 1, issues)

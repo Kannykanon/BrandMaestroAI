@@ -102,9 +102,15 @@ class RenderSettings:
                 "-r", str(self.fps), "-an"]
 
 
-def still_segment(image: Path, frames: int, out: Path, settings: RenderSettings, direction: int = 0) -> None:
-    """Hold an image for `frames` frames with a slow pan across it."""
+def still_segment(image: Path, frames: int, out: Path, settings: RenderSettings, direction: int = 0,
+                  pan: bool = True) -> None:
+    """Hold an image for `frames` frames with a slow pan across it (or perfectly still, for an end card)."""
     w, h = settings.width, settings.height
+    if not pan:
+        filters = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1"
+        run_ffmpeg(["-loop", "1", "-i", str(image), "-vf", filters, "-frames:v", str(frames),
+                    *settings._encode(), str(out)])
+        return
     big_w, big_h = int(w * PAN_MARGIN) // 2 * 2, int(h * PAN_MARGIN) // 2 * 2
     span = max(frames - 1, 1)
     # Alternate the pan direction between shots so consecutive stills do not all drift the same way.

@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Annotated, Optional
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -58,6 +58,8 @@ class ShotPatch(BaseModel):
     speaker: Optional[str] = Field(None, min_length=1, max_length=100)
     shot_type: Optional[str] = None
     visual: Optional[str] = Field(None, max_length=2000)
+    # Products this shot shows; null goes back to matching product names in the line and visual.
+    asset_ids: Optional[list[int]] = Field(None, max_length=20)
 
 
 class RightsIn(BaseModel):
@@ -76,6 +78,8 @@ class StylePatch(BaseModel):
 
 class ProjectPatch(BaseModel):
     style_id: Optional[int] = None
+    asset_ids: Optional[list[int]] = Field(None, max_length=20)
+    end_card: Optional[dict] = None
 
 
 class StoryboardIn(BaseModel):
@@ -424,6 +428,9 @@ def update_shot(project_id: int, shot_id: int, body: ShotPatch, db: Db, current_
             p.reassign_speaker(db, project, shot_id, body.speaker)
         if body.shot_type is not None or body.visual is not None:
             _storyboard().update_shot(db, project, shot_id, visual=body.visual, shot_type=body.shot_type)
+        if "asset_ids" in body.model_fields_set:
+            from youtube import brand_assets
+            brand_assets.set_shot_products(db, project, shot_id, body.asset_ids)
     except ValueError as e:
         raise _bad_request(e)
     return p.serialize_project(db, project)
@@ -603,10 +610,18 @@ def style_reference(style_id: int, db: Db, current_user: CurrentUser, as_link: b
 # ---------------------------------------------------------------------------
 @router.patch("/projects/{project_id}")
 def update_project(project_id: int, body: ProjectPatch, db: Db, current_user: CurrentUser):
-    """Choose the project's style lock (null for the default style)."""
+    """Change the project's style lock, featured products or end card. Only the fields sent are changed."""
+    from youtube import brand_assets
+
     project = _project_or_404(db, current_user, project_id)
+    fields = body.model_fields_set
     try:
-        _storyboard().set_project_style(db, project, body.style_id)
+        if "style_id" in fields:
+            _storyboard().set_project_style(db, project, body.style_id)
+        if "asset_ids" in fields:
+            brand_assets.set_project_products(db, project, body.asset_ids or [])
+        if "end_card" in fields:
+            brand_assets.set_end_card(db, project, body.end_card or {})
     except ValueError as e:
         raise _bad_request(e)
     return _projects().serialize_project(db, project)
@@ -913,3 +928,65 @@ def retry_upload(project_id: int, upload_id: int, db: Db, current_user: CurrentU
         raise _bad_request(e)
     _enqueue(upload_video, upload.id, current_user.business_id)
     return _projects().serialize_project(db, project)
+
+
+# ---------------------------------------------------------------------------
+#  Brand assets and end card
+# ---------------------------------------------------------------------------
+def _assets():
+    from youtube import brand_assets
+    return brand_assets
+
+
+def _asset_or_404(db: Session, user, asset_id: int):
+    asset = _assets().get_asset(db, user.business_id, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such asset")
+    return asset
+
+
+@router.get("/assets")
+def list_assets(db: Db, current_user: CurrentUser):
+    a = _assets()
+    return {"assets": [a.serialize_asset(x) for x in a.list_assets(db, current_user.business_id)]}
+
+
+@router.post("/assets", status_code=status.HTTP_201_CREATED)
+async def create_asset(db: Db, current_user: CurrentUser, name: str = Form(...), kind: str = Form(...),
+                       file: UploadFile = File(...)):
+    """Upload a product photo or a logo. Name products as scripts call them, so shots find them."""
+    a = _assets()
+    data = await _read_upload(file)
+    try:
+        return a.serialize_asset(a.create_asset(db, current_user.business_id, name, kind, data, StorageSingleton.get()))
+    except ValueError as e:
+        raise _bad_request(e)
+
+
+@router.delete("/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_asset(asset_id: int, db: Db, current_user: CurrentUser):
+    _assets().delete_asset(db, _asset_or_404(db, current_user, asset_id), StorageSingleton.get())
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/assets/{asset_id}/image")
+def asset_image(asset_id: int, db: Db, current_user: CurrentUser, as_link: bool = False):
+    asset = _asset_or_404(db, current_user, asset_id)
+    return _file_response(asset.storage_key, asset.storage_key.rsplit("/", 1)[-1], as_link,
+                          media_type=_storyboard().mime_for_key(asset.storage_key), inline=True)
+
+
+@router.get("/projects/{project_id}/end-card/preview")
+def end_card_preview(project_id: int, db: Db, current_user: CurrentUser, as_link: bool = False):
+    """The end card as it will appear, at half size."""
+    from youtube.media import SIZES
+
+    project = _project_or_404(db, current_user, project_id)
+    card = _assets().active_end_card(project)
+    if card is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The end card is off")
+    if as_link:
+        return {"url": None}  # drawn on request, so the browser downloads it through this route
+    width, height = SIZES[project.format]
+    png = _assets().render_end_card(db, project, StorageSingleton.get(), width // 2, height // 2)
+    return Response(content=png, media_type="image/png", headers={"Content-Disposition": 'inline; filename="end-card.png"'})

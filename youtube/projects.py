@@ -465,9 +465,13 @@ def serialize_project(db: Session, project: YTProject, include_script: bool = Fa
             f"About {duration:.0f}s long; Shorts can be at most {MAX_SHORT_SECONDS}s. "
             "Use long-form instead. The script's words are never trimmed."
         )
+    from youtube.brand_assets import project_products, serialize_end_card, shot_products
+    products = project_products(db, project)
     data = {
         "id": project.id,
         "topic": project.topic,
+        "asset_ids": [p.id for p in products],
+        "end_card": serialize_end_card(project),
         "source_generation_id": project.source_generation_id,
         "approval": project.approval_label,
         "format": project.format,
@@ -503,6 +507,8 @@ def serialize_project(db: Session, project: YTProject, include_script: bool = Fa
                 "image_version": s.image_key.rsplit("/", 1)[-1] if s.image_key else None,
                 "image_error": s.image_error,
                 "image_issues": s.image_issues or [],
+                "asset_ids": s.asset_ids,
+                "products": [p.id for p in shot_products(db, project, s, products)],
             }
             for s in shots
         ],

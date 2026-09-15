@@ -473,7 +473,7 @@ class TestRenderProject:
 def test_render_is_current_compares_approval_time():
     from datetime import datetime, timedelta, timezone
     approved = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
-    project = SimpleNamespace(storyboard_approved_at=approved.replace(tzinfo=None))
-    assert render.render_is_current(SimpleNamespace(created_at=approved + timedelta(seconds=1)), project)
-    assert not render.render_is_current(SimpleNamespace(created_at=approved - timedelta(seconds=1)), project)
+    project = SimpleNamespace(storyboard_approved_at=approved.replace(tzinfo=None), end_card=None)
+    assert render.render_is_current(SimpleNamespace(created_at=approved + timedelta(seconds=1), end_card=None), project)
+    assert not render.render_is_current(SimpleNamespace(created_at=approved - timedelta(seconds=1), end_card=None), project)
     assert not render.render_is_current(None, project)
