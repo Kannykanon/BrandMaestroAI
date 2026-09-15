@@ -1,6 +1,6 @@
 # YouTube Automation — Design
 
-**Status:** Agreed 2026-09-14. Phases 0–2 built; phases 3–4 not started.
+**Status:** Agreed 2026-09-14. Phases 0–4 built. Avatar providers and the YouTube connection are tested with fakes; see each phase's notes for what has run live.
 **Scope:** Turn approved marketing scripts into storytelling videos with a cast of AI characters, and publish them to one YouTube channel.
 
 ---
@@ -197,10 +197,12 @@ Title, description and tags are generated with `LLMSingleton` and the Brand Brai
 
 ## 8. YouTube publishing
 
-- **Sign-in:** Google OAuth for the owner's account once, with the `youtube.upload` scope (plus whatever is needed to change privacy status). The refresh token is stored encrypted, like other secrets.
+- **Sign-in:** Google OAuth (web flow) for the owner's account once, with the `youtube.upload` and `youtube` scopes (`youtube` is needed for `videos.update`, `channels.list` and `thumbnails.set`). The refresh token is stored encrypted with Fernet, keyed by `YT_TOKEN_KEY` or derived from `SECRET_KEY`. The OAuth `state` is signed and tied to the starting browser by an HttpOnly nonce cookie, so a sign-in link cannot attach someone else's channel.
 - **OAuth app mode:** must be set to **"In production"**. In "Testing" mode refresh tokens expire after 7 days and uploads start failing silently. An unverified app is acceptable for the owner's own account; it shows a warning screen when connecting.
-- **API audit:** uploads from unaudited API projects are restricted to private. v1 works either way, because it uploads as private. Publishing through the API may need YouTube's API compliance audit; until then, publishing can be done by hand in YouTube Studio. (Q2)
-- **Quota:** the default daily quota covers only a handful of uploads per day. Uploads go through a queue that respects the quota, and a higher quota can be requested if needed.
+- **API audit (answers Q2):** every video uploaded through `videos.insert` from an API project created after 28 July 2020 that has not passed YouTube's compliance audit is **locked private**. A locked video cannot be made public through the API *or by hand in YouTube Studio*, and cannot be appealed; it must be re-uploaded after the audit. Uploading and reviewing work before the audit; publishing needs it. `publish` reads the video back and reports the lock instead of claiming success.
+- **Disclosure (answers Q3):** `status.containsSyntheticMedia = true` on every upload and update. `status.selfDeclaredMadeForKids` must be chosen by the user. `videos.update` deletes status properties it is not sent, so every status field is always sent.
+- **Quota (checked 2026-09-15):** `videos.insert` costs 1 from a separate bucket of 100 uploads a day; the general bucket is 10,000 units a day, from which `videos.update` and `thumbnails.set` take 50 and `videos.list` / `channels.list` take 1. Quotas reset at midnight Pacific time. A ledger (`yt_quota_usage`) counts use per Pacific day; an upload over quota waits (`waiting_quota`) and is retried after the reset, and a `quotaExceeded` answer from YouTube is treated the same way.
+- **Thumbnails:** custom thumbnails need a phone-verified channel. A refused thumbnail is recorded as a note and does not fail the upload.
 - **Policy:** YouTube restricts monetization of mass-produced or repetitive content, and requires disclosure of realistic synthetic content. Human review before publishing is the safeguard.
 
 ---
@@ -215,7 +217,7 @@ Same pattern as `LLMProvider` / `LLMSingleton`: an abstract port declares `name`
 | `ImagePort` | `generate(prompt, labelled_references, aspect_ratio) -> GeneratedImage`, `cost_usd()`, `max_references`, `max_characters` | **Built:** Nano Banana 2 (`gemini-3.1-flash-image` on Vertex, verified live) and Seedream 4 via fal.ai (tested with fakes only; needs `FAL_KEY`). Later: FLUX.2 Pro | `YT_IMAGE_PROVIDER` |
 | `AvatarPort` | `animate(image, mime, audio_wav, duration_s, prompt) -> AvatarClip`, `cost_usd(seconds)`, `min_seconds`, `max_seconds`, `lip_sync` | **Built:** still (no animation, free), Kling AI Avatar v2 Standard via fal.ai queue, InfiniteTalk via WaveSpeed (both tested with fakes only; need `FAL_KEY` / `WAVESPEED_API_KEY`). Later: Hedra Character-3, a multi-speaker model, self-hosted GPU | `YT_AVATAR_PROVIDER` |
 | Composer | `youtube/media.py` building blocks and `youtube/render.py` (not a port: ffmpeg is the only implementation) | ffmpeg | `YT_FFMPEG` |
-| `PublisherPort` | `upload_private(video, metadata)`, `publish(video_id)`, `status(video_id)` | YouTube Data API | — |
+| `PublisherPort` | `authorization_url`, `exchange_code`, `channel`, `upload_private(video, metadata, session_url)` (resumable, chunked), `set_thumbnail`, `set_privacy(privacy, publish_at)`, `video_status`, `revoke` | **Built:** YouTube Data API v3 over HTTPS (tested with fakes; needs an OAuth client) | — |
 | `StoragePort` | `put(key, bytes)`, `get(key)`, `exists(key)`, `delete(key)`, `url(key)` | **Built:** Google Cloud Storage and local disk | `YT_STORAGE_PROVIDER` |
 
 Each adapter reports its cost per call (per second, image or character) so the budget in §11 comes from real numbers.
@@ -233,11 +235,12 @@ Each adapter reports its cost per call (per second, image or character) so the b
 | `yt_cast` | project_id, speaker_label, character_id |
 | `yt_shots` | id, project_id, position, text, speaker_label, shot_type, visual_prompt, audio_key, image_key, clip_key, duration_s, status |
 | `yt_renders` | id, project_id, format, video_key, thumbnail_key, status, error |
-| `yt_uploads` | id, render_id, youtube_video_id, privacy, published_at, status |
-| `yt_channel` | id, business_id, channel_id, refresh_token_encrypted, connected_at |
+| `yt_uploads` | id, render_id, youtube_video_id, title, privacy, status, progress, upload_url (resumable session), retry_at, claimed_at, publish_at, published_at, youtube_status, error, thumbnail_error |
+| `yt_channel` | id, business_id, channel_id, channel_title, refresh_token_encrypted, token_error, connected_at |
+| `yt_quota_usage` | day (Pacific), bucket (`uploads` / `units`), used |
 | `yt_costs` | id, project_id, stage, provider, units, unit, cost_usd, created_at |
 
-**Project status:** `draft → planned → cast → voiced → storyboard_ready → storyboard_approved → animated → rendered → uploaded_private → published` (or `failed` at any step, with the error).
+**Project status:** `draft → planned → cast → voiced → storyboard_ready → storyboard_approved → rendered → uploaded_private → scheduled → published`, derived from what the project has; `planning`, `voicing`, `drawing`, `rendering` and `uploading` while a background step runs; `failed` with the error. YouTube details (title, description, tags, category, made-for-kids) are columns on `yt_projects`.
 
 ---
 
@@ -281,7 +284,7 @@ Prices checked on 2026-09-14 from provider pages; recheck before building.
 - **Rendering does not run on the production VM.** ffmpeg on 2 shared vCPUs would slow marketing, and video files would fill the disk.
 - **Built:** `worker_render` (compose profile `render`) consumes `yt_render` and needs the same storage as the API (`YT_GCS_BUCKET`). **Proposed:** run it on its own machine, either a separate VM or on-demand jobs (e.g. Cloud Run jobs), consuming the `yt_*` queues from the same Redis. Exact hosting is open (Q5).
 - **Assets** (uploads, character sheets, images, audio, clips, renders) go to **Google Cloud Storage**, not local disk. Retention: keep final renders; delete intermediate files after N days (Q6).
-- **Queues:** `yt_plan`, `yt_media` (voice, images, avatar API calls; mostly waiting on network), `yt_render` (ffmpeg; CPU-heavy), `yt_publish` (quota-limited).
+- **Queues:** `yt_plan`, `yt_media` (voice, images, avatar API calls; mostly waiting on network), `yt_render` (ffmpeg; CPU-heavy), `yt_publish` (quota-limited). `worker_youtube` serves `yt_plan`, `yt_media` and `yt_publish` at concurrency 1, so a long upload delays voicing and drawing; give `yt_publish` its own worker if that becomes a problem.
 - **Self-hosted GPU:** not in v1. `AvatarPort` and `ImagePort` allow a self-hosted adapter later, if rented-GPU benchmarks beat API prices.
 
 ---
@@ -306,10 +309,15 @@ Prices checked on 2026-09-14 from provider pages; recheck before building.
 | POST | `/youtube/projects/{id}/render` | Avatar, captions, composer (409 above budget unless `confirm_over_budget`) |
 | GET | `/youtube/projects/{id}/renders/{render_id}/video` and `/thumbnail` | The MP4 and its thumbnail (`as_link` for a signed URL) |
 | GET | `/youtube/projects/{id}/shots/{shot_id}/clip` | A shot's talking clip |
-| POST | `/youtube/projects/{id}/upload` | Private upload |
-| POST | `/youtube/projects/{id}/publish` | Make public or schedule |
+| PATCH | `/youtube/projects/{id}/metadata` | Title, description, tags, category, made for kids |
+| POST | `/youtube/projects/{id}/metadata/generate` | Draft them from the script and Brand Brain |
+| POST | `/youtube/projects/{id}/upload` | Private upload of the current render (`reviewed: true` required) |
+| POST | `/youtube/projects/{id}/uploads/{upload_id}/publish` | Make public now, or schedule with `publish_at` |
+| POST | `/youtube/projects/{id}/uploads/{upload_id}/refresh` \| `cancel` \| `retry` | Read back from YouTube; cancel a waiting upload; try again |
 | GET | `/youtube/projects/{id}` | Status, shots, costs |
-| GET/POST | `/youtube/channel` | Connection status, OAuth connect |
+| GET/DELETE | `/youtube/channel` | Connection status and quota; disconnect (revokes the token) |
+| POST | `/youtube/channel/connect` | Start Google sign-in |
+| GET | `/youtube/channel/callback` | Google's redirect back (authenticated by signed state and nonce cookie) |
 
 **UI:** a **YouTube Studio** sidebar section with tabs for Scripts, Characters, Projects and Channel. Marketing panels are unchanged apart from one optional **Send to YouTube** button on eligible scripts, shown only when YouTube Automation is configured.
 
@@ -337,6 +345,10 @@ Each phase is useful on its own and ends with a working, testable result.
 
 **Real run (2026-09-15, Nano Banana 2, about $1.00 including test faces):** two AI-generated characters kept recognisably consistent across a 5-shot storyboard — same face, hair, earrings, apron; same glasses, beard, sweater. Seedream was not compared: there is no fal.ai key yet.
 
+**Phase 4 as built:** the Channel tab walks through the Google Cloud setup (enable YouTube Data API v3, consent screen "In production", Web OAuth client with the redirect URI shown) and connects one channel per business. The project page gains a YouTube section: details can be drafted with `LLMSingleton` from the script and the script Brand Brain, then edited; limits are enforced in code (title 100 characters, description 5000 bytes, tags 500 characters counted as YouTube counts them, no `<` or `>`). Upload needs the current render, a connected channel, a title, a made-for-kids answer, and a ticked "I watched the current video". `yt.publish.upload_video` runs on `worker_youtube` (now listening on `yt_publish`), claims the upload so duplicate deliveries do nothing, uploads in 8 MB resumable chunks and keeps the session so an interrupted upload continues, sets the thumbnail, and leaves the video private. The person then publishes now or schedules it; refresh reads processing, rejection and scheduled publishing back from YouTube. A refused sign-in marks the channel for reconnection. Uploaded renders are never pruned. Not built: editing title or description after upload (do it in YouTube Studio), playlists, captions files.
+
+**Verified 2026-09-15 (fakes):** 52 tests over the adapter (chunking, resume, retry, quota and auth errors, every status field), quota days across DST, encryption, metadata, the service and routes; the full browser flow in Edge, from connecting a channel through a fake Google redirect to upload progress, schedule and publish. Not yet run against the real YouTube API: that needs an OAuth client and, for publishing, the audit.
+
 **Before phase 2:** test Nano Banana 2 against Seedream on the same 5-scene storyboard (under $1).
 **Before phase 3:** test Kling Standard, InfiniteTalk and Hedra on the same 20-second dialogue scene (about $3).
 
@@ -363,8 +375,8 @@ Each phase is useful on its own and ends with a working, testable result.
 | # | Question |
 |---|---|
 | Q1 | ~~Which local TTS model?~~ Kokoro-82M, full-precision model: 28 English voices (American and British, male and female), about real time on a 2017 laptop CPU. Its int8 build was ~10× slower there. Revisit if stories need more voice variety. |
-| Q2 | Does the API audit need to be done before one-click publish works, or can a private upload be made public through the API without it? |
-| Q3 | Exact API field for the synthetic-content disclosure on upload. |
+| Q2 | ~~Is the audit needed to publish?~~ Yes. Unaudited uploads are locked private, even in YouTube Studio (§8). Request the audit before publishing publicly. |
+| Q3 | ~~Disclosure field?~~ `status.containsSyntheticMedia` (§8). |
 | Q4 | Default `YT_MAX_TALKING_SECONDS` and `YT_AVATAR_BUDGET_USD` values after the first test videos. |
 | Q5 | Render worker hosting: separate small VM, or on-demand jobs? |
 | Q6 | Retention period for intermediate assets in storage. |

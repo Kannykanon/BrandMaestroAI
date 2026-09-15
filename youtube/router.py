@@ -4,9 +4,12 @@ Every route acts only on the signed-in user's business. Slow steps (planning,
 voicing, voice previews) are queued on the yt_ queues and the project's status
 reports progress.
 """
+from datetime import datetime
 from typing import Annotated, Optional
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -81,6 +84,24 @@ class StoryboardIn(BaseModel):
 
 class RenderIn(BaseModel):
     confirm_over_budget: bool = False
+
+
+class MetadataPatch(BaseModel):
+    title: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = Field(None, max_length=10000)
+    tags: Optional[list[str]] = Field(None, max_length=100)
+    category_id: Optional[str] = Field(None, max_length=10)
+    made_for_kids: Optional[bool] = None
+
+
+class UploadIn(BaseModel):
+    # The person confirms they watched the render. Nothing reaches YouTube without it.
+    reviewed: bool = False
+
+
+class PublishIn(BaseModel):
+    # Omit to publish now; set to schedule. Must include a timezone offset.
+    publish_at: Optional[datetime] = None
 
 
 class VoiceIn(BaseModel):
@@ -723,3 +744,171 @@ def shot_clip(project_id: int, shot_id: int, db: Db, current_user: CurrentUser, 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No talking clip for that shot")
     return _file_response(shot.clip_key, f"project-{project.id}-shot-{shot.position}.mp4", as_link,
                           media_type="video/mp4", inline=True)
+
+
+# ---------------------------------------------------------------------------
+#  Channel
+# ---------------------------------------------------------------------------
+NONCE_COOKIE = "yt_oauth_nonce"
+NONCE_COOKIE_PATH = "/youtube/channel"
+
+
+def _publishing():
+    from youtube import publishing
+    return publishing
+
+
+def _request_base(request: Request) -> str:
+    return str(request.base_url).rstrip("/")
+
+
+@router.get("/channel")
+def channel_status(request: Request, db: Db, current_user: CurrentUser):
+    """Whether sign-in is configured, which channel is connected, and today's quota."""
+    return _publishing().serialize_channel(db, current_user.business_id, _request_base(request))
+
+
+@router.post("/channel/connect")
+def channel_connect(request: Request, response: Response, current_user: CurrentUser):
+    """Start Google sign-in. Returns the URL to send the browser to."""
+    from youtube.publisher import PublisherSingleton
+
+    publisher = PublisherSingleton.get()
+    if publisher.missing_env():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"YouTube sign-in is not configured (missing {', '.join(publisher.missing_env())})")
+    pub = _publishing()
+    state, nonce = pub.make_state(current_user.business_id)
+    response.set_cookie(NONCE_COOKIE, nonce, max_age=int(pub.STATE_TTL.total_seconds()), httponly=True,
+                        samesite="lax", secure=request.url.scheme == "https", path=NONCE_COOKIE_PATH)
+    return {"url": publisher.authorization_url(state, pub.redirect_uri(_request_base(request)))}
+
+
+@router.get("/channel/callback", include_in_schema=False)
+def channel_callback(request: Request, db: Db, state: str = "", code: str = "", error: str = ""):
+    """Google redirects here after sign-in. Authenticated by the signed state and the browser's nonce cookie."""
+    pub = _publishing()
+
+    def back(outcome: str, message: str = ""):
+        query = {"yt_channel": outcome, **({"yt_message": message[:300]} if message else {})}
+        redirect = RedirectResponse(f"/?{urlencode(query)}", status_code=status.HTTP_303_SEE_OTHER)
+        redirect.delete_cookie(NONCE_COOKIE, path=NONCE_COOKIE_PATH)
+        return redirect
+
+    if error:
+        return back("error", "Google sign-in was cancelled" if error == "access_denied" else f"Google sign-in failed: {error}")
+    try:
+        business_id = pub.read_state(state, request.cookies.get(NONCE_COOKIE))
+        if not code:
+            raise pub.ProjectError("Google did not return a sign-in code")
+        pub.connect_channel(db, business_id, code, pub.redirect_uri(_request_base(request)))
+    except Exception as e:
+        return back("error", str(e))
+    return back("connected")
+
+
+@router.delete("/channel", status_code=status.HTTP_204_NO_CONTENT)
+def channel_disconnect(db: Db, current_user: CurrentUser):
+    _publishing().disconnect_channel(db, current_user.business_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+#  Metadata, upload and publish
+# ---------------------------------------------------------------------------
+@router.patch("/projects/{project_id}/metadata")
+def update_metadata(project_id: int, body: MetadataPatch, db: Db, current_user: CurrentUser):
+    from youtube import metadata
+
+    project = _project_or_404(db, current_user, project_id)
+    try:
+        metadata.update_metadata(db, project, **body.model_dump(exclude_unset=True))
+    except ValueError as e:
+        raise _bad_request(e)
+    return _projects().serialize_project(db, project)
+
+
+@router.post("/projects/{project_id}/metadata/generate")
+def generate_metadata(project_id: int, db: Db, current_user: CurrentUser):
+    """Draft a title, description and tags from the script and Brand Brain. Replaces the current ones."""
+    from youtube import metadata
+
+    project = _project_or_404(db, current_user, project_id)
+    try:
+        metadata.generate_metadata(db, project)
+    except ValueError as e:
+        raise _bad_request(e)
+    return _projects().serialize_project(db, project)
+
+
+@router.post("/projects/{project_id}/upload", status_code=status.HTTP_202_ACCEPTED)
+def start_upload(project_id: int, body: UploadIn, db: Db, current_user: CurrentUser):
+    """Queue the current render for a private upload. Needs reviewed=true."""
+    from youtube.tasks import upload_video
+
+    project = _project_or_404(db, current_user, project_id)
+    try:
+        upload = _publishing().queue_upload(db, project, body.reviewed)
+    except ValueError as e:
+        raise _bad_request(e)
+    task = _enqueue(upload_video, upload.id, current_user.business_id)
+    return {"task_id": task.id, "status": "uploading", "upload": _publishing().serialize_upload(upload)}
+
+
+def _upload_or_404(db: Session, project, upload_id: int):
+    upload = _publishing().get_upload(db, project, upload_id)
+    if upload is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such upload")
+    return upload
+
+
+@router.post("/projects/{project_id}/uploads/{upload_id}/publish")
+def publish_upload(project_id: int, upload_id: int, body: PublishIn, db: Db, current_user: CurrentUser):
+    """Make the private video public now, or schedule it with publish_at."""
+    if body.publish_at is not None and body.publish_at.tzinfo is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                            detail="publish_at must include a timezone offset")
+    project = _project_or_404(db, current_user, project_id)
+    upload = _upload_or_404(db, project, upload_id)
+    try:
+        _publishing().publish_upload(db, upload, publish_at=body.publish_at)
+    except ValueError as e:
+        raise _bad_request(e)
+    return _projects().serialize_project(db, project)
+
+
+@router.post("/projects/{project_id}/uploads/{upload_id}/refresh")
+def refresh_upload(project_id: int, upload_id: int, db: Db, current_user: CurrentUser):
+    """Read the video's processing and privacy state back from YouTube."""
+    project = _project_or_404(db, current_user, project_id)
+    upload = _upload_or_404(db, project, upload_id)
+    try:
+        _publishing().refresh_upload(db, upload)
+    except ValueError as e:
+        raise _bad_request(e)
+    return _projects().serialize_project(db, project)
+
+
+@router.post("/projects/{project_id}/uploads/{upload_id}/cancel")
+def cancel_upload(project_id: int, upload_id: int, db: Db, current_user: CurrentUser):
+    project = _project_or_404(db, current_user, project_id)
+    upload = _upload_or_404(db, project, upload_id)
+    try:
+        _publishing().cancel_upload(db, upload)
+    except ValueError as e:
+        raise _bad_request(e)
+    return _projects().serialize_project(db, project)
+
+
+@router.post("/projects/{project_id}/uploads/{upload_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+def retry_upload(project_id: int, upload_id: int, db: Db, current_user: CurrentUser):
+    from youtube.tasks import upload_video
+
+    project = _project_or_404(db, current_user, project_id)
+    upload = _upload_or_404(db, project, upload_id)
+    try:
+        _publishing().retry_upload(db, upload)
+    except ValueError as e:
+        raise _bad_request(e)
+    _enqueue(upload_video, upload.id, current_user.business_id)
+    return _projects().serialize_project(db, project)

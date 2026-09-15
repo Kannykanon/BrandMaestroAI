@@ -40,9 +40,23 @@ PROJECT_STATUSES = (
     "storyboard_approved",
     "rendering",
     "rendered",
+    "uploading",
     "uploaded_private",
+    "scheduled",
     "published",
     "failed",
+)
+
+# Lifecycle of one upload to YouTube.
+UPLOAD_STATUSES = (
+    "queued",         # waiting for the publish worker
+    "waiting_quota",  # the day's YouTube quota is used up; retried after it resets
+    "uploading",
+    "uploaded",       # on YouTube as private
+    "scheduled",      # private, with a publish time set on YouTube
+    "published",      # public
+    "failed",
+    "cancelled",
 )
 
 FORMATS = ("long_form", "short")
@@ -137,6 +151,12 @@ class YTProject(YTModel):
     audio_duration_s: Mapped[Optional[float]] = mapped_column(Float)
     # When a person approved the storyboard. Cleared by any change to it.
     storyboard_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # YouTube metadata, written by a person or drafted by the metadata step.
+    video_title: Mapped[Optional[str]] = mapped_column(String(100))
+    video_description: Mapped[Optional[str]] = mapped_column(Text)
+    video_tags: Mapped[Optional[list]] = mapped_column(JSON)
+    video_category_id: Mapped[Optional[str]] = mapped_column(String(10))
+    made_for_kids: Mapped[Optional[bool]] = mapped_column(Boolean)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -220,6 +240,21 @@ class YTUpload(YTModel):
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
     error: Mapped[Optional[str]] = mapped_column(Text)
+    # The title the video was uploaded with.
+    title: Mapped[Optional[str]] = mapped_column(String(100))
+    # When a scheduled video goes public, as set on YouTube.
+    publish_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # When an upload waiting for quota is tried again.
+    retry_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # When a worker last claimed the upload; a stale claim can be taken over.
+    claimed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # The resumable upload session, so an interrupted upload continues where it stopped.
+    upload_url: Mapped[Optional[str]] = mapped_column(Text)
+    progress: Mapped[Optional[float]] = mapped_column(Float)
+    uploaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # uploadStatus as YouTube last reported it: uploaded | processed | failed | rejected | deleted
+    youtube_status: Mapped[Optional[str]] = mapped_column(String(20))
+    thumbnail_error: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -231,6 +266,22 @@ class YTChannel(YTModel):
     channel_id: Mapped[Optional[str]] = mapped_column(String(100))
     refresh_token_encrypted: Mapped[Optional[str]] = mapped_column(Text)
     connected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    channel_title: Mapped[Optional[str]] = mapped_column(String(200))
+    # Set when Google refuses the saved sign-in; the channel must be connected again.
+    token_error: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class YTQuotaUsage(YTModel):
+    """YouTube Data API quota used per Pacific-time day, per quota bucket."""
+
+    __tablename__ = "yt_quota_usage"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day: Mapped[str] = mapped_column(String(10), nullable=False)  # YYYY-MM-DD in Pacific time
+    bucket: Mapped[str] = mapped_column(String(20), nullable=False)  # units | uploads
+    used: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+    __table_args__ = (UniqueConstraint("day", "bucket", name="uq_yt_quota_usage_day_bucket"),)
 
 
 class YTCost(YTModel):
@@ -267,6 +318,22 @@ COLUMN_MIGRATIONS = (
     ("yt_renders", "duration_s", "FLOAT"),
     ("yt_renders", "size_bytes", "INTEGER"),
     ("yt_renders", "avatar_provider", "VARCHAR(50)"),
+    ("yt_projects", "video_title", "VARCHAR(100)"),
+    ("yt_projects", "video_description", "TEXT"),
+    ("yt_projects", "video_tags", "JSON"),
+    ("yt_projects", "video_category_id", "VARCHAR(10)"),
+    ("yt_projects", "made_for_kids", "BOOLEAN"),
+    ("yt_uploads", "title", "VARCHAR(100)"),
+    ("yt_uploads", "publish_at", "TIMESTAMP WITH TIME ZONE"),
+    ("yt_uploads", "retry_at", "TIMESTAMP WITH TIME ZONE"),
+    ("yt_uploads", "claimed_at", "TIMESTAMP WITH TIME ZONE"),
+    ("yt_uploads", "upload_url", "TEXT"),
+    ("yt_uploads", "progress", "FLOAT"),
+    ("yt_uploads", "uploaded_at", "TIMESTAMP WITH TIME ZONE"),
+    ("yt_uploads", "youtube_status", "VARCHAR(20)"),
+    ("yt_uploads", "thumbnail_error", "TEXT"),
+    ("yt_channel", "channel_title", "VARCHAR(200)"),
+    ("yt_channel", "token_error", "TEXT"),
 )
 
 

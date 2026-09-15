@@ -247,10 +247,17 @@ def compose(db: Session, project: YTProject, storage: StoragePort, port: AvatarP
 
 
 def _keep_latest(db: Session, project: YTProject, storage: StoragePort) -> None:
+    """Delete renders beyond the newest YT_KEEP_RENDERS. A render that was uploaded is kept with its record."""
+    from youtube.models import YTUpload
+
     keep = int(os.getenv("YT_KEEP_RENDERS", "").strip() or 3)
     renders = db.execute(select(YTRender).where(YTRender.project_id == project.id)
                          .order_by(YTRender.id.desc())).scalars().all()
+    uploaded = set(db.execute(select(YTUpload.render_id).where(
+        YTUpload.render_id.in_([r.id for r in renders]))).scalars().all()) if renders else set()
     for old in renders[keep:]:
+        if old.id in uploaded:
+            continue
         storyboard._delete(storage, old.video_key)
         storyboard._delete(storage, old.thumbnail_key)
         db.delete(old)

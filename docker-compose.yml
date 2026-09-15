@@ -162,7 +162,7 @@ services:
   worker_youtube:
     profiles: ["youtube"]
     build: .
-    command: celery -A youtube.tasks worker --queues yt_plan,yt_media --concurrency 1 --loglevel info
+    command: celery -A youtube.tasks worker --queues yt_plan,yt_media,yt_publish --concurrency 1 --loglevel info
     env_file:
       - .env
     environment:

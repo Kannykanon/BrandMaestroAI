@@ -110,6 +110,9 @@ class FakeHTTP:
     def get(self, url, **kwargs):
         return self._answer("GET", url, **kwargs)
 
+    def put(self, url, **kwargs):
+        return self._answer("PUT", url, **kwargs)
+
 
 class TestAvatars:
     def test_still_avatar_is_free_and_returns_no_video(self):

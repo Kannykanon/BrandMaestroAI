@@ -13,7 +13,10 @@ step that ran, because voicing and storyboarding can happen in either order:
     storyboard_ready     every shot has an image
     storyboard_approved  a person approved the storyboard, with images and audio
     rendered             a video was rendered from the storyboard as approved now
-    planning | voicing | drawing | rendering   a background step is running
+    uploaded_private     that video is on YouTube as private
+    scheduled            ... and set to go public at a chosen time
+    published            ... and public
+    planning | voicing | drawing | rendering | uploading   a background step is running
     failed               the last background step failed (see error)
 
 Any change to what the storyboard shows or says clears its approval.
@@ -40,7 +43,7 @@ SPEECH_WORDS_PER_SECOND = 2.5
 GAP_SAME_SPEAKER_S = 0.3
 GAP_SPEAKER_CHANGE_S = 0.6
 
-BUSY_STATUSES = {"planning", "voicing", "drawing", "rendering"}
+BUSY_STATUSES = {"planning", "voicing", "drawing", "rendering", "uploading"}
 
 
 class ProjectError(ValueError):
@@ -236,7 +239,12 @@ def settle_status(db: Session, project: YTProject) -> str:
         status = "planned"
     elif project.storyboard_approved_at and project.audio_key and all(s.image_key for s in shots):
         from youtube.render import latest_render, render_is_current
-        status = "rendered" if render_is_current(latest_render(db, project), project) else "storyboard_approved"
+        render = latest_render(db, project)
+        if render_is_current(render, project):
+            from youtube.publishing import upload_state_for_render
+            status = upload_state_for_render(db, render) or "rendered"
+        else:
+            status = "storyboard_approved"
     elif all(s.image_key for s in shots):
         status = "storyboard_ready"
     elif project.audio_key:
@@ -496,6 +504,8 @@ def serialize_project(db: Session, project: YTProject, include_script: bool = Fa
     from youtube.storyboard import storyboard_summary
     data["storyboard"] = storyboard_summary(db, project, shots)
     data["video"] = render_summary(db, project)
+    from youtube.publishing import publishing_summary
+    data["publishing"] = publishing_summary(db, project)
     if include_script:
         data["script"] = project.script_snapshot
     return data
