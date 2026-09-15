@@ -32,6 +32,8 @@ def client(monkeypatch):
 
     monkeypatch.setattr(yt_router, "list_eligible_scripts", fake_list)
     monkeypatch.setattr(yt_router, "get_eligible_script", fake_get)
+    import youtube.imports as imports
+    monkeypatch.setattr(imports, "list_imports", lambda db, business_id: [])
     for var in ("YT_STORAGE_PROVIDER", "YT_GCS_BUCKET"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(StorageSingleton, "_instance", None)

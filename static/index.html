@@ -668,10 +668,25 @@
 
                 <div class="yt-tab" id="yt-view-scripts">
                     <div class="content-card">
+                        <details id="yt-import" class="yt-import">
+                            <summary><strong><i class="fa-solid fa-file-import"></i> Import your own script</strong>
+                                <span class="yt-muted">paste it or upload a .txt / .md file</span></summary>
+                            <form id="yt-import-form" onsubmit="ytStudio.importScript(event)">
+                                <div class="input-group"><label for="yt-import-title">Title</label>
+                                    <input id="yt-import-title" maxlength="200" placeholder="e.g. Crumb Sourdough 30-second ad"></div>
+                                <div class="input-group"><label for="yt-import-content">Script</label>
+                                    <textarea id="yt-import-content" rows="10" maxlength="20000" placeholder="EXT. BAKERY - DAWN&#10;&#10;The ovens were cold.&#10;&#10;MAYA: One more try.&#10;LEO: You said that yesterday."></textarea></div>
+                                <p class="field-hint">Write dialogue as <code>NAME: line</code>; everything else is narration. Scene headings like <code>EXT. BAKERY - DAY</code> are not spoken. Or upload a file: <input id="yt-import-file" type="file" accept=".txt,.md,text/plain,text/markdown"></p>
+                                <p class="field-hint">Importing a script approves it for video. It is labelled <em>Imported</em>, because content writing did not write or check it.</p>
+                                <div class="yt-actions"><button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-file-import"></i> <span>Import script</span></button></div>
+                            </form>
+                        </details>
+                    </div>
+                    <div class="content-card">
                         <div class="card-header">
                             <div>
                                 <h2><i class="fa-solid fa-scroll"></i> Approved scripts</h2>
-                                <p class="card-subtitle">Only scripts a person approved, or that the enforcer approved and no person rejected.</p>
+                                <p class="card-subtitle">Scripts you imported, scripts a person approved in content writing, and scripts the enforcer approved that no person rejected.</p>
                             </div>
                             <button class="btn btn-secondary btn-sm" onclick="ytStudio.loadScripts()"><i class="fa-solid fa-rotate"></i> <span>Refresh</span></button>
                         </div>

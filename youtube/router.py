@@ -249,14 +249,57 @@ async def eligible_scripts(db: Db, current_user: CurrentUser):
     Each carries `approval`: "human" (a person approved it) or "enforcer"
     (approved automatically, not reviewed by a person).
     """
-    scripts = list_eligible_scripts(db, current_user.business_id)
+    from datetime import datetime, timezone
+    from youtube import imports
+
+    scripts = imports.list_imports(db, current_user.business_id) + list_eligible_scripts(db, current_user.business_id)
+    oldest = datetime.min.replace(tzinfo=timezone.utc)
+    scripts.sort(key=lambda s: (s.completed_at.replace(tzinfo=s.completed_at.tzinfo or timezone.utc)
+                                if s.completed_at else oldest), reverse=True)
     return {"scripts": [s.to_summary() for s in scripts]}
+
+
+@router.post("/scripts/import", status_code=status.HTTP_201_CREATED)
+async def import_script(db: Db, current_user: CurrentUser, title: Optional[str] = Form(None),
+                        content: Optional[str] = Form(None), file: Optional[UploadFile] = File(None)):
+    """Bring in your own script: paste it as `content`, or upload a .txt or .md `file`.
+
+    You approve it by importing it. It is labelled "imported" because content
+    writing did not write or check it.
+    """
+    from youtube import imports
+
+    try:
+        if file is not None and file.filename:
+            data = await file.read(imports.MAX_CHARS * 4 + 1)
+            if len(data) > imports.MAX_CHARS * 4:
+                raise imports.ProjectError(f"Scripts can be at most {imports.MAX_CHARS:,} characters")
+            text = imports.decode_upload(data)
+            title = title or file.filename.rsplit(".", 1)[0]
+        else:
+            text = content or ""
+        return imports.import_script(db, current_user.business_id, title, text).to_summary()
+    except ValueError as e:
+        raise _bad_request(e)
+
+
+@router.delete("/scripts/{generation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_imported_script(generation_id: str, db: Db, current_user: CurrentUser):
+    """Delete an imported script. Scripts from content writing are managed there. Projects keep their copy."""
+    from youtube import imports
+
+    if not imports.is_import_id(generation_id) or not imports.delete_import(db, current_user.business_id, generation_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No imported script with that id")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/scripts/{generation_id}")
 async def eligible_script(generation_id: str, db: Db, current_user: CurrentUser):
     """The full text of one eligible script. 404 if it is missing, not yours, or not eligible."""
-    script = get_eligible_script(db, current_user.business_id, generation_id)
+    from youtube import imports
+
+    script = (imports.get_import(db, current_user.business_id, generation_id) if imports.is_import_id(generation_id)
+              else get_eligible_script(db, current_user.business_id, generation_id))
     if script is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail="No eligible script with that id for this business")
