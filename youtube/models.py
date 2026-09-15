@@ -38,7 +38,7 @@ PROJECT_STATUSES = (
     "drawing",
     "storyboard_ready",
     "storyboard_approved",
-    "animated",
+    "rendering",
     "rendered",
     "uploaded_private",
     "published",
@@ -179,6 +179,10 @@ class YTShot(YTModel):
     clip_key: Mapped[Optional[str]] = mapped_column(String(500))
     # Why the last image attempt for this shot failed, if it did.
     image_error: Mapped[Optional[str]] = mapped_column(Text)
+    # Which avatar provider made clip_key, and how many seconds it animates.
+    # A clip from another provider, or for a different length, is remade.
+    clip_provider: Mapped[Optional[str]] = mapped_column(String(50))
+    clip_duration_s: Mapped[Optional[float]] = mapped_column(Float)
     duration_s: Mapped[Optional[float]] = mapped_column(Float)
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
 
@@ -197,6 +201,9 @@ class YTRender(YTModel):
     thumbnail_key: Mapped[Optional[str]] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
     error: Mapped[Optional[str]] = mapped_column(Text)
+    duration_s: Mapped[Optional[float]] = mapped_column(Float)
+    size_bytes: Mapped[Optional[int]] = mapped_column(Integer)
+    avatar_provider: Mapped[Optional[str]] = mapped_column(String(50))
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -255,6 +262,11 @@ COLUMN_MIGRATIONS = (
     ("yt_projects", "storyboard_approved_at", "TIMESTAMP WITH TIME ZONE"),
     ("yt_shots", "image_error", "TEXT"),
     ("yt_characters", "sheet_error", "TEXT"),
+    ("yt_shots", "clip_provider", "VARCHAR(50)"),
+    ("yt_shots", "clip_duration_s", "FLOAT"),
+    ("yt_renders", "duration_s", "FLOAT"),
+    ("yt_renders", "size_bytes", "INTEGER"),
+    ("yt_renders", "avatar_provider", "VARCHAR(50)"),
 )
 
 

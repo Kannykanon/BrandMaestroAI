@@ -85,6 +85,16 @@ def character_sheet(character_id: int, business_id: str):
             return {"status": "failed", "error": str(e)}
 
 
+@celery_app.task(name="yt.render.render_project", acks_late=True, soft_time_limit=7200, time_limit=7320)
+def render_project(project_id: int, business_id: str, confirm_over_budget: bool = False):
+    from youtube import render
+
+    return _run(project_id, business_id,
+                lambda db, project, storage: render.render_project(
+                    db, project, storage, confirm_over_budget=confirm_over_budget),
+                "rendering")
+
+
 @celery_app.task(name="yt.media.voice_previews", acks_late=True, soft_time_limit=3600, time_limit=3720)
 def voice_previews(provider: str | None = None, force: bool = False):
     from youtube.storage import StorageSingleton
@@ -93,4 +103,5 @@ def voice_previews(provider: str | None = None, force: bool = False):
     return generate_previews(StorageSingleton.get(), provider, force=force)
 
 
-__all__ = ["celery_app", "plan_project", "voice_project", "voice_previews", "storyboard_project", "character_sheet"]
+__all__ = ["celery_app", "plan_project", "voice_project", "voice_previews", "storyboard_project", "character_sheet",
+           "render_project"]

@@ -425,6 +425,7 @@ def draw_shot(db: Session, project: YTProject, shot: YTShot, storage: StoragePor
                        image.data, image.mime_type)
     _delete(storage, shot.image_key)
     shot.image_key, shot.image_error = key, None
+    projects.clear_clip(shot)
     _record_cost(db, project.id, port)
     return image
 

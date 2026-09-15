@@ -179,6 +179,34 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # YouTube Automation render worker: talking-head clips and ffmpeg composition.
+  # CPU-heavy, so it has its own profile and is meant for a machine other than
+  # the production VM (docs/youtube-automation.md, section 9). It needs the same
+  # storage as the API: set YT_GCS_BUCKET, or run it beside the API to share yt_storage.
+  #   docker compose --profile render up -d --build worker_render
+  worker_render:
+    profiles: ["render"]
+    build:
+      context: .
+      target: render
+    command: celery -A youtube.tasks worker --queues yt_render --concurrency 1 --loglevel info
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /app
+      POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - yt_storage:/app/.yt_storage
+    # Leave CPU for the API if this ever runs on the same machine.
+    cpus: 1.5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   flower:
     build: .
     command: celery -A celery_task flower --port=5555

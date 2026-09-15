@@ -85,4 +85,6 @@ dev = [
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
     "celery-types>=0.26.0",
+    # An ffmpeg binary for running the render tests without a system ffmpeg.
+    "imageio-ffmpeg>=0.6.0",
 ]

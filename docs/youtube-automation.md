@@ -213,8 +213,8 @@ Same pattern as `LLMProvider` / `LLMSingleton`: an abstract port declares `name`
 |---|---|---|---|
 | `VoicePort` | `list_voices()`, `synthesize(text, voice_id) -> Audio` (24 kHz mono), `cost_usd(text)` | **Built:** Kokoro-82M (local, CPU, 28 English voices) and Google Cloud TTS. Later: ElevenLabs | `YT_VOICE_PROVIDER` (default for new characters; each character stores its provider) |
 | `ImagePort` | `generate(prompt, labelled_references, aspect_ratio) -> GeneratedImage`, `cost_usd()`, `max_references`, `max_characters` | **Built:** Nano Banana 2 (`gemini-3.1-flash-image` on Vertex, verified live) and Seedream 4 via fal.ai (tested with fakes only; needs `FAL_KEY`). Later: FLUX.2 Pro | `YT_IMAGE_PROVIDER` |
-| `AvatarPort` | `animate(image, audio) -> Clip`; optional `animate_pair(image, audio_left, audio_right)` | Kling AI Avatar v2 Standard → InfiniteTalk, Hedra Character-3, self-hosted GPU | `YT_AVATAR_PROVIDER` |
-| `ComposerPort` | `render(shots, format) -> Video` | ffmpeg | — |
+| `AvatarPort` | `animate(image, mime, audio_wav, duration_s, prompt) -> AvatarClip`, `cost_usd(seconds)`, `min_seconds`, `max_seconds`, `lip_sync` | **Built:** still (no animation, free), Kling AI Avatar v2 Standard via fal.ai queue, InfiniteTalk via WaveSpeed (both tested with fakes only; need `FAL_KEY` / `WAVESPEED_API_KEY`). Later: Hedra Character-3, a multi-speaker model, self-hosted GPU | `YT_AVATAR_PROVIDER` |
+| Composer | `youtube/media.py` building blocks and `youtube/render.py` (not a port: ffmpeg is the only implementation) | ffmpeg | `YT_FFMPEG` |
 | `PublisherPort` | `upload_private(video, metadata)`, `publish(video_id)`, `status(video_id)` | YouTube Data API | — |
 | `StoragePort` | `put(key, bytes)`, `get(key)`, `exists(key)`, `delete(key)`, `url(key)` | **Built:** Google Cloud Storage and local disk | `YT_STORAGE_PROVIDER` |
 
@@ -279,7 +279,7 @@ Prices checked on 2026-09-14 from provider pages; recheck before building.
 
 **Consequences**
 - **Rendering does not run on the production VM.** ffmpeg on 2 shared vCPUs would slow marketing, and video files would fill the disk.
-- **Proposed:** a separate `yt_render` worker on its own machine, either a separate VM or on-demand jobs (e.g. Cloud Run jobs), consuming the `yt_*` queues from the same Redis. Exact hosting is open (Q5).
+- **Built:** `worker_render` (compose profile `render`) consumes `yt_render` and needs the same storage as the API (`YT_GCS_BUCKET`). **Proposed:** run it on its own machine, either a separate VM or on-demand jobs (e.g. Cloud Run jobs), consuming the `yt_*` queues from the same Redis. Exact hosting is open (Q5).
 - **Assets** (uploads, character sheets, images, audio, clips, renders) go to **Google Cloud Storage**, not local disk. Retention: keep final renders; delete intermediate files after N days (Q6).
 - **Queues:** `yt_plan`, `yt_media` (voice, images, avatar API calls; mostly waiting on network), `yt_render` (ffmpeg; CPU-heavy), `yt_publish` (quota-limited).
 - **Self-hosted GPU:** not in v1. `AvatarPort` and `ImagePort` allow a self-hosted adapter later, if rented-GPU benchmarks beat API prices.
@@ -302,7 +302,10 @@ Prices checked on 2026-09-14 from provider pages; recheck before building.
 | POST | `/youtube/projects/{id}/storyboard` | Voice and images |
 | PATCH | `/youtube/projects/{id}/shots/{shot_id}` | Regenerate an image, change shot type or speaker |
 | POST | `/youtube/projects/{id}/approve-storyboard` | Unlocks avatar and render |
-| POST | `/youtube/projects/{id}/render` | Avatar, captions, composer |
+| GET | `/youtube/projects/{id}/render/estimate` | Avatar cost, budget and anything blocking a render |
+| POST | `/youtube/projects/{id}/render` | Avatar, captions, composer (409 above budget unless `confirm_over_budget`) |
+| GET | `/youtube/projects/{id}/renders/{render_id}/video` and `/thumbnail` | The MP4 and its thumbnail (`as_link` for a signed URL) |
+| GET | `/youtube/projects/{id}/shots/{shot_id}/clip` | A shot's talking clip |
 | POST | `/youtube/projects/{id}/upload` | Private upload |
 | POST | `/youtube/projects/{id}/publish` | Make public or schedule |
 | GET | `/youtube/projects/{id}` | Status, shots, costs |
@@ -327,6 +330,10 @@ Each phase is useful on its own and ends with a working, testable result.
 **Phase 1 as built:** `yt.plan.plan_project` and `yt.media.voice_project` run on an optional `worker_youtube` compose service (profile `youtube`, not started by the deploy workflow). Each shot is voiced to its own WAV and joined into one track with 0.3 s gaps within a speaker and 0.6 s between speakers; only shots without audio are re-voiced, and recasting a speaker discards only that speaker's audio. Voice samples for casting are generated once per provider and shared. The YouTube Studio panel (`static/youtube.js`) covers scripts, characters and projects.
 
 **Phase 2 as built:** faces need a rights confirmation before upload (withdrawing it blocks drawing); a character sheet is generated from 1–5 faces and must be approved; style locks carry a description and an optional reference image; `yt.media.character_sheet` and `yt.media.storyboard_project` run on the worker. Project status is derived from what the project has (shots, cast, audio, images, approval), so voicing and drawing can happen in either order, and any change to a shot, the cast, a sheet, the style or the audio clears storyboard approval. Approval needs every image and the voice track.
+
+**Phase 3 as built:** `yt.render.render_project` runs on `worker_render` (compose profile `render`, image target `render` with ffmpeg and DejaVu fonts), meant for a machine other than the production VM. A render needs an approved storyboard; it first estimates avatar cost and refuses above `YT_AVATAR_BUDGET_USD` unless confirmed (the UI asks). Dialogue and two-character shots animate at most `YT_MAX_TALKING_SECONDS` (default 6) of their line; the rest plays over the shot's still with a slow pan, and narration shots are always stills. Talking clips are stored per shot and reused while their image, audio, provider and length are unchanged; each paid clip is committed and costed before the next, so a failure does not waste finished clips. Captions are timed per shot in proportion to word length with pauses at punctuation (Kokoro gives no word timings), grouped into cues of up to 5 words and burned in as ASS subtitles, higher up the frame for Shorts. Segments are cut to exact frame counts from the audio timeline so sound stays in sync, the voice track gets a 0.6 s tail, and loudness is normalised to −14 LUFS. The thumbnail is taken from the first talking shot. The last `YT_KEEP_RENDERS` (default 3) renders are kept; a render is "current" until the storyboard is approved again. Multi-speaker animation (`animate_pair`) and background music are not built; two-character shots animate the speaker only.
+
+**Real run (2026-09-15, still avatar, $0):** the phase 2 bakery storyboard rendered locally in 38.5 s into a 15 s 1920×1080 MP4 (2.3 MB) with readable captions and correct sync. Kling and InfiniteTalk have not been run live yet.
 
 **Real run (2026-09-15, Nano Banana 2, about $1.00 including test faces):** two AI-generated characters kept recognisably consistent across a 5-shot storyboard — same face, hair, earrings, apron; same glasses, beard, sweater. Seedream was not compared: there is no fal.ai key yet.
 
