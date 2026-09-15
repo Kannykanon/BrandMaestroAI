@@ -117,6 +117,16 @@ class TestFaces:
         with pytest.raises(projects.ProjectError, match="at most"):
             storyboard.add_face(env.db, character, photo(), env.storage)
 
+    def test_deleting_a_character_removes_its_photo_and_sheet_files(self, env):
+        from youtube.models import YTCharacterImage
+
+        character = character_with_sheet(env, "Maya", "warm")
+        keys = [i.storage_key for i in env.db.query(YTCharacterImage).filter_by(character_id=character.id)]
+        assert len(keys) == 2 and all(env.storage.exists(k) for k in keys)
+        projects.delete_character(env.db, character, env.storage)
+        assert not any(env.storage.exists(k) for k in keys)
+        assert env.db.query(YTCharacterImage).count() == 0
+
     def test_files_are_stored_under_the_business(self, env):
         character = projects.create_character(env.db, "biz", "Maya")
         storyboard.confirm_rights(env.db, character, True)

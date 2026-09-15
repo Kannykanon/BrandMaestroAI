@@ -114,7 +114,14 @@ def update_character(db: Session, character: YTCharacter, name: Optional[str] = 
     return character
 
 
-def delete_character(db: Session, character: YTCharacter) -> None:
+def delete_character(db: Session, character: YTCharacter, storage: Optional[StoragePort] = None) -> None:
+    """Delete a character with its face photos and character sheets, including the stored files."""
+    from youtube.models import YTCharacterImage
+
+    images = db.execute(select(YTCharacterImage).where(YTCharacterImage.character_id == character.id)).scalars().all()
+    _delete_files(storage, [image.storage_key for image in images])
+    for image in images:
+        db.delete(image)
     db.delete(character)  # cast rows pointing at it are set to NULL by the foreign key
     db.commit()
 
