@@ -344,7 +344,7 @@ def delete_character(character_id: int, db: Db, current_user: CurrentUser):
     character = p.get_character(db, current_user.business_id, character_id)
     if character is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such character")
-    p.delete_character(db, character)
+    p.delete_character(db, character, StorageSingleton.get())
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
