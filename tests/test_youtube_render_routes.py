@@ -63,6 +63,20 @@ def test_estimate_lists_problems_until_approved(api, paid):
     assert not any(name == "render_project" for name, _, _ in api.queued)
 
 
+def test_the_api_queues_renders_without_ffmpeg_of_its_own(api, paid, monkeypatch):
+    # ffmpeg lives in the render worker's image only; the API must not require it.
+    monkeypatch.setattr(render, "ffmpeg_available", lambda: False)
+    pid = approved(api)
+    c = api.client
+    c.post(f"/youtube/projects/{pid}/storyboard/approve")
+    assert c.get(f"/youtube/projects/{pid}/render/estimate").json()["problems"] == []
+    started = c.post(f"/youtube/projects/{pid}/render", json={"confirm_over_budget": True})
+    assert started.status_code == 202
+    with api.Session() as db:
+        project = projects.get_project(db, "biz", pid)
+        assert "ffmpeg is not available on the render worker" in render.render_problems(db, project, paid)
+
+
 def test_over_budget_needs_confirmation_then_queues(api, paid, monkeypatch):
     monkeypatch.setenv("YT_AVATAR_BUDGET_USD", "1")
     pid = approved(api)
