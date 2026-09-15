@@ -214,7 +214,7 @@
             body.innerHTML = scripts.map(s => `
                 <tr>
                     <td><strong>${escapeHTML(s.topic)}</strong><div class="yt-muted">${escapeHTML(s.preview)}${s.preview.length >= 240 ? '…' : ''}</div></td>
-                    <td>${approvalBadge(s.approval)}</td>
+                    <td>${approvalBadge(s.approval)}${s.content_type === 'ad' ? ' <span class="badge badge-neutral">Ad</span>' : ''}</td>
                     <td>${s.word_count}</td>
                     <td><select id="yt-format-${attr(s.generation_id)}">
                         <option value="long_form">Long-form 16:9</option>
@@ -1064,6 +1064,61 @@
         }
     }
 
+    // Content writing calls this after a person approves a Script or an Ad.
+    // It offers to turn that piece into a video project straight away.
+    function offerVideo(generationId, contentType, topic) {
+        if (!['script', 'ad'].includes(contentType)) return;
+        const box = document.getElementById('generated-output-box');
+        if (!box) return;
+        let offer = document.getElementById('yt-make-video');
+        if (!offer) {
+            offer = document.createElement('div');
+            offer.id = 'yt-make-video';
+            offer.className = 'yt-make-video';
+            box.insertAdjacentElement('afterend', offer);
+        }
+        offer.innerHTML = `
+            <div><strong><i class="fa-brands fa-youtube"></i> Make a video from this ${contentType === 'ad' ? 'ad' : 'script'}</strong>
+                <div class="yt-muted">Creates a YouTube Studio project with the approved words, and plans its shots.</div></div>
+            <div class="yt-actions">
+                <select id="yt-make-video-format"><option value="short">Short 9:16</option><option value="long_form">Long-form 16:9</option></select>
+                <button class="btn btn-primary btn-sm" onclick="ytStudio.makeVideo(${jsArg(generationId)}, this)"><i class="fa-solid fa-clapperboard"></i> <span>Make a video</span></button>
+                <button class="btn btn-secondary btn-sm" title="Dismiss" onclick="document.getElementById('yt-make-video').remove()"><i class="fa-solid fa-xmark"></i></button>
+            </div>`;
+        offer.dataset.topic = topic || '';
+    }
+
+    async function makeVideo(generationId, button) {
+        const format = document.getElementById('yt-make-video-format').value;
+        button.disabled = true;
+        button.querySelector('span').textContent = 'Preparing…';
+        try {
+            // The approval is saved by a background worker; wait until YouTube Studio can see it.
+            let ready = false;
+            for (let attempt = 0; attempt < 15 && !ready; attempt++) {
+                try {
+                    await api(`/scripts/${encodeURIComponent(generationId)}`);
+                    ready = true;
+                } catch (err) {
+                    if (err.status !== 404) throw err;
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
+            if (!ready) throw new Error('The approval has not been saved yet. Try again in a moment, or open YouTube Studio → Scripts.');
+            const project = await api('/projects', { method: 'POST', body: JSON.stringify({ generation_id: generationId, format }) });
+            await api(`/projects/${project.id}/plan`, { method: 'POST' });
+            document.getElementById('yt-make-video')?.remove();
+            showToast('Video project created. Planning the shots…', 'success');
+            state.tab = 'projects';
+            state.projectId = project.id;
+            switchPanel('youtube');
+        } catch (err) {
+            toastError(err);
+            button.disabled = false;
+            button.querySelector('span').textContent = 'Make a video';
+        }
+    }
+
     // After Google sign-in the server redirects to /?yt_channel=connected (or =error).
     function handleChannelReturn() {
         const params = new URLSearchParams(window.location.search);
@@ -1409,7 +1464,7 @@
     }
 
     window.ytStudio = {
-        open, showTab, loadScripts, createProject, importScript, deleteImport,
+        open, showTab, loadScripts, createProject, importScript, deleteImport, offerVideo, makeVideo,
         loadCharacters, createCharacter, changeVoice, deleteCharacter,
         previewVoice, previewSelectedVoice, generatePreviews,
         openCharacter, closeCharacter, confirmRights, uploadFace, deleteCharacterImage, generateSheet, approveSheet,

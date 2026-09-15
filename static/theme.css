@@ -2255,3 +2255,6 @@ body {
 .yt-import summary { cursor: pointer; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .yt-import form { margin-top: 12px; display: grid; gap: 10px; max-width: 900px; }
 .yt-import textarea { width: 100%; resize: vertical; font-family: 'Fira Code', monospace; font-size: 13px; }
+/* Make a video from approved content */
+.yt-make-video { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; margin: 14px 0; padding: 14px 16px; border: 1px solid var(--border-color); border-left: 3px solid var(--primary-red); border-radius: var(--border-radius-sm); background: var(--bg-input); }
+.yt-make-video select { background: var(--bg-input); color: inherit; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 4px 6px; }
