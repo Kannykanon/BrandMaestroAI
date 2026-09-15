@@ -1,6 +1,6 @@
 # YouTube Automation — Design
 
-**Status:** Agreed 2026-09-14. Phases 0 and 1 built; phases 2–4 not started.
+**Status:** Agreed 2026-09-14. Phases 0–2 built; phases 3–4 not started.
 **Scope:** Turn approved marketing scripts into storytelling videos with a cast of AI characters, and publish them to one YouTube channel.
 
 ---
@@ -160,10 +160,13 @@ Built in two parts, so the approved text never passes through a model (`youtube/
 One audio file per line with the assigned character's voice, plus word timestamps for captions. If the provider doesn't return timestamps, the timings are worked out from the audio and text (forced alignment).
 
 ### 7.4 Scene images
-- Prompt: channel or story **style lock** + shot description + only the characters in the shot.
-- References: the character sheets of the characters present, plus an optional style reference image.
-- Generated for narration, cutaway and dialogue shots. The dialogue shot's image is the character in the scene, and becomes the avatar input (§7.6).
-- Use batch mode where the provider offers it (Gemini batch pricing is 50% lower).
+- Prompt: channel or story **style lock** (or a default cinematic look) + the shot's visual description + only the characters in the shot + framing for the shot type (a dialogue shot shows the speaker's face clearly, for the avatar later) + the spoken line for mood.
+- References: the approved character sheets of the characters present, each passed with a label ("Reference sheet for MAYA (Maya):"), plus the style's reference image. Nano Banana 2 keeps at most 4 characters consistent, so at most 4 are sent, the speaker first.
+- A character the visual description names is always treated as on screen, whatever the planner listed, so their sheet is used.
+- Rules learned from real output (2026-09-15): the model draws two moments as two copies of a character or as a split-screen, and adds letterboxing to "film still" looks. The planner describes one moment per shot, and every scene prompt forbids split screens, panels, collages, repeated people and black bars.
+- One failed shot does not stop the others; its error stays on the shot and it can be redrawn alone. Rate limits are retried with waits of 15s, 30s, then 60s: on this project Vertex allowed about 5 image calls before returning 429.
+- Faces and style references are shrunk to 1024px and re-encoded as JPEG before they leave the server, which also strips photo metadata.
+- Batch mode (50% cheaper on Gemini) is not used yet.
 
 ### 7.5 Storyboard review (human)
 The user sees every shot's image and text, and can regenerate an image, change a shot type or reassign a speaker. **Nothing beyond this point runs until the storyboard is approved.** Images cost cents; avatar video costs dollars.
@@ -209,7 +212,7 @@ Same pattern as `LLMProvider` / `LLMSingleton`: an abstract port declares `name`
 | Port | Interface (sketch) | Adapters (first → alternatives) | Selected by |
 |---|---|---|---|
 | `VoicePort` | `list_voices()`, `synthesize(text, voice_id) -> Audio` (24 kHz mono), `cost_usd(text)` | **Built:** Kokoro-82M (local, CPU, 28 English voices) and Google Cloud TTS. Later: ElevenLabs | `YT_VOICE_PROVIDER` (default for new characters; each character stores its provider) |
-| `ImagePort` | `generate(prompt, reference_images, aspect) -> Image` | Nano Banana 2 (Vertex) → Seedream 4, FLUX.2 Pro | `YT_IMAGE_PROVIDER` |
+| `ImagePort` | `generate(prompt, labelled_references, aspect_ratio) -> GeneratedImage`, `cost_usd()`, `max_references`, `max_characters` | **Built:** Nano Banana 2 (`gemini-3.1-flash-image` on Vertex, verified live) and Seedream 4 via fal.ai (tested with fakes only; needs `FAL_KEY`). Later: FLUX.2 Pro | `YT_IMAGE_PROVIDER` |
 | `AvatarPort` | `animate(image, audio) -> Clip`; optional `animate_pair(image, audio_left, audio_right)` | Kling AI Avatar v2 Standard → InfiniteTalk, Hedra Character-3, self-hosted GPU | `YT_AVATAR_PROVIDER` |
 | `ComposerPort` | `render(shots, format) -> Video` | ffmpeg | — |
 | `PublisherPort` | `upload_private(video, metadata)`, `publish(video_id)`, `status(video_id)` | YouTube Data API | — |
@@ -323,6 +326,10 @@ Each phase is useful on its own and ends with a working, testable result.
 
 **Phase 1 as built:** `yt.plan.plan_project` and `yt.media.voice_project` run on an optional `worker_youtube` compose service (profile `youtube`, not started by the deploy workflow). Each shot is voiced to its own WAV and joined into one track with 0.3 s gaps within a speaker and 0.6 s between speakers; only shots without audio are re-voiced, and recasting a speaker discards only that speaker's audio. Voice samples for casting are generated once per provider and shared. The YouTube Studio panel (`static/youtube.js`) covers scripts, characters and projects.
 
+**Phase 2 as built:** faces need a rights confirmation before upload (withdrawing it blocks drawing); a character sheet is generated from 1–5 faces and must be approved; style locks carry a description and an optional reference image; `yt.media.character_sheet` and `yt.media.storyboard_project` run on the worker. Project status is derived from what the project has (shots, cast, audio, images, approval), so voicing and drawing can happen in either order, and any change to a shot, the cast, a sheet, the style or the audio clears storyboard approval. Approval needs every image and the voice track.
+
+**Real run (2026-09-15, Nano Banana 2, about $1.00 including test faces):** two AI-generated characters kept recognisably consistent across a 5-shot storyboard — same face, hair, earrings, apron; same glasses, beard, sweater. Seedream was not compared: there is no fal.ai key yet.
+
 **Before phase 2:** test Nano Banana 2 against Seedream on the same 5-scene storyboard (under $1).
 **Before phase 3:** test Kling Standard, InfiniteTalk and Hedra on the same 20-second dialogue scene (about $3).
 
@@ -333,6 +340,7 @@ Each phase is useful on its own and ends with a working, testable result.
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Characters drift between scenes | Story looks incoherent | Approved character sheets, style lock, only in-shot characters as references, storyboard review |
+| Image provider rate limits | Long storyboards fail partway | Retries with waits; per-shot errors; redraw missing shots only; request a higher quota for production volume |
 | Provider price or model changes | Costs rise or quality drops | Adapters; per-call cost recorded; the two tests repeatable |
 | Refresh token expires | Uploads fail silently | OAuth app in production mode; channel health check shown in UI |
 | Uploads locked private | Cannot publish via API | Publish manually until the API audit is done |

@@ -9,6 +9,7 @@ default instead of failing the plan.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 from youtube.models import SHOT_TYPES
@@ -22,8 +23,8 @@ For each shot below, decide:
 - "shot_type": one of "narration", "dialogue", "two_character", "cutaway".
     * A NARRATOR shot is always "narration".
     * A character's line is "dialogue", or "two_character" when the other person in the exchange should be visible in the same frame.
-- "visual": one or two sentences describing the image on screen: setting, action, framing, mood. Describe what we see, not what is said.
-- "characters": the speaker labels of the characters visible in the shot (may be empty for narration).
+- "visual": one or two sentences describing the image on screen: setting, action, framing, mood. Describe one single moment, like one frame of a film, not a sequence of actions. Describe what we see, not what is said.
+- "characters": the speaker labels of every character visible in the shot, including in narration shots. Empty only when none of them can be seen.
 
 Also describe each speaker's likely appearance and manner in a few words under "speakers", using only what the script implies.
 
@@ -111,6 +112,13 @@ def _validate(raw: dict, shots: list[Shot]) -> PlanAnnotations:
             if shot.speaker != NARRATOR and shot.speaker not in known:
                 known.insert(0, shot.speaker)  # the speaker is always on screen in their own shot
             plan.characters = list(dict.fromkeys(known))
+
+    # A character the visual names is on screen, whatever the model listed, so
+    # their reference sheet is used and they are drawn as themselves.
+    for position, plan in result.items():
+        for label in sorted(speakers - {NARRATOR}):
+            if label not in plan.characters and re.search(r"\b" + re.escape(label) + r"\b", plan.visual, re.IGNORECASE):
+                plan.characters.append(label)
 
     if len(seen) < len(shots):
         fallback = True

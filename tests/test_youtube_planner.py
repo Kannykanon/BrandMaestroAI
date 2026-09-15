@@ -90,3 +90,15 @@ def test_speaker_notes_only_for_known_speakers():
     reply = {"shots": [], "speakers": {"maya": "founder", "GHOST": "not in the script", "LEO": 5}}
     result = annotate_shots(shots(), "long_form", llm=_LLM(reply))
     assert result.speakers == {"MAYA": "founder"}
+
+
+def test_a_speaker_named_in_the_visual_is_put_on_screen():
+    reply = {"shots": [
+        {"position": 1, "shot_type": "narration", "characters": [],
+         "visual": "Maya unlocks the bakery door at dawn."},
+        {"position": 3, "shot_type": "dialogue", "characters": ["LEO"],
+         "visual": "Leo, arms folded, watches Mayan artefacts on a shelf."},
+    ]}
+    result = annotate_shots(shots(), "long_form", llm=_LLM(reply))
+    assert result.shots[1].characters == ["MAYA"], "named in a narration visual"
+    assert result.shots[3].characters == ["LEO"], "a longer word containing a name does not count"

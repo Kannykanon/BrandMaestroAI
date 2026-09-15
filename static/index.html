@@ -658,6 +658,7 @@
                     <div class="profile-selector">
                         <button class="btn btn-secondary active" id="yt-tab-scripts" onclick="ytStudio.showTab('scripts')">Scripts</button>
                         <button class="btn btn-secondary" id="yt-tab-characters" onclick="ytStudio.showTab('characters')">Characters</button>
+                        <button class="btn btn-secondary" id="yt-tab-styles" onclick="ytStudio.showTab('styles')">Styles</button>
                         <button class="btn btn-secondary" id="yt-tab-projects" onclick="ytStudio.showTab('projects')">Projects</button>
                     </div>
                 </div>
@@ -682,7 +683,7 @@
                 <div class="yt-tab hidden" id="yt-view-characters">
                     <div class="content-card">
                         <h2><i class="fa-solid fa-user-plus"></i> New character</h2>
-                        <p class="card-subtitle">Each character has its own voice. Faces arrive in the next phase.</p>
+                        <p class="card-subtitle">Each character has its own voice. On-screen characters also need face photos and an approved character sheet.</p>
                         <form id="yt-character-form" onsubmit="ytStudio.createCharacter(event)">
                             <div class="input-row yt-form-row">
                                 <div class="input-group"><label for="yt-char-name">Name</label><input id="yt-char-name" maxlength="100" required placeholder="e.g. Maya"></div>
@@ -699,9 +700,28 @@
                     <div class="content-card">
                         <div class="card-header"><h2><i class="fa-solid fa-users"></i> Characters</h2></div>
                         <div class="documents-table-wrapper"><table class="data-table">
-                            <thead><tr><th>Name</th><th>Voice</th><th>Notes</th><th></th></tr></thead>
+                            <thead><tr><th>Name</th><th>Voice</th><th>Face &amp; sheet</th><th>Notes</th><th></th></tr></thead>
                             <tbody id="yt-characters-body"></tbody>
                         </table></div>
+                    </div>
+                    <div class="content-card hidden" id="yt-character-detail"></div>
+                </div>
+
+                <div class="yt-tab hidden" id="yt-view-styles">
+                    <div class="content-card">
+                        <h2><i class="fa-solid fa-palette"></i> New style</h2>
+                        <p class="card-subtitle">A style lock is added to every scene of a project, so the whole story shares one look.</p>
+                        <form id="yt-style-form" onsubmit="ytStudio.createStyle(event)">
+                            <div class="input-row yt-style-row">
+                                <div class="input-group"><label for="yt-style-name">Name</label><input id="yt-style-name" maxlength="100" required placeholder="e.g. Warm film"></div>
+                                <div class="input-group"><label for="yt-style-prompt">Look</label><input id="yt-style-prompt" maxlength="2000" required placeholder="e.g. Cinematic 35mm film still, warm morning light, soft grain"></div>
+                            </div>
+                            <div class="yt-actions"><button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> <span>Add style</span></button></div>
+                        </form>
+                    </div>
+                    <div class="content-card">
+                        <div class="card-header"><h2><i class="fa-solid fa-swatchbook"></i> Styles</h2></div>
+                        <div id="yt-styles-list"></div>
                     </div>
                 </div>
 

@@ -3,8 +3,19 @@
 Every function takes a database session and a business_id, and only ever
 reads or writes that business's rows.
 
-Project flow in this phase:
-    create (draft) -> plan (planning -> planned) -> cast -> voice (voicing -> voiced)
+Project status is worked out from what the project has, not from the last
+step that ran, because voicing and storyboarding can happen in either order:
+
+    draft                no shots yet
+    planned              shots exist, but a speaker has no character with a voice
+    cast                 every speaker is cast
+    voiced               the voice track exists
+    storyboard_ready     every shot has an image
+    storyboard_approved  a person approved the storyboard, with images and audio
+    planning | voicing | drawing   a background step is running
+    failed               the last background step failed (see error)
+
+Any change to what the storyboard shows or says clears its approval.
 """
 from __future__ import annotations
 
@@ -28,7 +39,7 @@ SPEECH_WORDS_PER_SECOND = 2.5
 GAP_SAME_SPEAKER_S = 0.3
 GAP_SPEAKER_CHANGE_S = 0.6
 
-BUSY_STATUSES = {"planning", "voicing"}
+BUSY_STATUSES = {"planning", "voicing", "drawing"}
 
 
 class ProjectError(ValueError):
@@ -104,14 +115,18 @@ def delete_character(db: Session, character: YTCharacter) -> None:
     db.commit()
 
 
-def serialize_character(character: YTCharacter) -> dict:
-    return {
+def serialize_character(character: YTCharacter, db: Optional[Session] = None) -> dict:
+    data = {
         "id": character.id,
         "name": character.name,
         "voice_provider": character.voice_provider,
         "voice_id": character.voice_id,
         "style_notes": character.style_notes,
     }
+    if db is not None:
+        from youtube.storyboard import serialize_character_images
+        data.update(serialize_character_images(db, character))
+    return data
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +184,7 @@ def _require_not_busy(project: YTProject) -> None:
         raise ProjectError(f"The project is {project.status}; wait for it to finish")
 
 
-def _delete_audio(storage: Optional[StoragePort], keys: list[Optional[str]]) -> None:
+def _delete_files(storage: Optional[StoragePort], keys: list[Optional[str]]) -> None:
     if storage is None:
         return
     for key in keys:
@@ -207,6 +222,29 @@ def _sync_cast(db: Session, project: YTProject, speakers: set[str], descriptions
             row.description = descriptions[label]
 
 
+def clear_approval(project: YTProject) -> None:
+    project.storyboard_approved_at = None
+
+
+def settle_status(db: Session, project: YTProject) -> str:
+    """Set and return the status that describes what the project has."""
+    shots = _shots(db, project)
+    if not shots:
+        status = "draft"
+    elif not cast_ready(db, project):
+        status = "planned"
+    elif project.storyboard_approved_at and project.audio_key and all(s.image_key for s in shots):
+        status = "storyboard_approved"
+    elif all(s.image_key for s in shots):
+        status = "storyboard_ready"
+    elif project.audio_key:
+        status = "voiced"
+    else:
+        status = "cast"
+    project.status = status
+    return status
+
+
 def cast_ready(db: Session, project: YTProject) -> bool:
     rows = _cast(db, project)
     if not rows:
@@ -216,10 +254,6 @@ def cast_ready(db: Session, project: YTProject) -> bool:
         if character is None or not character.voice_id:
             return False
     return True
-
-
-def _status_after_casting(db: Session, project: YTProject) -> str:
-    return "cast" if cast_ready(db, project) else "planned"
 
 
 def plan_project(db: Session, project: YTProject, llm=None, storage: Optional[StoragePort] = None) -> YTProject:
@@ -239,7 +273,7 @@ def plan_project(db: Session, project: YTProject, llm=None, storage: Optional[St
     annotations = annotate_shots(shots, project.format, llm=llm)
 
     old = _shots(db, project)
-    _delete_audio(storage, [s.audio_key for s in old] + [project.audio_key])
+    _delete_files(storage, [k for s in old for k in (s.audio_key, s.image_key)] + [project.audio_key])
     for shot in old:
         db.delete(shot)
     db.flush()  # remove the old rows before new ones reuse their positions
@@ -257,10 +291,11 @@ def plan_project(db: Session, project: YTProject, llm=None, storage: Optional[St
             status="planned",
         ))
     project.audio_key, project.audio_duration_s = None, None
+    clear_approval(project)
     db.flush()
     _sync_cast(db, project, {s.speaker for s in shots}, annotations.speakers)
     db.flush()
-    project.status = _status_after_casting(db, project)
+    settle_status(db, project)
     project.error = None
     db.commit()
     db.refresh(project)
@@ -287,7 +322,8 @@ def set_cast(db: Session, project: YTProject, assignments: dict[str, Optional[in
             changed_speakers.add(label)
     if changed_speakers:
         _invalidate_audio(db, project, [s for s in _shots(db, project) if s.speaker_label in changed_speakers])
-    project.status = _status_after_casting(db, project)
+        clear_approval(project)
+    settle_status(db, project)
     db.commit()
     db.refresh(project)
     return project
@@ -319,10 +355,11 @@ def reassign_speaker(db: Session, project: YTProject, shot_id: int, speaker: str
                 shot.shot_type = "dialogue"
             shot.characters = list(dict.fromkeys([speaker, *(shot.characters or [])]))
         _invalidate_audio(db, project, [shot])
+        clear_approval(project)
         db.flush()
         _sync_cast(db, project, {s.speaker_label for s in _shots(db, project)}, {})
         db.flush()
-        project.status = _status_after_casting(db, project)
+        settle_status(db, project)
     db.commit()
     db.refresh(shot)
     return shot
@@ -364,7 +401,10 @@ def voice_project(db: Session, project: YTProject, storage: StoragePort, force: 
     track_key = business_key(project.business_id, "projects", str(project.id), "audio", "track.wav")
     storage.put(track_key, track.to_wav(), content_type="audio/wav")
     project.audio_key, project.audio_duration_s = track_key, track.duration_s
-    project.status, project.error = "voiced", None
+    if force:
+        clear_approval(project)
+    project.error = None
+    settle_status(db, project)
     db.commit()
     db.refresh(project)
     return project
@@ -372,7 +412,8 @@ def voice_project(db: Session, project: YTProject, storage: StoragePort, force: 
 
 def delete_project(db: Session, project: YTProject, storage: Optional[StoragePort]) -> None:
     _require_not_busy(project)
-    _delete_audio(storage, [s.audio_key for s in _shots(db, project)] + [project.audio_key])
+    shots = _shots(db, project)
+    _delete_files(storage, [k for s in shots for k in (s.audio_key, s.image_key)] + [project.audio_key])
     db.delete(project)
     db.commit()
 
@@ -428,11 +469,16 @@ def serialize_project(db: Session, project: YTProject, include_script: bool = Fa
                 "visual": s.visual_prompt,
                 "has_audio": bool(s.audio_key),
                 "duration_s": round(s.duration_s, 2) if s.duration_s else None,
+                "has_image": bool(s.image_key),
+                "image_version": s.image_key.rsplit("/", 1)[-1] if s.image_key else None,
+                "image_error": s.image_error,
             }
             for s in shots
         ],
         "created_at": project.created_at.isoformat() if project.created_at else None,
     }
+    from youtube.storyboard import storyboard_summary
+    data["storyboard"] = storyboard_summary(db, project, shots)
     if include_script:
         data["script"] = project.script_snapshot
     return data
