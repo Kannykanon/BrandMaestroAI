@@ -54,6 +54,7 @@ Write:
 - "tags": 8 to 15 short search phrases, most specific first.
 
 Only state facts that are in the script. Do not use the characters < or >.
+Write plainly: no hype ("witness", "epic showdown", "don't miss", "mind-blowing"), no emoji, no promises about upload schedules.{fixes}
 Return JSON only: {{"title": "...", "description": "...", "tags": ["...", "..."]}}"""
 
 
@@ -126,25 +127,43 @@ def draft_metadata(project: YTProject, llm=None, brand_context=None) -> dict:
     if llm is None:
         from model import LLMSingleton
         llm = LLMSingleton.get("extraction")
+    from youtube.quality import metadata_issues
+
     brand, brain = (brand_context or _brand_context)(project.business_id)
-    prompt = METADATA_PROMPT.format(
-        brand=brand or "(not given)",
-        format="YouTube Short (vertical)" if project.format == "short" else "Long-form YouTube video",
-        brain=f"\nBRAND BRAIN (voice and facts, for tone):\n{brain}\n" if brain else "",
-        script=project.script_snapshot[:SCRIPT_CHARS],
-        shorts=" End with the hashtag #Shorts." if project.format == "short" else "",
-    )
-    try:
-        raw = parse_llm_json(message_text(llm.invoke(prompt).content))
-    except Exception as e:
-        raise ProjectError(f"Writing the YouTube details failed: {e}") from e
-    title = clean_title(raw.get("title") if isinstance(raw, dict) else None)
-    if not title:
-        raise ProjectError("The model returned no usable title; write one by hand")
-    description = clean_description(raw.get("description"))
-    if project.format == "short" and "#shorts" not in description.lower():
-        description = clean_description(f"{description}\n\n#Shorts")
-    return {"title": title, "description": description, "tags": clean_tags(raw.get("tags"))}
+
+    def attempt(fixes: str) -> dict:
+        prompt = METADATA_PROMPT.format(
+            brand=brand or "(not given)",
+            format="YouTube Short (vertical)" if project.format == "short" else "Long-form YouTube video",
+            brain=f"\nBRAND BRAIN (voice and facts, for tone):\n{brain}\n" if brain else "",
+            script=project.script_snapshot[:SCRIPT_CHARS],
+            shorts=" End with the hashtag #Shorts." if project.format == "short" else "",
+            fixes=fixes,
+        )
+        try:
+            raw = parse_llm_json(message_text(llm.invoke(prompt).content))
+        except Exception as e:
+            raise ProjectError(f"Writing the YouTube details failed: {e}") from e
+        title = clean_title(raw.get("title") if isinstance(raw, dict) else None)
+        if not title:
+            raise ProjectError("The model returned no usable title; write one by hand")
+        description = clean_description(raw.get("description"))
+        if project.format == "short" and "#shorts" not in description.lower():
+            description = clean_description(f"{description}\n\n#Shorts")
+        draft = {"title": title, "description": description, "tags": clean_tags(raw.get("tags"))}
+        draft["issues"] = metadata_issues(title, description, draft["tags"], project.script_snapshot, brain)
+        return draft
+
+    draft = attempt("")
+    if draft["issues"]:
+        # One rewrite with the problems named; keep whichever draft has fewer.
+        try:
+            second = attempt("\nYour previous draft had these problems; fix them: " + "; ".join(draft["issues"]) + ".")
+            if len(second["issues"]) < len(draft["issues"]):
+                draft = second
+        except ProjectError as e:
+            logger.info("Metadata rewrite failed; keeping the first draft: %s", e)
+    return draft
 
 
 def generate_metadata(db: Session, project: YTProject, llm=None, brand_context=None) -> YTProject:
@@ -201,7 +220,12 @@ def metadata_problems(project: YTProject) -> list[str]:
 
 
 def serialize_metadata(project: YTProject) -> dict:
+    from youtube.quality import metadata_issues
+
     return {
+        # Checked against the script on every read, so edits are checked too.
+        "issues": metadata_issues(project.video_title, project.video_description, project.video_tags or [],
+                                  project.script_snapshot or "") if project.video_title else [],
         "title": project.video_title,
         "description": project.video_description,
         "tags": project.video_tags or [],

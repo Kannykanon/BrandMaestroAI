@@ -330,7 +330,7 @@ class TestMetadataDraft:
     def test_draft_uses_brand_and_script_and_cleans_output(self):
         llm = FakeWriter('```json\n{"title": "One More <Try>", "description": "Maya bakes.", "tags": ["bakery", "bakery", "grit"]}\n```')
         draft = metadata.draft_metadata(project(), llm=llm, brand_context=lambda b: ("Crumb & Co", "# VOICE\nWarm"))
-        assert draft == {"title": "One More ‹Try›", "description": "Maya bakes.", "tags": ["bakery", "grit"]}
+        assert {k: draft[k] for k in ("title", "description", "tags")} ==             {"title": "One More ‹Try›", "description": "Maya bakes.", "tags": ["bakery", "grit"]}
         assert "Crumb & Co" in llm.prompts[0] and "# VOICE" in llm.prompts[0] and "MAYA: One more try." in llm.prompts[0]
 
     def test_shorts_get_the_hashtag(self):

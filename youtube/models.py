@@ -199,6 +199,8 @@ class YTShot(YTModel):
     clip_key: Mapped[Optional[str]] = mapped_column(String(500))
     # Why the last image attempt for this shot failed, if it did.
     image_error: Mapped[Optional[str]] = mapped_column(Text)
+    # Problems the automatic image check still sees after its redraws.
+    image_issues: Mapped[Optional[list]] = mapped_column(JSON)
     # Which avatar provider made clip_key, and how many seconds it animates.
     # A clip from another provider, or for a different length, is remade.
     clip_provider: Mapped[Optional[str]] = mapped_column(String(50))
@@ -255,6 +257,8 @@ class YTUpload(YTModel):
     # uploadStatus as YouTube last reported it: uploaded | processed | failed | rejected | deleted
     youtube_status: Mapped[Optional[str]] = mapped_column(String(20))
     thumbnail_error: Mapped[Optional[str]] = mapped_column(Text)
+    # How much of the render the person played in the app before uploading.
+    watched_seconds: Mapped[Optional[float]] = mapped_column(Float)
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -334,6 +338,8 @@ COLUMN_MIGRATIONS = (
     ("yt_uploads", "thumbnail_error", "TEXT"),
     ("yt_channel", "channel_title", "VARCHAR(200)"),
     ("yt_channel", "token_error", "TEXT"),
+    ("yt_shots", "image_issues", "JSON"),
+    ("yt_uploads", "watched_seconds", "FLOAT"),
 )
 
 

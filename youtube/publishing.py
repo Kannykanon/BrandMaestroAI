@@ -224,7 +224,7 @@ def upload_problems(db: Session, project: YTProject, publisher: Optional[Publish
 
 
 def queue_upload(db: Session, project: YTProject, reviewed: bool,
-                 publisher: Optional[PublisherPort] = None) -> YTUpload:
+                 publisher: Optional[PublisherPort] = None, watched_seconds: Optional[float] = None) -> YTUpload:
     """Create an upload for the current render. The caller enqueues the task."""
     from youtube import projects
     from youtube.render import latest_render
@@ -236,7 +236,8 @@ def queue_upload(db: Session, project: YTProject, reviewed: bool,
         raise ProjectError("; ".join(problems))
     projects._require_not_busy(project)
     render = latest_render(db, project)
-    upload = YTUpload(render_id=render.id, status="queued", privacy="private", title=project.video_title)
+    upload = YTUpload(render_id=render.id, status="queued", privacy="private", title=project.video_title,
+                      watched_seconds=round(max(float(watched_seconds), 0.0), 1) if watched_seconds is not None else None)
     db.add(upload)
     project.status, project.error = "uploading", None
     db.commit()
@@ -468,6 +469,7 @@ def serialize_upload(upload: YTUpload) -> dict:
         "progress": upload.progress,
         "error": upload.error,
         "thumbnail_error": upload.thumbnail_error,
+        "watched_seconds": upload.watched_seconds,
         "youtube_status": upload.youtube_status,
         "youtube_video_id": video_id,
         "watch_url": f"https://youtu.be/{video_id}" if video_id else None,

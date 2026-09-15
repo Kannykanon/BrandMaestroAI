@@ -18,6 +18,7 @@
         pollTimer: null,
         characterPollTimer: null,
         fileUrls: {},
+        watched: {},  // render id -> seconds played in the app
     };
 
     const BUSY = new Set(['planning', 'voicing', 'drawing', 'rendering', 'uploading']);
@@ -668,7 +669,7 @@
                     <span>${allImages ? 'All shots drawn' : (sb.images_done ? 'Draw missing shots' : 'Draw storyboard')}</span></button>
                 ${sb.images_done ? `<button class="btn btn-secondary btn-sm" ${busy || !sb.image_provider_configured ? 'disabled' : ''} onclick="ytStudio.generateStoryboard(${p.id}, true)"><i class="fa-solid fa-rotate"></i> <span>Redraw all</span></button>` : ''}
                 <button class="btn btn-primary btn-sm" ${canApprove ? '' : 'disabled'} title="${attr(approveHint)}"
-                    onclick="ytStudio.approveStoryboard(${p.id})"><i class="fa-solid fa-check"></i> <span>${sb.approved ? 'Storyboard approved' : 'Approve storyboard'}</span></button>
+                    onclick="ytStudio.approveStoryboard(${p.id}, ${sb.images_flagged || 0})"><i class="fa-solid fa-check"></i> <span>${sb.approved ? 'Storyboard approved' : 'Approve storyboard'}</span></button>
                 ${sb.image_provider_configured ? '' : '<span class="yt-muted">Image generation is not configured.</span>'}
             </div>
             ${p.shots.length ? `<div class="yt-storyboard ${p.format === 'short' ? 'short' : ''}">${p.shots.map(s => `
@@ -685,6 +686,7 @@
                         </div>
                         <div class="yt-muted">“${escapeHTML(s.text)}”</div>
                         ${s.image_error ? `<div class="yt-error">${escapeHTML(s.image_error)}</div>` : ''}
+                        ${s.has_image && s.image_issues.length ? `<div class="yt-warning" title="Found by the automatic image check after its redraw"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHTML(s.image_issues.join('; '))}</div>` : ''}
                         <textarea id="yt-visual-${s.id}" ${busy ? 'disabled' : ''} maxlength="2000" title="What the shot shows">${escapeHTML(s.visual || '')}</textarea>
                         <div class="yt-actions">
                             <button class="btn btn-secondary btn-sm" ${busy || !sb.image_provider_configured ? 'disabled' : ''} onclick="ytStudio.redrawShot(${p.id}, ${s.id})">
@@ -769,7 +771,7 @@
             const onYouTube = ['uploaded', 'scheduled'].includes(u.status);
             return `
                 <tr>
-                    <td>#${u.id}<div class="yt-muted">render #${u.render_id}</div></td>
+                    <td>#${u.id}<div class="yt-muted">render #${u.render_id}${u.watched_seconds != null ? ` · watched ${Math.round(u.watched_seconds)}s` : ''}</div></td>
                     <td>${escapeHTML(u.title || '')}${u.error ? `<div class="yt-error">${escapeHTML(u.error)}</div>` : ''}${u.thumbnail_error ? `<div class="yt-muted">Thumbnail: ${escapeHTML(u.thumbnail_error)}</div>` : ''}</td>
                     <td><span class="output-status ${['queued', 'waiting_quota', 'uploading'].includes(u.status) ? 'running' : ''}">${escapeHTML(UPLOAD_LABELS[u.status] || u.status)}${progress}</span>${when}</td>
                     <td>${u.watch_url ? `<a href="${attr(u.watch_url)}" target="_blank" rel="noopener">Watch</a> · <a href="${attr(u.studio_url)}" target="_blank" rel="noopener">Studio</a>` : '—'}</td>
@@ -812,6 +814,7 @@
                     <label><input type="radio" name="yt-kids-${p.id}" value="no" ${kids(false)}> Not made for kids</label>
                     <label><input type="radio" name="yt-kids-${p.id}" value="yes" ${kids(true)}> Made for kids</label>
                 </fieldset>
+                ${(m.issues || []).length ? `<ul class="yt-problems yt-warning">${m.issues.map(x => `<li>${escapeHTML(x)}</li>`).join('')}</ul>` : ''}
                 <p class="yt-muted"><i class="fa-solid fa-circle-info"></i> Every upload is marked as containing realistic altered or synthetic content, as YouTube requires for AI-generated people and scenes.</p>
                 <div class="yt-actions">
                     <button class="btn btn-secondary btn-sm" ${locked ? 'disabled' : ''} onclick="ytStudio.draftMetadata(${p.id}, ${m.title ? 'true' : 'false'})"><i class="fa-solid fa-wand-magic-sparkles"></i> <span>Write with AI</span></button>
@@ -824,7 +827,7 @@
                     onchange="document.getElementById('yt-upload-btn-${p.id}').disabled = !this.checked">
                     I watched the current video and it is ready for YouTube</label>
                 <div class="yt-actions">
-                    <button class="btn btn-primary btn-sm" id="yt-upload-btn-${p.id}" disabled onclick="ytStudio.uploadVideo(${p.id})">
+                    <button class="btn btn-primary btn-sm" id="yt-upload-btn-${p.id}" disabled onclick="ytStudio.uploadVideo(${p.id}, ${video.renders[0].id}, ${jsArg(video.renders[0].duration_s)})">
                         <i class="fa-brands fa-youtube"></i> <span>Upload as private</span></button>
                     <span class="yt-muted">You publish it after checking it on YouTube.</span>
                 </div>
@@ -1087,7 +1090,8 @@
         }
     }
 
-    async function approveStoryboard(projectId) {
+    async function approveStoryboard(projectId, flagged = 0) {
+        if (flagged && !confirm(`${flagged} image(s) still have problems found by the automatic check. Approve anyway?`)) return;
         try {
             await api(`/projects/${projectId}/storyboard/approve`, { method: 'POST' });
             showToast('Storyboard approved', 'success');
@@ -1122,6 +1126,12 @@
         try {
             const url = await fileUrl(`/projects/${projectId}/renders/${renderId}/video`, version);
             holder.innerHTML = `<video controls autoplay playsinline src="${attr(url)}"></video>`;
+            const player = holder.querySelector('video');
+            player.addEventListener('timeupdate', () => {
+                let played = 0;
+                for (let i = 0; i < player.played.length; i++) played += player.played.end(i) - player.played.start(i);
+                state.watched[renderId] = Math.max(state.watched[renderId] || 0, played);
+            });
             holder.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } catch (err) {
             toastError(err);
@@ -1162,11 +1172,16 @@
         }
     }
 
-    async function uploadVideo(projectId) {
+    async function uploadVideo(projectId, renderId, duration) {
         const reviewed = document.getElementById(`yt-reviewed-${projectId}`).checked;
+        const watched = Math.round(state.watched[renderId] || 0);
+        if (duration && watched < duration * 0.8
+            && !confirm(`You have played ${watched} of ${Math.round(duration)} seconds of this video here. Upload anyway?`)) return;
         if (!await saveMetadata(projectId, true)) return;
         try {
-            await api(`/projects/${projectId}/upload`, { method: 'POST', body: JSON.stringify({ reviewed }) });
+            await api(`/projects/${projectId}/upload`, {
+                method: 'POST', body: JSON.stringify({ reviewed, watched_seconds: watched }),
+            });
             showToast('Uploading to YouTube as private. This page updates as it goes.', 'success');
             loadProjects();
         } catch (err) {
