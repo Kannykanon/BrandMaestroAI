@@ -128,7 +128,13 @@ def estimate(db: Session, project: YTProject, port: Optional[AvatarPort] = None)
     }
 
 
-def render_problems(db: Session, project: YTProject, port: Optional[AvatarPort] = None) -> list[str]:
+def render_problems(db: Session, project: YTProject, port: Optional[AvatarPort] = None,
+                    check_ffmpeg: bool = True) -> list[str]:
+    """What must be fixed before rendering.
+
+    ffmpeg is only checked where the render runs: the API queues renders but
+    has no ffmpeg of its own, so it passes check_ffmpeg=False.
+    """
     port = port or AvatarRegistry.get()
     problems = []
     if not project.storyboard_approved_at:
@@ -142,8 +148,8 @@ def render_problems(db: Session, project: YTProject, port: Optional[AvatarPort] 
         problems.append("Every shot needs a storyboard image")
     if port.missing_env():
         problems.append(f"The avatar provider {port.name} is not configured (missing {', '.join(port.missing_env())})")
-    if not ffmpeg_available():
-        problems.append("ffmpeg is not available on this worker")
+    if check_ffmpeg and not ffmpeg_available():
+        problems.append("ffmpeg is not available on the render worker")
     return problems
 
 

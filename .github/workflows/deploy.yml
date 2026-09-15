@@ -86,7 +86,15 @@ jobs:
                 # services declare \`build:\` and no \`image:\`, so without it
                 # compose recreates containers from the image it already had.
                 sudo docker compose up -d --build --force-recreate \
-                  api worker_generation worker_feedback worker_retraining worker_rag flower"
+                  api worker_generation worker_feedback worker_retraining worker_rag flower
+                # The YouTube workers are optional and started by hand with their
+                # profiles. When they are running they share code with the API,
+                # so rebuild them too; when they are not, leave them off.
+                for service in worker_youtube worker_render; do
+                  if [ -n \"\$(sudo docker compose --profile youtube --profile render ps -q \$service)\" ]; then
+                    sudo docker compose --profile youtube --profile render up -d --build --force-recreate --no-deps \$service
+                  fi
+                done"
             code=$?
             if [ "$code" -eq 0 ]; then
               exit 0

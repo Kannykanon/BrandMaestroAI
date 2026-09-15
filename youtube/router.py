@@ -219,11 +219,10 @@ async def youtube_status(current_user: CurrentUser):
         image_status = {"provider": None, "configured": False, "error": str(e)}
 
     try:
-        from youtube.media import ffmpeg_available
         avatar_port = AvatarRegistry.get()
         avatar_status = {"provider": avatar_port.name, "configured": not avatar_port.missing_env(),
                          "missing": avatar_port.missing_env(), "lip_sync": avatar_port.lip_sync,
-                         "usd_per_second": avatar_port.usd_per_second, "ffmpeg": ffmpeg_available()}
+                         "usd_per_second": avatar_port.usd_per_second}
     except ValueError as e:
         avatar_status = {"provider": None, "configured": False, "error": str(e)}
 
@@ -680,7 +679,7 @@ def render_estimate(project_id: int, db: Db, current_user: CurrentUser):
     """What rendering would animate and cost, and anything that must be fixed first."""
     r = _render()
     project = _project_or_404(db, current_user, project_id)
-    return {**r.estimate(db, project), "problems": r.render_problems(db, project)}
+    return {**r.estimate(db, project), "problems": r.render_problems(db, project, check_ffmpeg=False)}
 
 
 @router.post("/projects/{project_id}/render", status_code=status.HTTP_202_ACCEPTED)
@@ -690,7 +689,7 @@ def start_render(project_id: int, body: RenderIn, db: Db, current_user: CurrentU
 
     r, p = _render(), _projects()
     project = _project_or_404(db, current_user, project_id)
-    problems = r.render_problems(db, project)
+    problems = r.render_problems(db, project, check_ffmpeg=False)
     if problems:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="; ".join(problems))
     cost = r.estimate(db, project)
