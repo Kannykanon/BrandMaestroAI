@@ -1,6 +1,6 @@
 # BrandMaestro AI
 
-Writes blog posts, ad copy, proposals, scripts and press releases in your brand's own voice — on whichever LLM you choose.
+Writes blog posts, ad copy, proposals, scripts and press releases in your brand's own voice — on whichever LLM you choose. Optionally turns approved scripts into story videos and publishes them to your YouTube channel.
 
 ---
 
@@ -20,6 +20,88 @@ Writes blog posts, ad copy, proposals, scripts and press releases in your brand'
 - You get a draft that already sounds like the brand.
 
 One Brand Brain per business and content type, so a brand's ads can sound different from its proposals.
+
+---
+
+## Two systems, one pipeline
+
+BrandMaestro is two systems that work alone or together:
+
+- **Content writing** turns a brand's documents into on-brand copy. It needs nothing from the video side.
+- **YouTube Automation** turns an approved script into a published story video. It writes no scripts of its own. It takes them from content writing, so a video always starts as a brand-approved script.
+
+Used together, one pipeline runs from brand voice to a published YouTube video:
+
+```mermaid
+flowchart TD
+    subgraph WRITE["1. Content writing"]
+        BV["Brand-voice documents<br/>(past scripts)"] --> BB["Brand Brain<br/>voice profile for scripts"]
+        PD["Product documents<br/>(optional)"] --> VI["Vector index<br/>facts to write from"]
+        BB --> RS["Researcher"]
+        VI --> RS
+        RS --> WR["Writer"]
+        WR --> EN["Enforcer<br/>checks and scores against the Brand Brain"]
+        EN -- "below threshold: revise" --> WR
+        EN --> DP["Deployer<br/>saves the script and the Enforcer's verdict"]
+        DP --> HR{"Human review"}
+        HR -- "rejected: regenerate" --> RS
+    end
+
+    HR -- "approved script<br/>(or Enforcer-approved, not rejected)" --> SC
+
+    subgraph VIDEO["2. YouTube Automation"]
+        SC["Scripts tab<br/>project keeps a snapshot"] --> PL["Plan shots<br/>words split in code, never rewritten"]
+        PL --> CA["Cast<br/>voices, faces, character sheets, style"]
+        CA --> VO["Voice track"]
+        VO --> SB["Storyboard<br/>you approve"]
+        SB --> RE["Render<br/>talking shots, captions, sound"]
+        RE --> MD["YouTube details"]
+        MD --> UP["Private upload<br/>after you watch it"]
+        UP --> PU["Publish or schedule"]
+    end
+
+    BB -. "brand name and tone" .-> MD
+```
+
+### What happens at each stage
+
+**1. Teach it the brand's voice** (content writing)
+- **Brand-voice documents.** Upload approved past scripts in **Brand Documents**, as *Brand voice* for the content type *Script*. They are analysed into the **Brand Brain for scripts**: how the brand opens, its sentence rhythm, the phrases it uses and avoids, and rates measured from the writing itself.
+- **Product documents.** Briefs and fact sheets are indexed separately, so facts come from them without diluting the voice.
+- Each content type has its own Brand Brain, so a brand's video scripts can sound different from its press releases.
+
+**2. Write the script** (content writing)
+- In **Content Generator**, choose **Script** and give a topic.
+- **Researcher** gathers facts from the product documents and, optionally, the web.
+- **Writer** drafts against the Brand Brain.
+- **Enforcer** runs rule checks: no invented quotes or contact details, no unfilled placeholders, no punctuation the brand never uses. It then scores style, tone, structure and signature phrases, and sends a weak draft back for revision.
+- **Deployer** saves the result with the Enforcer's verdict.
+- Name the speakers in the brief (for example "a two-person dialogue between a customer and a founder"). Lines written as `NAME: text` become characters on screen; everything else becomes narration.
+
+**3. Approve it** (content writing, then the handoff)
+- A person approves or rejects the script. A rejection can regenerate it, and the feedback teaches future drafts.
+- **YouTube Studio → Scripts** lists every script a person approved, and every script the Enforcer approved and no person rejected. Each is labelled with which kind it is.
+- Creating a project takes a **snapshot**: later edits or deletions in content writing never change a video in progress, and deleting a video project never touches the script.
+
+**4. Make the video** (YouTube Automation)
+- The script is split into shots **in code**, and a word check proves the spoken text matches the approved script exactly. A model only suggests what each shot shows.
+- Each speaker is cast as a character with a voice. On-screen characters get face photos and an approved character sheet, so they look the same in every shot.
+- The lines are voiced, the storyboard is drawn for you to approve, and the video is rendered: speaking shots lip-synced, narration over the still images, captions burned in.
+- Details in [YouTube Automation](#youtube-automation).
+
+**5. Publish it** (YouTube Automation, drawing on the Brand Brain again)
+- The title, description and tags are drafted from the script **and the same Brand Brain**, so the listing sounds like the brand too.
+- You edit them, confirm you watched the video, and it is uploaded to your channel as private. You then publish it or schedule it.
+
+### Using them separately
+
+| You want | Use | Set up |
+|---|---|---|
+| On-brand blogs, ads, proposals, scripts, press releases | Content writing only | The core app. YouTube Automation can stay unconfigured; its workers never start. |
+| Story videos on YouTube from brand scripts | Both | Content writing, plus the YouTube workers and settings ([Setting it up](#setting-it-up)) |
+| Scripts for a video team that films them | Content writing only | Generate and approve **Script** content, then copy it from the generator |
+
+Information flows one way. YouTube Automation reads approved scripts and the Brand Brain, and never writes to content writing's data.
 
 ---
 
@@ -98,15 +180,66 @@ The vector table name includes the dimension, so switching backend starts a fres
 
 ---
 
-## YouTube Automation (in progress)
+## YouTube Automation
 
-An optional module that turns approved `script` generations into storytelling videos and publishes them to YouTube. It lives in `youtube/`, has its own tables, routes (`/youtube/...`) and queues, and marketing never depends on it. Design and build order: [docs/youtube-automation.md](docs/youtube-automation.md).
+An optional module that turns approved `script` generations into short stories on YouTube, with a recurring cast of AI characters. It lives in `youtube/`, has its own `yt_` tables, routes (`/youtube/...`), queues and workers, and marketing never imports it: the app runs the same whether or not it is set up. Full design, decisions and phase notes: [docs/youtube-automation.md](docs/youtube-automation.md).
 
-Built so far: approved scripts are split into shots without changing a word, characters are cast with voices (Kokoro locally, or Google Cloud TTS), and each script is voiced into a downloadable track, all from the **YouTube Studio** panel. Its worker is not started by default:
+### From script to YouTube
 
-```bash
-docker compose --profile youtube up -d --build worker_youtube
-```
+| Step | What happens | Who decides |
+|---|---|---|
+| 1. Pick a script | Human-approved scripts, or enforcer-approved ones no person rejected, each labelled by kind. The project keeps a snapshot. | You |
+| 2. Plan | The script is split into shots **in code**, so approved words never pass through a model; a word check proves nothing changed. A model only adds shot types and visuals. | — |
+| 3. Cast | Characters with a voice each. On-screen characters get face photos (only after confirming the right to use them) and an approved character sheet. A style lock gives every scene one look. | You |
+| 4. Voice | Each line in its character's voice, joined into one track. | — |
+| 5. Storyboard | One image per shot, drawn from the approved sheets so faces stay consistent. Redraw any shot. | You approve |
+| 6. Render | Speaking shots are lip-synced for up to 6 s each; narration plays over the still with a slow pan. Captions are burned in, loudness normalised, thumbnail made. A budget check runs before paying for animation. | You confirm if over budget |
+| 7. YouTube details | Title, description and tags drafted from the script and Brand Brain; category and made-for-kids set by you. | You edit |
+| 8. Upload | Only after you confirm you watched the video. Uploaded **private**, resumable, marked as containing AI-generated content, waits for quota when the day's is used up. | You |
+| 9. Publish | Make public now, or schedule. The result is read back from YouTube. | You |
+
+### Providers (plug and adapter, like `model.py`)
+
+| Port | Adapters | Selected by | Cost |
+|---|---|---|---|
+| `VoicePort` | `kokoro` (local, CPU), `google_tts` | `YT_VOICE_PROVIDER` | Kokoro free |
+| `ImagePort` | `nano_banana` (Gemini 3.1 Flash Image on Vertex), `seedream` (fal.ai) | `YT_IMAGE_PROVIDER` | ~$0.067 / $0.03 per image |
+| `AvatarPort` | `still` (no animation), `kling_standard` (fal.ai, `FAL_KEY`), `infinitetalk` (WaveSpeed, `WAVESPEED_API_KEY`) | `YT_AVATAR_PROVIDER` | $0 / ~$0.056 / $0.03–0.06 per animated second |
+| `StoragePort` | `gcs`, `local` | `YT_STORAGE_PROVIDER` (gcs when `YT_GCS_BUCKET` is set) | — |
+| `PublisherPort` | YouTube Data API v3 | — | Free, quota-limited |
+
+A 75-second Short with two characters cost about **$1.60** in images with still speaking shots (measured on production); animating its ten speaking lines with Kling is estimated at **$1.40** more.
+
+### Setting it up
+
+1. **Workers.** Neither starts by default. `worker_youtube` plans, voices, draws and uploads; `worker_render` runs ffmpeg and animation, and is meant for a machine with spare CPU.
+   ```bash
+   docker compose --profile youtube up -d --build worker_youtube
+   docker compose --profile render up -d --build worker_render
+   ```
+   Once they are running, deploys rebuild them with the API.
+2. **Storage.** Set `YT_GCS_BUCKET` in production, or run the workers beside the API so they share the `yt_storage` volume.
+3. **YouTube sign-in.** In Google Cloud: enable YouTube Data API v3, set the OAuth consent screen to *In production* (in *Testing*, sign-in expires after 7 days), and create a *Web application* OAuth client with the redirect URI `https://<your-domain>/youtube/channel/callback`. Then set:
+   ```bash
+   YT_GOOGLE_CLIENT_ID=...
+   YT_GOOGLE_CLIENT_SECRET=...
+   YT_OAUTH_REDIRECT_URI=https://<your-domain>/youtube/channel/callback
+   ```
+   Connect the channel from **YouTube Studio → Channel**.
+4. **Talking characters (optional).** `YT_AVATAR_PROVIDER=kling_standard` with `FAL_KEY`, or `infinitetalk` with `WAVESPEED_API_KEY`.
+5. **Restart after changing `.env`.** Containers read it only when they start:
+   ```bash
+   docker compose --profile youtube --profile render up -d --force-recreate api worker_youtube worker_render
+   ```
+
+Every setting, with defaults, is in `.env.example` under *YouTube Automation*.
+
+### Before publishing publicly
+
+- **YouTube API audit.** Videos uploaded through the API from a Google Cloud project that has not passed [YouTube's API compliance audit](https://support.google.com/youtube/contact/yt_api_form) are locked private — even in YouTube Studio. Uploading and reviewing work before the audit; the app reports the lock if you try to publish.
+- **Google data-access verification.** Until Google verifies the app's YouTube permissions, connecting shows an "unverified app" screen and at most 100 accounts can connect.
+- **Custom thumbnails** need a phone-verified channel; otherwise the upload succeeds without one.
+- **Public pages** required by Google are served by the app: `/about.html`, `/privacy.html`, `/terms.html`.
 
 ---
 
@@ -124,6 +257,7 @@ docker compose --profile youtube up -d --build worker_youtube
 | Cache | Redis: Brand Brain cache, LLM response cache, generation stream |
 | Auth | JWT + Argon2 |
 | Tracing | Opik (optional) |
+| Video (optional) | Kokoro TTS, Gemini image models, Kling / InfiniteTalk, ffmpeg, YouTube Data API |
 
 ```
       FastAPI  ->  Redis (broker)  ->  workers (generation x2, feedback, retraining, rag)
@@ -132,6 +266,9 @@ docker compose --profile youtube up -d --build worker_youtube
          |                              |
          +------ Redis (cache, stream) -+
                  PostgreSQL + pgvector
+
+      optional:  yt_plan / yt_media / yt_publish -> worker_youtube
+                 yt_render                       -> worker_render (ffmpeg)
 ```
 
 ---
@@ -153,6 +290,8 @@ Open http://localhost:8000.
 | PostgreSQL | 5433 |
 | Redis | 6379 |
 | Flower | 5555 |
+
+YouTube Automation needs its workers and settings first; see [Setting it up](#setting-it-up).
 
 Pushes to `main` deploy to the production VM through `.github/workflows/deploy.yml`. `setup-vm.sh` prepares a fresh VM.
 
@@ -177,6 +316,7 @@ All content endpoints need a bearer token. A user can only reach their own `busi
 | GET | `/documents/brand-brain/{content_type}` | Read the Brand Brain |
 | DELETE | `/documents/brand-brain/{content_type}` | Reset the Brand Brain |
 | DELETE | `/documents/{document_id}` | Delete a document |
+| | `/youtube/...` | YouTube Automation: scripts, characters, styles, projects, storyboard, render, channel, upload, publish ([full list](docs/youtube-automation.md#13-api-and-ui)) |
 
 Example generation request:
 
@@ -219,7 +359,7 @@ uv sync --group dev
 uv run pytest tests/
 ```
 
-The suite needs no live services or API keys.
+The suite needs no live services or API keys; YouTube, Google sign-in and the image and avatar providers are replaced with fakes. Render tests use ffmpeg from `imageio-ffmpeg` (a dev dependency) and are skipped if it is missing.
 
 ---
 
@@ -245,8 +385,8 @@ nodes/               researcher, writer, enforcer, deployer
 prompts/             Prompt templates
 routers/             API endpoints
 utils/               Brand profile parsing and enforcement checks
-static/              Web UI
-youtube/             YouTube Automation (optional; in progress, see docs/)
+static/              Web UI, plus the public About, Privacy and Terms pages
+youtube/             YouTube Automation (optional; see docs/youtube-automation.md)
 docs/                Design documents
 tests/               Test suite
 ```
