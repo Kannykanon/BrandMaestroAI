@@ -26,6 +26,9 @@ This brand writes in short, plain sentences.
 - exclamation_marks_per_100_words: 0.0
 - median_words_per_sentence: 7.0
 - bracket_placeholders_per_100_words: 0.0
+- nominalisations_per_100_words: 1.2
+- nominalisations_per_100_words_low: 0.8
+- nominalisations_per_100_words_high: 3.1
 
 # STRUCTURAL PATTERNS
 Opens on a scene.
@@ -117,3 +120,78 @@ class TestKeepingTheFactIsNotRefused:
         """Scope is an editorial choice. Stating a fact wrongly is not."""
         with pytest.raises(_ModelWasCalled):
             enforcer("A city. A student. A debt he cannot pay.")
+
+
+# ---------------------------------------------------------------------------
+#  Story the draft reached and then summarised away
+# ---------------------------------------------------------------------------
+TOLD = (
+    "He calls after lectures.\n\n"
+    "More than seven men. Seated. Drinking.\n\n"
+    "They tell him to drink. He says no.\n\n"
+    "Other men pass and greet the table. When they greet EMK, they use both hands.\n\n"
+    "EMK asks about his studies. He sounds almost fatherly.\n\n"
+    "Before Kan leaves, EMK gives him a number. Call me, he says, if you ever run into trouble.\n"
+)
+
+SUMMARISED = (
+    "He calls after lectures.\n\n"
+    "More than seven men. Seated. Drinking.\n\n"
+    "They tell him to drink. He says no.\n\n"
+    "EXT. CAMPUS - NIGHT\n\n"
+    "This encounter marks his initiation into a world of hidden power, a place demanding "
+    "loyalty and severe consequences. His choices now determine a path from which there is "
+    "absolutely no return. His situation had changed beyond recognition.\n"
+)
+
+SOURCE_STORY = (
+    "He finds a group of more than seven men, seated, drinking. They tell him to drink with "
+    "them. He says no.\n\n"
+    "Throughout the encounter, Kan notices a pattern: other rough-looking men drift by to greet "
+    "the group, but when they greet EMK, they use both hands.\n\n"
+    "As Kan grows restless, EMK's demeanor shifts. He starts asking Kan about his studies — "
+    "almost fatherly. Before Kan goes, EMK gives him his personal number, tells him to call if "
+    "he ever runs into trouble.\n"
+)
+
+NARRATIVE_BRAIN = BRAIN + "- nominalisations_per_100_words: 1.2\n- nominalisations_per_100_words_high: 3.1\n"
+
+
+class TestStoryReplacedWithWhatItMeans:
+    def test_a_script_that_summarises_its_ending_is_refused(self, enforcer):
+        result = enforcer(SUMMARISED, research=SOURCE_STORY, content_type="script")
+        assert result["approved"] is False and result["score"] == 0.0
+
+    def test_no_model_call_is_spent_on_it(self, enforcer):
+        enforcer(SUMMARISED, research=SOURCE_STORY, content_type="script")
+
+    def test_the_feedback_names_what_went_missing(self, enforcer):
+        feedback = enforcer(SUMMARISED, research=SOURCE_STORY, content_type="script")["feedback"]
+        assert "STORY DROPPED" in feedback
+        assert "hand" in feedback or "greet" in feedback
+        assert "studi" in feedback or "fatherly" in feedback
+
+    def test_the_feedback_says_what_to_write_instead(self, enforcer):
+        feedback = enforcer(SUMMARISED, research=SOURCE_STORY, content_type="script")["feedback"]
+        assert "A gesture, a question, a line of dialogue" in feedback
+        assert "summary of a scene, not the scene" in feedback
+
+    def test_the_version_that_tells_the_story_reaches_the_scoring_call(self, enforcer):
+        with pytest.raises(_ModelWasCalled):
+            enforcer(TOLD, research=SOURCE_STORY, content_type="script")
+
+    def test_marketing_copy_is_not_asked_to_cover_all_of_its_research(self, enforcer):
+        """A blog uses a fraction of its research on purpose. Demanding coverage
+        there would be the tight-rule failure this change exists to undo.
+
+        Written without reusing the source's wording, so this tests the coverage
+        rule rather than the copying one.
+        """
+        blog = (
+            "Recruitment rarely announces itself.\n\n"
+            "It starts with something small: a favour, an invitation, a debt too minor to "
+            "refuse.\n\n"
+            "By the time the arrangement is visible, the obligation is already in place."
+        )
+        with pytest.raises(_ModelWasCalled):
+            enforcer(blog, research=SOURCE_STORY, content_type="blog")

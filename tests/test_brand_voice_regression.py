@@ -148,3 +148,47 @@ class TestTheRejectedDraftFails:
         good_short = next(n for n in voice_diagnostics(gold, brain) if "under 6 words" in n)
         assert float(bad_short.split("this draft ")[1].split(".")[0]) > \
                float(good_short.split("this draft ")[1].split(".")[0])
+
+
+class TestTheSecondRun:
+    """The rebuild's own output. Better, and still refused.
+
+    It keeps the fact the first run lost ("More than seven men sit there."),
+    borrows no act titles, and pads no register. Then its final act replaces
+    four beats of the treatment — the two-handed greetings, EMK asking about
+    Kan's studies, the phone number, "call me if you ever run into trouble" —
+    with "This encounter marks his initiation into a world of hidden power."
+    """
+
+    @pytest.fixture(scope="class")
+    def draft(self):
+        return _read("second_run_draft.txt")
+
+    def test_it_keeps_the_fact_the_first_run_lost(self, draft, treatment):
+        assert missing_fact_spans(draft, extract_fact_spans(treatment)) == []
+
+    def test_it_borrows_no_act_titles_and_pads_no_register(self, draft, brain):
+        assert "A LIFE ALMOST REBUILT" not in draft
+        assert check_measured_mechanics(draft, brain) == []
+        for padding in ("congregation", "numerical", "convene"):
+            assert padding not in draft.lower()
+
+    def test_and_it_is_still_refused_for_dropping_the_story(self, draft, treatment, brain):
+        from utils.coverage import dropped_detail
+        from utils.voice_spec import band_high
+
+        findings = dropped_detail(
+            draft, treatment, band_high(brain, "nominalisations_per_100_words")
+        )
+        assert findings, "the collapsed ending passed every gate this system had"
+        assert any(f["skipped"] for f in findings), (
+            "the two-handed greetings appear nowhere in this draft"
+        )
+
+    def test_the_act_that_gave_up_is_named(self, draft, brain):
+        from utils.coverage import vague_sections
+        from utils.voice_spec import band_high
+
+        sections = vague_sections(draft, band_high(brain, "nominalisations_per_100_words"))
+        assert len(sections) == 1 and "NIGHT" in sections[0]["section"]
+        assert "initiation into a world of hidden power" in " ".join(sections[0]["examples"])
