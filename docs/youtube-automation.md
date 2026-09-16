@@ -147,6 +147,33 @@ Built in two parts, so the approved text never passes through a model (`youtube/
 - **Speakers:** the user can reassign who speaks a shot; its words cannot be edited in YouTube Automation.
 - **Short length check:** duration is estimated from word count, then measured from the audio. Over the Shorts limit it warns and suggests long-form; words are never trimmed.
 
+### 7.1b Stopping, resuming and deleting (as built, `youtube/cancel.py`)
+
+Every long step is a loop over shots that commits after each one, which is what
+makes stopping cheap: the work already paid for is on disk, so stopping means
+doing no *more* work rather than discarding what exists.
+
+- **Stop** writes `cancel_requested_at` on the project. The worker reads it
+  between shots — never inside one, so a clip an avatar provider has already
+  been paid for is never abandoned — and raises `Cancelled`. Killing the task
+  instead would strand the row in a busy status with an open transaction.
+- **Stopped is not failed.** The project settles into the status its own files
+  justify (`settle_status`) and records why it stopped. A project marked failed
+  invites someone to start it from the beginning, which for a render that has
+  paid for nine of twelve clips is the expensive mistake.
+- **Continue** is re-running the same step. Each one skips the shots that
+  already have their output (`voice_project` keeps existing audio, `_needs_clip`
+  keeps current clips, the storyboard keeps drawn images), so it picks up where
+  the stop left off.
+- **Delete** works while a step is running. The row goes, and the next
+  checkpoint finds no project and stops; one shot's output may be orphaned in
+  storage, which is the price of not waiting out a two-hour render.
+- **A worker that never came back** is the other half. `busy_since` is stamped
+  when a step claims the project, and a claim older than that step's ceiling is
+  treated as abandoned: the project can be stopped, resumed and deleted again.
+  Without it, a container replaced mid-render left the project claimed for ever
+  and every request was answered "wait for it to finish".
+
 ### 7.2 Shot types
 
 | Shot | On screen | Audio | Cost driver |
@@ -321,6 +348,7 @@ Prices checked on 2026-09-14 from provider pages; recheck before building.
 | POST/GET | `/youtube/styles` | Style locks |
 | POST | `/youtube/projects` | Create from a script (snapshot, format, style) |
 | POST | `/youtube/projects/{id}/plan` | Run the scene planner |
+| POST | `/youtube/projects/{id}/stop` | Stop the running step at its next shot, keeping what it finished |
 | PUT | `/youtube/projects/{id}/cast` | Assign characters to speakers |
 | POST | `/youtube/projects/{id}/storyboard` | Voice and images |
 | PATCH | `/youtube/projects/{id}/shots/{shot_id}` | Regenerate an image, change shot type or speaker |

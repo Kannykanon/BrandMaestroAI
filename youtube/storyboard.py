@@ -21,7 +21,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from youtube import projects
+from youtube import cancel, projects
 from youtube.images import GeneratedImage, ImageInput, ImagePort, ImageRegistry, inspect_image, prepare_reference
 from youtube.models import (
     SHOT_TYPES,
@@ -484,7 +484,8 @@ def generate_storyboard(db: Session, project: YTProject, storage: StoragePort,
     targets = [s for s in shots if (shot_ids is None and (force or not s.image_key))
                or (shot_ids is not None and s.id in shot_ids)]
     failed = []
-    for shot in targets:
+    for index, shot in enumerate(targets):
+        cancel.check(db, project.id, f"{index} of {len(targets)} images drawn")
         try:
             draw_shot(db, project, shot, storage, port)
         except Exception as e:

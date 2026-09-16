@@ -152,6 +152,13 @@ class YTProject(YTModel):
     audio_duration_s: Mapped[Optional[float]] = mapped_column(Float)
     # When a person approved the storyboard. Cleared by any change to it.
     storyboard_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # When a background step claimed this project, and when someone asked it to
+    # stop. Together they are what makes a running step interruptible and a
+    # crashed one recoverable: without busy_since, a worker that died mid-render
+    # left the project claimed for ever and every later request was refused
+    # ("the project is rendering; wait for it to finish"). See youtube/cancel.py.
+    busy_since: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    cancel_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # YouTube metadata, written by a person or drafted by the metadata step.
     # The series this project is an episode of, if any.
     series_id: Mapped[Optional[int]] = mapped_column(ForeignKey("yt_series.id", ondelete="SET NULL"), index=True)
@@ -396,6 +403,8 @@ COLUMN_MIGRATIONS = (
     ("yt_channel", "token_error", "TEXT"),
     ("yt_shots", "image_issues", "JSON"),
     ("yt_uploads", "watched_seconds", "FLOAT"),
+    ("yt_projects", "busy_since", "TIMESTAMP WITH TIME ZONE"),
+    ("yt_projects", "cancel_requested_at", "TIMESTAMP WITH TIME ZONE"),
     ("yt_projects", "asset_ids", "JSON"),
     ("yt_projects", "end_card", "JSON"),
     ("yt_shots", "asset_ids", "JSON"),

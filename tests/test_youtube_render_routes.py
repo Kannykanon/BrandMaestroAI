@@ -135,3 +135,64 @@ def test_rendered_video_thumbnail_and_clip_are_served(api, paid, tmp_path, monke
     assert c.get(f"/youtube/projects/{pid}/renders/{rid + 99}/video").status_code == 404
     api.user.business_id = "someone-else"
     assert c.get(f"/youtube/projects/{pid}/renders/{rid}/video").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+#  Stopping and deleting a project while a step is running
+# ---------------------------------------------------------------------------
+def test_stop_is_refused_when_nothing_is_running(api, paid):
+    pid = approved(api)
+    refused = api.client.post(f"/youtube/projects/{pid}/stop")
+    assert refused.status_code == 409 and "Nothing is running" in refused.json()["detail"]
+
+
+def test_stop_asks_the_running_step_to_stop_and_says_so(api, paid):
+    pid = approved(api)
+    with api.Session() as db:
+        projects.mark_busy(db, projects.get_project(db, "biz", pid), "rendering")
+
+    body = api.client.post(f"/youtube/projects/{pid}/stop").json()
+    assert body["stopping"] is True
+
+    # The project stays claimed until the worker reaches its next shot — the
+    # clip being paid for right now is finished and kept, not abandoned.
+    detail = api.client.get(f"/youtube/projects/{pid}").json()
+    assert detail["busy"] is True and detail["stopping"] is True
+
+
+def test_starting_another_step_while_one_runs_says_to_stop_it_first(api, paid):
+    pid = approved(api)
+    with api.Session() as db:
+        projects.mark_busy(db, projects.get_project(db, "biz", pid), "voicing")
+    refused = api.client.post(f"/youtube/projects/{pid}/voice", json={})
+    assert refused.status_code == 409
+    assert "Stop it first" in refused.json()["detail"], "say what to do, not just what is wrong"
+
+
+def test_a_project_whose_worker_died_is_stopped_on_the_spot(api, paid):
+    """Nobody is coming back to read the flag, so the endpoint settles it
+    itself. Before this the project stayed claimed for ever and every button,
+    including the ones that would have fixed it, was refused."""
+    from datetime import datetime, timedelta, timezone
+
+    pid = approved(api)
+    with api.Session() as db:
+        project = projects.get_project(db, "biz", pid)
+        projects.mark_busy(db, project, "rendering")
+        project.busy_since = datetime.now(timezone.utc) - timedelta(hours=6)
+        db.commit()
+
+    body = api.client.post(f"/youtube/projects/{pid}/stop").json()
+    assert body["stopped"] is True
+    detail = api.client.get(f"/youtube/projects/{pid}").json()
+    assert detail["busy"] is False
+    assert "stopped responding" in detail["error"]
+
+
+def test_a_running_project_can_be_deleted(api, paid):
+    pid = approved(api)
+    with api.Session() as db:
+        projects.mark_busy(db, projects.get_project(db, "biz", pid), "rendering")
+
+    assert api.client.delete(f"/youtube/projects/{pid}").status_code == 204
+    assert api.client.get(f"/youtube/projects/{pid}").status_code == 404

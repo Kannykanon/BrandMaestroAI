@@ -88,6 +88,7 @@ flowchart TD
 - The script is split into shots **in code**, and a word check proves the spoken text matches the approved script exactly. A model only suggests what each shot shows.
 - Each speaker is cast as a character with a voice. On-screen characters get face photos and an approved character sheet, so they look the same in every shot.
 - The lines are voiced, the storyboard is drawn for you to approve, and the video is rendered: speaking shots lip-synced, narration over the still images, captions burned in.
+- **Stop any step while it runs.** It stops at the next shot, keeps everything already voiced, drawn or animated, and starting that step again continues from there rather than paying for it twice. You can also delete a project mid-render instead of waiting it out, and a project whose worker died can be cleared and restarted instead of staying stuck.
 - Details in [YouTube Automation](#youtube-automation).
 
 **Checks against AI slop.** Listings are checked for hype, promises, numbers and contact details that are not in the script, and the brand's banned punctuation; a flagged draft is rewritten once. Storyboard images are checked and redrawn once when they contain text, panels, blurred strips or repeated people. Uploads record how much of the video you actually played. None of it blocks you; it reports (`youtube/quality.py`).
