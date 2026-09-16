@@ -1,6 +1,6 @@
 # YouTube Automation — Design
 
-**Status:** Agreed 2026-09-14. Phases 0–4 built. Avatar providers and the YouTube connection are tested with fakes; see each phase's notes for what has run live.
+**Status:** Agreed 2026-09-14. Phases 0–4 built and running in production. Run live: Vertex (planner), Kokoro (voice), Nano Banana 2 (images), InfiniteTalk (talking characters), the YouTube connection and a private upload. Not run live: Kling, Seedream, ElevenLabs sound. Later additions are listed under §14.
 **Scope:** Turn approved marketing scripts into storytelling videos with a cast of AI characters, and publish them to one YouTube channel.
 
 ---
@@ -36,7 +36,7 @@ The main cost decision: **only dialogue shots are animated.** Narration plays ov
 | # | Decision | Why |
 |---|---|---|
 | D1 | Separate, optional module. Marketing does not import it or depend on it. | Marketing users must be unaffected, whether or not YouTube Automation is set up. |
-| D2 | Scripts come **only from marketing**. No second research, writing or enforcer loop. | The marketing pipeline already does the expensive, careful work. |
+| D2 | Scripts come **only from marketing**, or are **imported by a person** and labelled as such. No second research, writing or enforcer loop. | The marketing pipeline already does the expensive, careful work; an imported script is the user's own responsibility and says so. |
 | D3 | Eligible scripts: **human-approved**, or **enforcer-approved** and not rejected by a human. Each shows which kind it is. | Both are useful; the user should know whether a person has read it. |
 | D4 | Scripts saved before the enforcer's verdict was stored are eligible **only if human-approved**. | There is no trustworthy automatic verdict for them. |
 | D5 | Approved wording is never changed. The scene planner only structures it, and the result is checked word for word. | The enforcer approved those exact words. |
@@ -86,6 +86,8 @@ Researcher → Writer → Enforcer → Deployer
 ---
 
 ## 5. Script intake
+
+**Sources (as built):** approved `script` generations, approved `ad` generations (read as narration; Headline, Body, CTA and similar labels are section labels, not speakers), and scripts a person imports. Importing is approval: the script is stored in `yt_imported_scripts`, labelled `imported`, and checked in advance to split into shots. Marketing tables are never written to. Approving a Script or an Ad in the Content Generator shows a **Make a video** button that creates the project and starts planning; it waits for the feedback worker to save the approval first.
 
 ### 5.1 Required marketing change: save the enforcer's verdict
 
@@ -179,9 +181,15 @@ The user sees every shot's image and text, and can regenerate an image, change a
 ### 7.7 Captions
 Burned-in captions from word timestamps, positioned for the format (lower third for 16:9, centre for Shorts).
 
+### 7.7b Sound design (as built, `youtube/sound.py`)
+- **Music:** a track the business uploads as an asset; one per project, looped or trimmed to the video and faded out. Licensing is the uploader's.
+- **Ambience:** the planner writes a short sound line per shot ("heavy rain, distant thunder"), editable in the storyboard. `SoundPort` generates each distinct description once per project and caches it in storage, so re-renders do not pay again.
+- **Ducking:** both beds are mixed under the voice through a sidechain compressor, so they drop whenever anyone speaks.
+- Each render stores the mix it was made with, so changing music, volumes or a shot's sound marks it out of date.
+
 ### 7.8 Composer (ffmpeg)
 - Narration and cutaway: slow zoom/pan over the image for the length of the audio.
-- Dialogue: avatar clip, with a cutaway when capped.
+- Dialogue: avatar clip, with a cutaway when capped. Clips are upscaled with Lanczos and lightly sharpened, and the part the avatar model redrew is colour-matched to the shot's still through a soft mask (see the finding under §14).
 - Transitions, optional background music with volume ducking under speech, captions, loudness normalisation.
 - Output: 1920×1080 (16:9) or 1080×1920 (9:16) MP4, plus a thumbnail from a chosen shot.
 
@@ -218,6 +226,7 @@ Same pattern as `LLMProvider` / `LLMSingleton`: an abstract port declares `name`
 | `AvatarPort` | `animate(image, mime, audio_wav, duration_s, prompt) -> AvatarClip`, `cost_usd(seconds)`, `min_seconds`, `max_seconds`, `lip_sync` | **Built:** still (no animation, free), Kling AI Avatar v2 Standard via fal.ai queue, InfiniteTalk via WaveSpeed (both tested with fakes only; need `FAL_KEY` / `WAVESPEED_API_KEY`). Later: Hedra Character-3, a multi-speaker model, self-hosted GPU | `YT_AVATAR_PROVIDER` |
 | Composer | `youtube/media.py` building blocks and `youtube/render.py` (not a port: ffmpeg is the only implementation) | ffmpeg | `YT_FFMPEG` |
 | `PublisherPort` | `authorization_url`, `exchange_code`, `channel`, `upload_private(video, metadata, session_url)` (resumable, chunked), `set_thumbnail`, `set_privacy(privacy, publish_at)`, `video_status`, `revoke` | **Built:** YouTube Data API v3 over HTTPS (tested with fakes; needs an OAuth client) | — |
+| `SoundPort` | `generate(description, seconds, loop) -> mp3` | **Built:** off (music only) and ElevenLabs text to sound effects (`ELEVENLABS_API_KEY`; tested with fakes) | `YT_SOUND_PROVIDER` |
 | `StoragePort` | `put(key, bytes)`, `get(key)`, `exists(key)`, `delete(key)`, `url(key)` | **Built:** Google Cloud Storage and local disk | `YT_STORAGE_PROVIDER` |
 
 Each adapter reports its cost per call (per second, image or character) so the budget in §11 comes from real numbers.
@@ -238,6 +247,10 @@ Each adapter reports its cost per call (per second, image or character) so the b
 | `yt_uploads` | id, render_id, youtube_video_id, title, privacy, status, progress, upload_url (resumable session), retry_at, claimed_at, publish_at, published_at, youtube_status, error, thumbnail_error |
 | `yt_channel` | id, business_id, channel_id, channel_title, refresh_token_encrypted, token_error, connected_at |
 | `yt_quota_usage` | day (Pacific), bucket (`uploads` / `units`), used |
+| `yt_assets` | id, business_id, name, kind (`product` / `logo` / `music`), storage_key |
+| `yt_imported_scripts` | id, business_id, title, content, created_at |
+
+**Columns added for products, end cards and sound:** `yt_projects.asset_ids`, `.end_card`, `.audio`; `yt_shots.asset_ids`, `.sound`, `.image_issues`; `yt_renders.end_card`, `.mix`; `yt_uploads.watched_seconds`.
 | `yt_costs` | id, project_id, stage, provider, units, unit, cost_usd, created_at |
 
 **Project status:** `draft → planned → cast → voiced → storyboard_ready → storyboard_approved → rendered → uploaded_private → scheduled → published`, derived from what the project has; `planning`, `voicing`, `drawing`, `rendering` and `uploading` while a background step runs; `failed` with the error. YouTube details (title, description, tags, category, made-for-kids) are columns on `yt_projects`.
@@ -295,7 +308,9 @@ Prices checked on 2026-09-14 from provider pages; recheck before building.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/youtube/scripts` | Eligible scripts with approval labels |
+| GET | `/youtube/scripts` | Eligible scripts and ads, and imported scripts, with approval labels |
+| POST/DELETE | `/youtube/scripts/import`, `/youtube/scripts/{id}` | Import your own script (paste or .txt/.md); delete an imported one |
+| GET/POST/DELETE | `/youtube/assets` | Product photos, logos and music tracks |
 | POST/GET/PATCH/DELETE | `/youtube/characters` | Character library |
 | POST | `/youtube/characters/{id}/sheet` | Generate or regenerate a character sheet |
 | POST/GET | `/youtube/styles` | Style locks |
@@ -349,7 +364,15 @@ Each phase is useful on its own and ends with a working, testable result.
 
 **Ads: product references and end card (added 2026-09-15, `youtube/brand_assets.py`):** businesses upload product photos and logos once (`yt_assets`). A project lists the products it features; a shot shows a product when its line or visual names it, or when a person picks products for it. Product photos go to the image model as labelled references with an instruction to reproduce the product exactly (transparent PNGs are flattened on white), the prompt allows only the product's own printed text, and the image check ignores that text. The end card (logo, call to action, URL, brand colour, 2–6 s) is drawn with Pillow, appended after the last shot with silence under it, previewed in the UI, and stored on each render so changing it marks the render out of date. Routes: `/youtube/assets` (GET, POST multipart, DELETE, `/{id}/image`), `PATCH /youtube/projects/{id}` with `asset_ids` or `end_card` (only fields sent change), `PATCH .../shots/{id}` with `asset_ids`, `GET .../end-card/preview`. Not built: background music, brand fonts, product placement guarantees (the model can still alter a product, so check the storyboard).
 
+**Imports and the handoff button (added 2026-09-16):** `youtube/imports.py` stores scripts a person pastes or uploads; approved ads join approved scripts as video sources; approving either in content writing offers **Make a video**, which creates the project, starts planning and opens YouTube Studio.
+
+**Sound design (added 2026-09-16, `youtube/sound.py`, `media.mix_audio`):** uploaded music per project, per-shot generated ambience behind `SoundPort` (off by default), both ducked under the voice; the mix is stored on each render. Talking clips are upscaled with Lanczos, sharpened, and colour-matched where the avatar model redrew the frame (`media.color_match_filter`, applied through `alphamerge`/`overlay`; `maskedmerge` shifted the whole frame and was wrong for this).
+
+**Finding (2026-09-16, real footage):** colour matching does almost nothing for InfiniteTalk. Its clips already match the still over the frame, and the visible difference is the redrawn mouth: the changed pixels are different content (open mouth, invented lips and teeth), not the same content tinted differently, so no per-channel match can fix it. Only a better talking-head model, wider framing of speaking shots, or a full-body animation model will. The sharper upscale did help, and the correction stays for providers that do tint.
+
 **Anti-slop checks (added 2026-09-15, `youtube/quality.py`):** YouTube details are checked against the script and Brand Brain (hype phrases, schedule promises, numbers and contact details not in the script, shouting, emoji, the brand's banned punctuation); a flagged draft is rewritten once and remaining issues are shown on every read. Storyboard images are checked for flat borders in code and, with Nano Banana, by `gemini-2.5-flash` for visible text, panels, blurred edge strips, repeated people and malformed bodies; a flagged image is redrawn once (both attempts costed) and remaining issues are marked, with a confirmation before approving. Uploads record how many seconds the person played in the app. Checks never block; they report.
+
+**Real run (2026-09-15/16, production, InfiniteTalk 720p):** a 199-word imported demo script became a 75 s Short: 17 shots planned in 26 s, two characters with approved sheets, a 74 s Kokoro voice track, 17 Nano Banana images ($1.34 including three redraws for text or blurred strips), 10 animated speaking lines (23.1 s, $1.86, about 2½ minutes per clip on WaveSpeed), assembled in 6½ minutes on `worker_render`, and uploaded to the connected channel as private. Total about $3.50. Re-renders reuse the cached clips and cost nothing.
 
 **Verified 2026-09-15 (fakes):** 52 tests over the adapter (chunking, resume, retry, quota and auth errors, every status field), quota days across DST, encryption, metadata, the service and routes; the full browser flow in Edge, from connecting a channel through a fake Google redirect to upload progress, schedule and publish. Not yet run against the real YouTube API: that needs an OAuth client and, for publishing, the audit.
 
@@ -384,7 +407,8 @@ Each phase is useful on its own and ends with a working, testable result.
 | Q4 | Default `YT_MAX_TALKING_SECONDS` and `YT_AVATAR_BUDGET_USD` values after the first test videos. |
 | Q5 | Render worker hosting: separate small VM, or on-demand jobs? |
 | Q6 | Retention period for intermediate assets in storage. |
-| Q7 | Background music source and licensing. |
+| Q7 | ~~Background music source and licensing?~~ Music is uploaded by the business as an asset, so licensing stays with them; generated ambience comes from `SoundPort`. |
+| Q8 | Which full-body animation model replaces the talking-head adapter when lip-sync quality matters more than cost? |
 
 ---
 
