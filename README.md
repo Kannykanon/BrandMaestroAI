@@ -153,7 +153,16 @@ LLM_PROVIDER=claude
 LLM_MODEL=claude-sonnet-5      # optional; the adapter's default otherwise
 ```
 
-Each task mode (`extraction`, `enforcement`, `synthesis`, `generation`) gets its own temperature, output cap and timeout from `LLMSingleton`; `LLM_TEMPERATURE_<MODE>` and `LLM_MAX_TOKENS_<MODE>` override them. Claude models that reject `temperature` (Opus 4.7+, Sonnet 5) are detected by `ClaudeProvider` and it is not sent. The API refuses to start if the selected adapter's credential is missing.
+Each task mode (`extraction`, `enforcement`, `synthesis`, `generation`) gets its own temperature, output cap, timeout **and model** from `LLMSingleton`; `LLM_TEMPERATURE_<MODE>`, `LLM_MAX_TOKENS_<MODE>` and `LLM_MODEL_<MODE>` override them, falling back to `LLM_MODEL` and then the adapter's default.
+
+Per-mode model selection exists because the modes are not alike. `enforcement` decides whether a draft sounds like the brand and `synthesis` writes the Brand Brain every later step reads — both are worth a stronger model. `extraction` turns one uploaded document into structured fields and is checked in code afterwards, so it is the highest-volume, most mechanical call and the least helped by one. Setting nothing keeps a single model across all four:
+
+```bash
+LLM_MODEL=gemini-2.5-flash            # everything, unless overridden below
+LLM_MODEL_ENFORCEMENT=gemini-2.5-pro  # the voice and hallucination judge
+LLM_MODEL_SYNTHESIS=gemini-2.5-pro    # building the Brand Brain
+```
+ Claude models that reject `temperature` (Opus 4.7+, Sonnet 5) are detected by `ClaudeProvider` and it is not sent. The API refuses to start if the selected adapter's credential is missing.
 
 **Adding a provider:** subclass `LLMProvider`, set `name`, `default_model` and `required_env`, implement `to_langchain()`, and register the class in `LLMSingleton.PROVIDERS`.
 

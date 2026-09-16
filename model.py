@@ -320,8 +320,9 @@ class ChatModelHandle:
 class LLMSingleton:
     """Selects the provider adapter and hands out one chat model per task mode.
 
-        LLM_PROVIDER   vertex_ai (default) | groq | claude
-        LLM_MODEL      optional; the adapter's default model otherwise
+        LLM_PROVIDER      vertex_ai (default) | groq | claude
+        LLM_MODEL         optional; the adapter's default model otherwise
+        LLM_MODEL_<MODE>  optional; overrides LLM_MODEL for one task mode
     """
 
     # The plug board. Register a new LLMProvider subclass here to add a provider.
@@ -357,6 +358,21 @@ class LLMSingleton:
         "generation":  8192,
     }
 
+    # Model per mode. Temperature, token ceiling and timeout have always been
+    # tuned per mode; the model itself was not, so making the judge stronger
+    # meant making per-document extraction stronger too — the highest-volume,
+    # most mechanical call in the system, and the one least helped by it.
+    #
+    # Which modes are worth the stronger model is a judgement about where model
+    # quality shows. Enforcement decides whether a draft sounds like the brand,
+    # and synthesis writes the Brand Brain every later step reads; both are read
+    # by a person eventually. Extraction turns one document into structured
+    # fields and is checked in code afterwards.
+    #
+    # Empty by default: a deployment that sets nothing keeps the single model it
+    # has today, and the bill it has today.
+    MODE_MODELS: dict[str, str] = {}
+
     MODE_TIMEOUTS = {
         "extraction":  DEFAULT_LLM_TIMEOUT_SECONDS,
         "enforcement": DEFAULT_LLM_TIMEOUT_SECONDS,
@@ -387,8 +403,9 @@ class LLMSingleton:
     def create_provider(cls, mode: str = "generation") -> LLMProvider:
         """Instantiate the selected adapter with this mode's tuning."""
         suffix = mode.upper()
+        model = _env(f"LLM_MODEL_{suffix}") or cls.MODE_MODELS.get(mode) or _env("LLM_MODEL")
         return cls.provider_class()(
-            model=_env("LLM_MODEL") or None,
+            model=model or None,
             temperature=float(_env(f"LLM_TEMPERATURE_{suffix}") or cls.MODE_TEMPERATURES.get(mode, 0.7)),
             max_tokens=_env_int(f"LLM_MAX_TOKENS_{suffix}", cls.MODE_MAX_TOKENS.get(mode, 8192)),
             timeout=cls.MODE_TIMEOUTS.get(mode, DEFAULT_LLM_TIMEOUT_SECONDS),
