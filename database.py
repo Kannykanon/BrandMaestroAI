@@ -206,6 +206,12 @@ class Generation(Model):
     # the revision loop runs out of rounds the deployer still saves the last
     # draft. NULL on rows saved before this column existed.
     approved:Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    # The draft this one was rewritten from, when a reviewer rejected that draft
+    # with a reason. NULL for a first pass. A rejection already triggered a full
+    # regeneration, but it arrived as a new row with a new id and nothing
+    # connecting it to the feedback, so the rewrite was invisible to the person
+    # who asked for it.
+    parent_generation_id:Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     created_at:Mapped[datetime]    = mapped_column(DateTime, default=datetime.utcnow)
     completed_at:Mapped[datetime]  = mapped_column(DateTime, nullable=True)
 
@@ -499,6 +505,11 @@ def init_db():
                     # Nullable with no default: existing rows have no recorded
                     # verdict, and must not be mistaken for approved ones.
                     ("generations", "approved", "ALTER TABLE generations ADD COLUMN approved BOOLEAN"),
+                    # Which draft a rejection produced this one from. Without
+                    # it a rewrite triggered by reviewer feedback appeared as an
+                    # unrelated new row, and a reviewer who rejected a draft
+                    # with a reason concluded nothing had happened.
+                    ("generations", "parent_generation_id", "ALTER TABLE generations ADD COLUMN parent_generation_id VARCHAR"),
                 ):
                     exists = conn.execute(text("""
                         SELECT 1

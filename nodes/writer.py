@@ -21,6 +21,7 @@ from utils.brand_profile import (
 
 logger = logging.getLogger(__name__)
 import re
+from utils.fact_spans import extract_fact_spans, render_fact_spans
 from utils.observe import observe
 
 
@@ -66,6 +67,17 @@ def writer_node(state: GraphState) -> GraphState:
     format_type  = state.get("format_type", "") or content_label
     research     = state["research"]
     feedback     = state.get("feedback", "")
+
+    # The facts in the source that have no second correct wording — quantities,
+    # dates, money and what they count. They lead the research block because the
+    # copying rules the writer reads further down are otherwise the last word on
+    # reusing the source, and obeying them cost a draft its numbers: told to
+    # discard the source's wording, it turned "more than seven men" into "a
+    # congregation" that "exceeds seven". These stay as written; the sentences
+    # around them are still the writer's to build.
+    fact_spans = extract_fact_spans(research)
+    if fact_spans:
+        research = f"{render_fact_spans(fact_spans)}\n\n{research}"
     iteration    = state.get("iteration", 0) + 1
 
     # A human reviewer's rejection note, carried in from human_loop. Rendered
@@ -159,6 +171,13 @@ def writer_node(state: GraphState) -> GraphState:
     if not structural_patterns:
         structural_patterns = "No structural patterns extracted yet — follow the opening/closing formulas and generation instructions above."
 
+    # How this brand builds sentences, measured from its own documents: shapes
+    # and habits, never its text. Describing a voice in adjectives was what let
+    # a draft satisfy every rule and still read like nobody.
+    voice_spec = extract_section(metrics, "VOICE SPEC") or (
+        "No voice spec measured yet — follow the mechanical rules and generation instructions above."
+    )
+
     # Structural RAG — fetch examples of structural elements
     try:
         structural_examples = rag.query_structure("opening or closing", topic)
@@ -212,6 +231,7 @@ def writer_node(state: GraphState) -> GraphState:
 
         # STEP 2: DRAFTER
         prompt_drafter = WRITER_DRAFTER.format(
+            voice_spec=voice_spec,
             human_directive=human_directive,
             topic=topic,
             content_type=content_label,
@@ -233,6 +253,7 @@ def writer_node(state: GraphState) -> GraphState:
 
         # STEP 3: EDITOR
         prompt_editor = WRITER_EDITOR.format(
+            voice_spec=voice_spec,
             human_directive=human_directive,
             measured_mechanics=measured_mechanics or "No measured mechanics available.",
             draft=draft,
@@ -274,6 +295,7 @@ def writer_node(state: GraphState) -> GraphState:
 
         # REVISION: Only run the Editor (WRITER_REVISION) to fix feedback
         prompt = WRITER_REVISION.format(
+            voice_spec=voice_spec,
             standing_constraints=standing_constraints,
             human_directive=human_directive,
             previous_content=state.get("content", ""),

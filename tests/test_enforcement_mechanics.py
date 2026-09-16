@@ -10,6 +10,7 @@ choice. Register is the most recognisable part of a voice, and it was unmeasured
 import pytest
 
 from utils.enforcement import check_measured_mechanics
+from utils.voice_spec import voice_diagnostics
 
 
 # The rates a plain, concrete corpus actually produces.
@@ -53,24 +54,39 @@ PLAIN_DRAFT = (
 )
 
 
-class TestRegisterIsMeasured:
-    def test_consultancy_drift_is_flagged(self):
-        failures = check_measured_mechanics(CONSULTANCY_DRIFT, PLAIN_BRAND)
-        flagged = " ".join(f["message"] for f in failures)
-        assert "nominalisations" in flagged, (
-            "abstraction went unmeasured — this is the failure the check exists for"
+class TestRegisterIsDescribedNotBlocked:
+    """Register still has to be caught. It is no longer caught with a ratio.
+
+    Blocking on "bring it to 0.9 per 100 words" sent a draft round the loop
+    chasing the number — 2.9, then 23.5, then 1.5 — until it passed by padding
+    with longer words and read like nobody. The same drift is now described in
+    words and judged by the voice pass, which answers with rewritten sentences.
+    """
+
+    def test_abstraction_is_no_longer_a_mechanical_failure(self):
+        flagged = " ".join(f["message"] for f in check_measured_mechanics(CONSULTANCY_DRIFT, PLAIN_BRAND))
+        assert "nominalisations" not in flagged and "four plus syllable" not in flagged, (
+            "register is judged by the voice pass now; blocking on the ratio is what broke drafts"
         )
 
-    def test_the_brands_own_register_passes(self):
-        assert check_measured_mechanics(PLAIN_DRAFT, PLAIN_BRAND) == [], (
-            "plain concrete copy was flagged against a plain concrete brand"
-        )
+    def test_consultancy_drift_is_described(self):
+        notes = " ".join(voice_diagnostics(CONSULTANCY_DRIFT, PLAIN_BRAND))
+        assert "abstract nouns" in notes, "abstraction went unmeasured entirely"
+        assert "naming actions instead of performing them" in notes
 
-    def test_feedback_names_the_number_and_the_target(self):
-        failures = check_measured_mechanics(CONSULTANCY_DRIFT, PLAIN_BRAND)
-        message = next(f["message"] for f in failures if "nominalisations" in f["message"])
-        assert "0.9" in message and "per 100 words" in message, (
-            "the writer needs the target, not just a complaint"
+    def test_the_note_gives_the_range_and_never_a_target_to_hit(self):
+        notes = voice_diagnostics(CONSULTANCY_DRIFT, PLAIN_BRAND)
+        message = next(n for n in notes if "abstract nouns" in n)
+        assert "brand 0.9" in message and "this draft" in message
+        for instruction in ("bring it to", "per 100 words. Bring", "roughly 0.9"):
+            assert instruction not in message, (
+                "a number to hit is what produced 'convene' and 'congregation'"
+            )
+
+    def test_the_brands_own_register_is_not_called_abstract(self):
+        notes = " ".join(voice_diagnostics(PLAIN_DRAFT, PLAIN_BRAND))
+        assert "More abstract nouns" not in notes and "Longer words" not in notes, (
+            "plain concrete copy was described as drifting against a plain concrete brand"
         )
 
 
@@ -104,9 +120,9 @@ class TestSmallSampleNoise:
             "flagged a small-sample fluctuation as a voice failure"
         )
 
-    def test_a_large_excess_still_fails(self):
-        assert check_measured_mechanics(CONSULTANCY_DRIFT * 2, PLAIN_BRAND), (
-            "a sustained excess must still fail"
+    def test_a_large_excess_is_still_described(self):
+        assert any("abstract nouns" in n for n in voice_diagnostics(CONSULTANCY_DRIFT * 2, PLAIN_BRAND)), (
+            "a sustained excess must still reach the voice pass"
         )
 
     def test_short_content_is_still_measured(self):
@@ -136,9 +152,9 @@ class TestSmallSampleNoise:
         )
         words = len(trailer.split())
         assert 140 < words < 175, f"fixture drifted to {words} words"
-        failures = check_measured_mechanics(trailer, PLAIN_BRAND)
-        assert any("nominalisation" in f["message"] for f in failures), (
-            "register drift went unmeasured on trailer-length content"
+        notes = voice_diagnostics(trailer, PLAIN_BRAND)
+        assert any("abstract nouns" in n or "Longer words" in n for n in notes), (
+            "register drift went undescribed on trailer-length content"
         )
 
     def test_the_short_sample_bar_scales_with_the_prediction(self):
@@ -216,57 +232,44 @@ FLATTENED_TRAILER = (
 )
 
 
-class TestUnderUseIsMeasured:
-    """The brain's own words: "targets, not maximums to exceed... Writing well
-    above these rates is as wrong as writing below them." Only the first half
-    of that was ever enforced.
+class TestUnderUseIsDescribed:
+    """Going under the brand's habit is the more common drift, because the
+    failure mode of a model writing carefully is to write formally. It is still
+    caught — as a description of what the writing is doing, not as a quota."""
 
-    Under-use is the more common drift, because the failure mode of a model
-    writing carefully is to write formally.
-    """
-
-    def test_dropping_the_brands_contractions_is_flagged(self):
-        failures = check_measured_mechanics(FLATTENED_TRAILER, PLAIN_BRAND)
-        flagged = " ".join(f["message"] for f in failures)
-        assert "contractions" in flagged, (
+    def test_dropping_the_brands_contractions_is_described(self):
+        notes = " ".join(voice_diagnostics(FLATTENED_TRAILER, PLAIN_BRAND))
+        assert "contractions" in notes and "gone formal" in notes, (
             "a draft with none of the brand's contractions read as compliant"
         )
 
     def test_both_directions_are_caught_in_one_pass(self):
-        """This draft is under on contractions and over on abstraction."""
-        flagged = " ".join(
-            f["message"] for f in check_measured_mechanics(FLATTENED_TRAILER, PLAIN_BRAND)
-        )
-        assert "contractions" in flagged and "four plus syllable" in flagged
+        """This draft is under on contractions and over on long words."""
+        notes = " ".join(voice_diagnostics(FLATTENED_TRAILER, PLAIN_BRAND))
+        assert "contractions" in notes and "four plus syllable" in notes
 
-    def test_the_feedback_says_which_way_it_is_wrong(self):
-        failures = check_measured_mechanics(FLATTENED_TRAILER, PLAIN_BRAND)
-        message = next(f["message"] for f in failures if "contractions" in f["message"])
-        assert "under the brand's own rate" in message
-        assert "4.0" in message, "the writer needs the target, not just a complaint"
-        assert "pad" in message, (
-            "without this the writer inserts contractions to hit a number"
-        )
+    def test_the_note_says_which_way_it_is_wrong(self):
+        notes = voice_diagnostics(FLATTENED_TRAILER, PLAIN_BRAND)
+        message = next(n for n in notes if "contractions" in n)
+        assert "brand 4" in message and "this draft 0" in message
+        assert "formal" in message
 
     def test_the_brands_own_register_still_passes(self):
-        assert check_measured_mechanics(PLAIN_DRAFT, PLAIN_BRAND) == [], (
-            "the brand's own voice was flagged for under-use"
-        )
+        notes = " ".join(voice_diagnostics(PLAIN_DRAFT, PLAIN_BRAND))
+        assert "gone formal" not in notes and "More abstract nouns" not in notes
 
     def test_a_short_draft_is_not_condemned_for_a_missing_habit(self):
-        """
-        Same small-sample rule as over-use. At 30 words a rate of 4.0 predicts
-        about one contraction, and not finding it proves nothing.
-        """
+        """At 30 words a rate of 4.0 predicts about one contraction, and not
+        finding it proves nothing — so nothing is said about it."""
         short = (
             "The road is closing. Not because anyone decided to close it, but "
             "because the ice will no longer hold long enough to be worth the "
             "insurance on any of it."
         )
-        words = len(short.split())
-        assert 25 < words < 40, f"fixture drifted to {words} words"
         assert check_measured_mechanics(short, PLAIN_BRAND) == []
 
+
+class TestConcentratedFeaturesStillExempt:
     def test_positionally_concentrated_features_are_exempt(self):
         """
         all-caps and emoji concentrate in particular sections — a trailer sheet

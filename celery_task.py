@@ -183,7 +183,8 @@ def generate_content(
     use_search: bool = True,
     research_mode: str = "both",
     human_feedback: str = "",
-    regeneration_depth: int = 0
+    regeneration_depth: int = 0,
+    parent_generation_id: str = "",
 ):
     from database import Generation
     from graph.state import GraphState
@@ -199,6 +200,7 @@ def generate_content(
             research_mode=research_mode,
             human_feedback=human_feedback,
             regeneration_depth=regeneration_depth,
+            parent_generation_id=parent_generation_id,
             research="",
             content="",
             creative_angle="",

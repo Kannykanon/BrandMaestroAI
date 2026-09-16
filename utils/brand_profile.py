@@ -58,6 +58,48 @@ def extract_brand_name(metrics: str) -> str:
     return ""
 
 
+# A "named framework" that is really a section heading from one document: act
+# titles, part and chapter numbers, scene labels. Harvested once as brand assets,
+# they became a closed list the enforcer forced onto unrelated stories — a
+# Nigerian campus script was ordered to reuse The Bourne Supremacy's act titles.
+_DOCUMENT_STRUCTURE_TITLE = re.compile(
+    r"^\s*[-*]?\s*(ACT|PART|CHAPTER|SCENE|EPISODE|SECTION|STRUCTURAL LESSON|FADE IN|FADE OUT|CUT TO)\b",
+    re.IGNORECASE,
+)
+# The synthesis records how many source documents an asset appeared in.
+_APPEARS_IN = re.compile(r"appears in (\d+)\s*/\s*(\d+) profiles", re.IGNORECASE)
+
+
+def is_brand_asset(line: str) -> bool:
+    """Whether an asset-bank line is a brand-level fact rather than one document's content.
+
+    Two rejections, both learned from the same failure: a heading is a heading
+    however it is phrased, and an item found in a single document out of several
+    is that document's subject matter, not something the brand claims.
+    """
+    stripped = line.strip().lstrip("-• ").strip()
+    if not stripped:
+        return False
+    if _DOCUMENT_STRUCTURE_TITLE.match(stripped):
+        return False
+    appears = _APPEARS_IN.search(stripped)
+    if appears and int(appears.group(2)) > 1 and int(appears.group(1)) <= 1:
+        return False
+    return True
+
+
+def filter_asset_bank(asset_text: str) -> str:
+    """Drop document-structure titles and one-off items from an asset bank block."""
+    kept = []
+    for line in asset_text.splitlines():
+        stripped = line.strip()
+        is_item = stripped.startswith(("-", "•")) or (stripped and stripped[0].isdigit() and "." in stripped[:3])
+        if is_item and not is_brand_asset(stripped):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
 def extract_asset_bank(metrics: str) -> str:
     """
     Extract the BRAND ASSET BANK section and format it as an explicit
@@ -79,7 +121,7 @@ def extract_asset_bank(metrics: str) -> str:
             "Do NOT invent specific numbers, client counts, percentages, or ROI figures. "
             "Use only general brand observations without specific data points."
         )
-    asset_text = match.group(1).strip()
+    asset_text = filter_asset_bank(match.group(1).strip())
 
     # Check whether a FINANCIAL TARGETS section exists in the asset bank
     has_financial = bool(re.search(
@@ -99,7 +141,7 @@ def extract_asset_bank(metrics: str) -> str:
     return header + "\n" + asset_text
 
 
-def extract_permitted_claims(metrics: str) -> str:
+def extract_permitted_claims(metrics: str, content_type: str = "") -> str:
     """
     Extract the BRAND ASSET BANK section from the brand brain and format it
     as an explicit closed list of permitted claims for the hallucination check.
@@ -114,6 +156,21 @@ def extract_permitted_claims(metrics: str) -> str:
         metrics,
         re.DOTALL | re.IGNORECASE
     )
+    from schema import is_narrative
+
+    if is_narrative(content_type):
+        # A story has no client counts or methodologies to police, and its
+        # section titles are the writer's own. Held to a closed list, a script
+        # was ordered to reuse another story's act titles as "permitted
+        # frameworks". Invented numbers and contact details are still caught by
+        # the deterministic checks, which do not need a list.
+        return (
+            "This is narrative content. There is no closed list of permitted claims: section titles, act names "
+            "and scene headings are the writer's own and must never be flagged as fabricated. "
+            "Flag a specific number, statistic, date or contact detail only when it states something about the "
+            "real world (a business, a person, a product) and appears nowhere in the source material."
+        )
+
     if not match:
         return (
             "No asset bank extracted yet. "
@@ -122,7 +179,7 @@ def extract_permitted_claims(metrics: str) -> str:
             "Flag any specific number tied to brand experience."
         )
 
-    asset_text = match.group(1).strip()
+    asset_text = filter_asset_bank(match.group(1).strip())
 
     # Parse individual claim lines — handle both bullet and dash formats
     lines = [l.strip().lstrip("-•*").strip() for l in asset_text.splitlines() if l.strip()]

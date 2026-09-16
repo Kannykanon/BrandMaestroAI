@@ -54,6 +54,34 @@ IF verdict is FAIL:
   - DO NOT proceed to Step 2 scoring — return the output immediately
 
 ═══════════════════════════════════════════════════
+STEP 1A — VOICE FIDELITY (a separate judgement from everything below)
+═══════════════════════════════════════════════════
+
+The checks in this prompt decide whether the content is true, publishable and structured.
+This step decides something else: whether the sentences sound like this brand wrote them.
+A draft can satisfy every rule below and still fail here.
+
+HOW THIS BRAND BUILDS SENTENCES:
+{voice_spec}
+
+WHERE THIS DRAFT SITS OUTSIDE THE BRAND'S OWN RANGE (measured, advisory):
+{voice_notes}
+
+Read the content sentence by sentence against that. You are looking for word choice and sentence
+shape, not length and not vocabulary size:
+  - A plain brand writing "He bows" does not write "He demonstrates profound deference".
+  - Naming an action instead of performing it ("this starts his deep involvement") is the common failure.
+  - So is padding: a longer word chosen over a plain one, or a clause added to fill a sentence out.
+  - So is the opposite: chopping every sentence to three words until the piece reads as a list.
+  - Broken or unidiomatic English ("He must convene beyond campus boundaries") is an automatic fail.
+
+Return:
+  voice_score: 0-10. 10 = a reader could not tell this from the brand's own documents. Below 6 = it reads
+    as generic, stilted, or as somebody imitating the rules rather than writing.
+  voice_rewrites: up to 5 of the worst sentences, each with a rewrite in the brand's voice that keeps every
+    fact. Rewrite the sentence in front of you — do not invent new material and do not quote any other document.
+
+═══════════════════════════════════════════════════
 STEP 1B — PUBLISHABILITY (run after STEP 1, also a HARD GATE)
 ═══════════════════════════════════════════════════
 
@@ -197,6 +225,10 @@ CRITICAL — VALID JSON ONLY: When quoting a passage from the content inside any
         "sentence_rhythm": true or false,
         "hedging_violations": ["list any hedging words found, or empty array"]
     }},
+    "voice_score": 0.0-10.0,
+    "voice_rewrites": [
+        {{"from": "a sentence from the content that does not sound like this brand", "to": "the same sentence in the brand's voice, every fact kept"}}
+    ],
     "approved": true or false,
     "directive_compliance": "PASS, FAIL, or NOT_APPLICABLE (use NOT_APPLICABLE when no reviewer directive was supplied). If FAIL, name the unmet requirement.",
     "publishability": "PASS or FAIL from STEP 1B. If FAIL, name each sentence that restates internal material and what it reveals.",
@@ -220,6 +252,7 @@ CRITICAL — VALID JSON ONLY: When quoting a passage from the content inside any
 }}
 
 APPROVAL RULES:
+0. NEVER approve if voice_score is below 6 — a draft that is true, structured and unlike the brand is not finished.
 1. NEVER approve if hallucination_check verdict is FAIL — regardless of any other score.
 2. Approve ONLY if all four dimension scores are above 0.7 AND the structural pre-check has no more than 1 failing check (N/A answers are not failures).
 3. If any critical signature construction from the brand metrics is missing/malformed, DO NOT approve.

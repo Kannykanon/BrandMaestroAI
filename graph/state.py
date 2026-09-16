@@ -18,6 +18,8 @@ class GraphState(TypedDict):
     human_feedback: Optional[str]
     # How many reject -> regenerate hops led to this run. 0 for a first pass.
     regeneration_depth: Optional[int]
+    # The rejected draft this run was asked to replace, if any.
+    parent_generation_id: Optional[str]
 
 
     # Researcher output

@@ -445,14 +445,47 @@ class BrandMetricsSQL(MetricPort):
                     content_type=self.content_type,
                     doc_role=DOC_ROLE_VOICE,
                 ).all()
-            corpus = "\n".join(d[0] for d in docs if d and d[0])
+            documents = [d[0] for d in docs if d and d[0]]
         except Exception as e:
             logger.warning("Could not measure corpus mechanics: %s", e)
             return ""
+        return self.measure_documents(documents)
 
+    @staticmethod
+    def measure_documents(documents: list) -> str:
+        """The measurement itself, separated from where the documents came from.
+
+        Kept callable without a database so the corpus it produces numbers for
+        can be a real one in a test: the four screenplays that set a target of
+        6.3 four-syllable words per 100 are a fixture, and the band this returns
+        for them is what the writer and the voice pass actually see.
+        """
+        corpus = "\n".join(documents)
         words = re.findall(r"[A-Za-z0-9']+", corpus)
         if len(words) < 50:
             return ""
+
+        # Register is measured over the brand's prose only. A document's front
+        # matter, headings, scene directions and closing analysis are written in
+        # a different register from the work itself: a corpus of plain scene
+        # writing measured whole came out at 6.3 four-syllable words per 100,
+        # a rate set by "protagonist", "original" and "identity" — words from
+        # the notes. A writer told to match that number reached it with
+        # "convene" and "congregation". Capitals and punctuation are still
+        # measured over everything, because headings are part of that habit.
+        from utils.voice_spec import corpus_spec
+
+        spec = corpus_spec(documents)
+        bands = spec.get("bands", {})
+        prose_words = max(spec.get("prose_words", 0), 1)
+
+        def band_line(key: str, fallback: float) -> str:
+            data = bands.get(key)
+            if not data:
+                return f"- {key}: {fallback}\n"
+            return (f"- {key}: {data['median']}\n"
+                    f"- {key}_low: {data['low']}\n"
+                    f"- {key}_high: {data['high']}\n")
 
         per100 = lambda n: round(100.0 * n / len(words), 1)
         letters = [c for c in corpus if c.isalpha()]
@@ -475,28 +508,36 @@ class BrandMetricsSQL(MetricPort):
         inline_bracket_rate = per100(inline_brackets)
 
         return (
+            BrandMetricsSQL._voice_spec_section(documents)
+            + (
             "# MEASURED MECHANICS\n"
-            "Counted directly from this brand's uploaded documents. These are targets, "
-            "not maximums to exceed: match the rate, do not amplify it. Writing well "
-            "above these rates is as wrong as writing below them.\n"
+            "Counted from this brand's own documents: the register rates over its prose, the rest over "
+            "everything. They describe habits, not quotas — write the sentences the way VOICE SPEC "
+            "describes and these follow. A `_low`/`_high` pair is the middle half of the brand's own "
+            "documents; anywhere in that range is this brand writing normally.\n"
             f"- exclamation_marks_per_100_words: {per100(corpus.count('!'))}\n"
             f"- question_marks_per_100_words: {per100(corpus.count('?'))}\n"
-            f"- emoji_per_100_words: {per100(len(self._EMOJI_RE.findall(corpus)))}\n"
+            f"- emoji_per_100_words: {per100(len(BrandMetricsSQL._EMOJI_RE.findall(corpus)))}\n"
             f"- all_caps_words_per_100_words: "
             f"{per100(sum(1 for w in words if len(w) > 2 and w.isupper()))}\n"
             f"- uppercase_letter_ratio: "
             f"{round(sum(1 for c in letters if c.isupper()) / max(len(letters), 1), 2)}\n"
-            f"- mean_words_per_sentence: {round(len(words) / max(len(sentences), 1), 1)}\n"
-            # Register. These four decide whether the copy sounds like this
-            # brand or like a consultancy, and nothing above them does.
-            f"- nominalisations_per_100_words: "
-            f"{per100(len(self._NOMINALISATION_RE.findall(corpus)))}\n"
-            f"- four_plus_syllable_words_per_100_words: "
-            f"{per100(sum(1 for w in words if _syllables(w) >= 4))}\n"
-            f"- mean_word_length: "
-            f"{round(sum(len(w) for w in words) / max(len(words), 1), 2)}\n"
-            f"- contractions_per_100_words: "
-            f"{per100(len(self._CONTRACTION_RE.findall(corpus)))}\n"
+            + band_line("mean_words_per_sentence", round(len(words) / max(len(sentences), 1), 1))
+            # Register. These decide whether the copy sounds like this brand or
+            # like a consultancy, and nothing above them does. Each is the
+            # median of the brand's documents, with the middle half of them as
+            # the range: one number cannot describe a corpus whose own
+            # documents run from 1.4 to 3.0 abstractions per 100 words.
+            + band_line("nominalisations_per_100_words", 0.0)
+            + band_line("four_plus_syllable_words_per_100_words", 0.0)
+            + band_line("mean_word_length", 0.0)
+            + band_line("contractions_per_100_words", 0.0)
+            + band_line("median_words_per_sentence", 0.0)
+            + band_line("share_sentences_under_6_words", 0.0)
+            + band_line("share_sentences_over_20_words", 0.0)
+            + band_line("share_sentences_opening_with_pronoun", 0.0)
+            + band_line("share_single_sentence_paragraphs", 0.0)
+            + (
             # Some content types legitimately use bracketed slots as a
             # convention — an ad script carries "[DATE]", a caption archive
             # tags each entry with "[Launch post]". A press release does not.
@@ -505,7 +546,22 @@ class BrandMetricsSQL(MetricPort):
             f"- bracket_placeholders_per_100_words: {bracket_rate}\n"
             f"- inline_bracket_placeholders_per_100_words: {inline_bracket_rate}\n"
             f"- corpus_size_words: {len(words)}\n"
+            f"- prose_words_measured: {prose_words}\n"
+            )
+            )
         )
+
+    @staticmethod
+    def _voice_spec_section(documents: list) -> str:
+        """How the brand builds sentences, openings and closings — shapes, never its sentences."""
+        from utils.voice_spec import beat_grammar, corpus_spec, render_spec
+
+        try:
+            spec = render_spec(corpus_spec(documents), beat_grammar(documents))
+        except Exception as e:
+            logger.warning("Could not build the voice spec: %s", e)
+            return ""
+        return f"{spec}\n\n" if spec else ""
 
     def _format_profiles_for_synthesis(self, rows: list) -> str:
         """
