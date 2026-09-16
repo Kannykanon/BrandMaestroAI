@@ -122,20 +122,49 @@ def still_segment(image: Path, frames: int, out: Path, settings: RenderSettings,
                 *settings._encode(), str(out)])
 
 
-def _channel_stats(image) -> list[tuple[float, float]]:
-    from PIL import ImageStat
+# A clip is generated from the shot's still, so most of the frame is unchanged
+# and only what the avatar model redrew (the head, mostly) shifts in colour.
+# Correcting the whole frame dilutes that shift; these find the changed part.
+DIFF_SAMPLE_WIDTH = 256
+MIN_CHANGED_FRACTION = 0.02
 
-    small = image.convert("RGB").resize((256, max(int(256 * image.height / image.width), 1)))
-    stat = ImageStat.Stat(small)
-    return list(zip(stat.mean, stat.stddev))
+
+def _as_array(image, size):
+    import numpy as np
+
+    return np.asarray(image.convert("RGB").resize(size), dtype=float)
 
 
-def color_match_filter(reference: Path, clip: Path, workdir: Path) -> Optional[str]:
-    """An lutrgb filter that gives the clip the colour and contrast of the still it was animated from.
+def changed_region(reference, sample):
+    """(mask over what the clip redrew, per-channel stats of both there), or None if nothing moved."""
+    import numpy as np
+    from PIL import Image, ImageFilter
 
-    Avatar models return softer, cooler frames than the image they were given, which
-    shows at the cut from a still shot to a talking one. Each channel's mean and spread
-    are matched to the still, with the correction limited so a bad sample cannot wreck a shot.
+    size = (DIFF_SAMPLE_WIDTH, max(int(DIFF_SAMPLE_WIDTH * reference.height / reference.width), 1))
+    ref, smp = _as_array(reference, size), _as_array(sample, size)
+    difference = np.abs(ref - smp).max(axis=2)
+    # Relative to the biggest change, so a shift over the whole frame is corrected
+    # everywhere while a redrawn head is corrected only there.
+    threshold = max(8.0, float(difference.max()) * 0.35)
+    changed = difference >= threshold
+    if changed.mean() < MIN_CHANGED_FRACTION:
+        return None
+    stats = []
+    for channel in range(3):
+        target, source = ref[..., channel][changed], smp[..., channel][changed]
+        stats.append(((float(target.mean()), float(target.std())), (float(source.mean()), float(source.std()))))
+    mask = Image.fromarray((changed * 255).astype("uint8")).filter(ImageFilter.GaussianBlur(size[0] * 0.02))
+    return mask, stats
+
+
+def color_match_filter(reference: Path, clip: Path, workdir: Path):
+    """(lutrgb filter, mask file) that give a clip the colours of the still it was animated from.
+
+    Avatar models return the redrawn face softer and cooler than the image they
+    were given, which shows at the cut into a talking shot. The part of the frame
+    the model changed is found by comparing the clip with the still; each channel's
+    mean and spread are matched there, with the correction limited, and applied
+    through a soft mask so the untouched background keeps the still's own colours.
     """
     from PIL import Image
 
@@ -143,15 +172,20 @@ def color_match_filter(reference: Path, clip: Path, workdir: Path) -> Optional[s
     try:
         run_ffmpeg(["-ss", "0.5", "-i", str(clip), "-frames:v", "1", str(sample)])
         with Image.open(reference) as ref, Image.open(sample) as frame:
-            target, source = _channel_stats(ref), _channel_stats(frame)
+            found = changed_region(ref, frame)
+            if found is None:
+                return None, None
+            mask, stats = found
+            mask_path = workdir / f"{clip.stem}-mask.png"
+            mask.convert("RGB").save(mask_path)
     except Exception as e:
         logger.warning("Colour match skipped for %s: %s", clip.name, e)
-        return None
+        return None, None
     parts = []
-    for name, (t_mean, t_std), (s_mean, s_std) in zip("rgb", target, source):
+    for name, ((t_mean, t_std), (s_mean, s_std)) in zip("rgb", stats):
         gain = min(max(t_std / s_std, 0.75), 1.35) if s_std > 1 else 1.0
         parts.append(f"{name}='clip((val-{s_mean:.2f})*{gain:.3f}+{t_mean:.2f},0,255)'")
-    return "format=rgb24,lutrgb=" + ":".join(parts)
+    return "lutrgb=" + ":".join(parts), mask_path
 
 
 def clip_segment(clip: Path, frames: int, out: Path, settings: RenderSettings,
@@ -162,14 +196,24 @@ def clip_segment(clip: Path, frames: int, out: Path, settings: RenderSettings,
     shot's still) when given. If the clip is shorter than needed, its last frame is held.
     """
     w, h = settings.width, settings.height
-    filters = [f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos", f"crop={w}:{h}",
-               "unsharp=5:5:0.6:5:5:0.0"]
-    if match_to is not None:
-        matched = color_match_filter(match_to, clip, out.parent)
-        if matched:
-            filters += [matched, "format=yuv420p"]
-    filters += ["setsar=1", f"fps={settings.fps}", "tpad=stop_mode=clone:stop_duration=10"]
-    run_ffmpeg(["-i", str(clip), "-vf", ",".join(filters), "-frames:v", str(frames), *settings._encode(), str(out)])
+    fit = [f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos", f"crop={w}:{h}",
+           "unsharp=5:5:0.6:5:5:0.0"]
+    tail = ["setsar=1", f"fps={settings.fps}", "tpad=stop_mode=clone:stop_duration=10"]
+    correction, mask = color_match_filter(match_to, clip, out.parent) if match_to is not None else (None, None)
+    if correction is None:
+        run_ffmpeg(["-i", str(clip), "-vf", ",".join(fit + tail), "-frames:v", str(frames),
+                    *settings._encode(), str(out)])
+        return
+    # The corrected copy is laid over the original through the mask as its alpha.
+    # (maskedmerge blends the whole frame towards the overlay even where the mask
+    # is black, which moved background colours that were already right.)
+    graph = (f"[0:v]{','.join(fit)},format=rgb24,split=2[base][raw];"
+             f"[raw]{correction}[corrected];"
+             f"[1:v]scale={w}:{h},format=gray[mask];"
+             f"[corrected][mask]alphamerge[face];"
+             f"[base][face]overlay=format=rgb,format=yuv420p,{','.join(tail)}[v]")
+    run_ffmpeg(["-i", str(clip), "-loop", "1", "-i", str(mask), "-filter_complex", graph, "-map", "[v]",
+                "-frames:v", str(frames), *settings._encode(), str(out)])
 
 
 def mix_audio(voice: Path, total_s: float, out: Path, music: Optional[Path] = None, music_volume: float = 0.15,

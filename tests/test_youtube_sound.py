@@ -196,3 +196,36 @@ def test_routes(api):
     detail = c.patch(f"/youtube/projects/{pid}/shots/{shot['id']}", json={"sound": "wind over a mountain"}).json()
     assert detail["shots"][0]["sound"] == "wind over a mountain"
     assert c.patch(f"/youtube/projects/{pid}", json={"audio": {"music_volume": "loud"}}).status_code == 400
+
+
+@needs_ffmpeg
+def test_only_the_redrawn_part_is_colour_corrected(tmp_path):
+    """The avatar model redraws the face; the background is the still's own, so it is left alone."""
+    def picture(face, background, path):
+        image = Image.new("RGB", (320, 560), background)
+        image.paste(Image.new("RGB", (160, 220), face), (80, 60))
+        image.save(path)
+
+    still, dull = tmp_path / "still.png", tmp_path / "dull.png"
+    picture((190, 170, 150), (60, 90, 120), still)     # warm face, cool background
+    picture((120, 100, 130), (60, 90, 120), dull)      # the avatar model cooled the face only
+    settings = RenderSettings(320, 560, fps=10, preset="ultrafast")
+    clip, plain, matched = tmp_path / "clip.mp4", tmp_path / "plain.mp4", tmp_path / "matched.mp4"
+    still_segment(dull, 10, clip, settings, pan=False)
+    clip_segment(clip, 10, plain, settings)
+    clip_segment(clip, 10, matched, settings, match_to=still)
+
+    def area(video, box):
+        frame = tmp_path / f"{video.stem}-{box[1]}.png"
+        run_ffmpeg(["-ss", "0.5", "-i", str(video), "-frames:v", "1", str(frame)])
+        with Image.open(frame) as image:
+            return ImageStat.Stat(image.convert("RGB").crop(box)).mean
+
+    def error(measured, box):
+        with Image.open(still) as target:
+            wanted = ImageStat.Stat(target.crop(box)).mean
+        return sum(abs(a - b) for a, b in zip(measured, wanted))
+
+    face, corner = (100, 90, 220, 240), (0, 500, 60, 560)
+    assert error(area(matched, face), face) < error(area(plain, face), face) / 2, "the face moves back to the still"
+    assert error(area(matched, corner), corner) <= error(area(plain, corner), corner) + 3, "background left alone"
