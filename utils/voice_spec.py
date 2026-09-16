@@ -197,14 +197,18 @@ def beat_grammar(documents: Iterable[str], lines_per_beat: int = 6) -> dict:
             return "section or act title in capitals"
         if _LABEL_LINE.match(stripped):
             return "speaker label followed by a line of dialogue"
+        # Bands, not counts. Printed as "(3 words)" these were read as a
+        # specification: the enforcer twice refused a draft because "the opening
+        # pattern fails to match the brand's specific sentence length sequence",
+        # which is not a thing any writer can aim at and not what was measured.
         count = len(_WORD.findall(stripped))
         if count <= 3:
-            return f"very short sentence ({count} words)"
+            return "a very short sentence"
         if count <= 8:
-            return f"short sentence ({count} words)"
+            return "a short sentence"
         if count <= 16:
-            return f"medium sentence ({count} words)"
-        return f"long sentence ({count} words)"
+            return "a medium-length sentence"
+        return "a longer sentence"
 
     openings, closings = [], []
     for document in documents:
@@ -271,6 +275,39 @@ def _rule_lines(spec: dict) -> list[str]:
     return rules
 
 
+def _describe(shapes: list[str]) -> str:
+    """One sentence describing a beat, with consecutive repeats collapsed.
+
+    A numbered list of shapes reads as a form to fill in. The same information
+    as a sentence reads as what it is — a description of what the brand usually
+    does — which is all that was ever measured.
+    """
+    runs: list[tuple[str, int]] = []
+    for shape in shapes:
+        if runs and runs[-1][0] == shape:
+            runs[-1] = (shape, runs[-1][1] + 1)
+        else:
+            runs.append((shape, 1))
+    parts = [shape if count == 1 else f"{_COUNTS.get(count, str(count))} of {_plural(shape)}"
+             for shape, count in runs]
+    if len(parts) == 1:
+        return parts[0] + "."
+    return ", then ".join(parts[:-1]) + ", then " + parts[-1] + "."
+
+
+_COUNTS = {2: "a couple", 3: "three", 4: "four", 5: "five", 6: "six"}
+
+
+def _plural(shape: str) -> str:
+    if shape.startswith("a "):
+        shape = shape[2:]
+    if shape.endswith("sentence"):
+        return shape + "s"
+    if shape.endswith("heading") or shape.endswith("line") or shape.endswith("title"):
+        return shape + "s"
+    return shape
+
+
 def render_spec(spec: dict, grammar: Optional[dict] = None) -> str:
     """The VOICE SPEC section: how this brand writes, as rules and shapes."""
     if not spec:
@@ -279,15 +316,17 @@ def render_spec(spec: dict, grammar: Optional[dict] = None) -> str:
         "# VOICE SPEC (measured from this brand's own writing)",
         "How this brand builds sentences, measured over its documents' prose — front matter, headings, scene "
         "directions and appendices excluded. These are habits to write with, not numbers to hit: match the shapes "
-        "and the rates follow. Never lengthen or shorten a word to move a number.",
+        "and the rates follow. Never lengthen or shorten a word to move a number, and never count words to match "
+        "a shape. Nothing here is a template: a piece that reads like this brand wrote it satisfies all of it, "
+        "and a piece assembled to match it line by line satisfies none of it.",
         "",
         "SENTENCE AND PARAGRAPH HABITS:",
     ]
     lines += [f"- {rule}" for rule in _rule_lines(spec)]
-    if grammar and grammar.get("opening"):
-        lines += ["", "OPENING IS BUILT AS:"] + [f"{i}. {shape}" for i, shape in enumerate(grammar["opening"], 1)]
-    if grammar and grammar.get("closing"):
-        lines += ["", "CLOSING IS BUILT AS:"] + [f"{i}. {shape}" for i, shape in enumerate(grammar["closing"], 1)]
+    for label, beat in (("OPENINGS", "opening"), ("CLOSINGS", "closing")):
+        shapes = (grammar or {}).get(beat) or []
+        if shapes:
+            lines += ["", f"HOW ITS {label} TEND TO GO: {_describe(shapes)}"]
     if spec.get("transitions"):
         lines += ["", f"TRANSITION MARKERS USED: {', '.join(spec['transitions'])}"]
     if spec.get("speaker_labels"):
@@ -299,7 +338,12 @@ def render_spec(spec: dict, grammar: Optional[dict] = None) -> str:
 def longest_shared_run(text: str, corpus: str) -> int:
     """The longest run of consecutive words this text shares with the corpus."""
     def words_of(value: str) -> list[str]:
-        return [w.lower() for w in _WORD.findall(value)]
+        # Quote marks are stripped from the ends of each token. Left on, they
+        # broke the comparison exactly where it mattered: a synthesis line
+        # naming "the 'He realizes that...' declarative phrase" tokenised its
+        # first word as "'he", which matches nothing, so a phrase quoted
+        # straight out of the corpus measured as a two-word overlap.
+        return [w for w in (t.strip("'’“”\"").lower() for t in _WORD.findall(value)) if w]
 
     draft, source = words_of(text), words_of(corpus)
     if not draft or not source:
@@ -379,6 +423,66 @@ def band_high(metrics: str, key: str) -> float:
     """The top of the brand's own range for one measurement, or 0.0 if unmeasured."""
     band_values = _band_from_metrics(metrics, key)
     return float(band_values["high"]) if band_values else 0.0
+
+
+# The measurements a judge can be asked to rule on, and what each one is called
+# when it is spoken about rather than named.
+_DIRECTION_LABELS = {
+    "median_words_per_sentence": "sentence length",
+    "share_sentences_under_6_words": "how often sentences end early",
+    "nominalisations_per_100_words": "abstraction",
+    "four_plus_syllable_words_per_100_words": "word length",
+    "contractions_per_100_words": "contractions",
+}
+
+
+def voice_directions(draft: str, metrics: str) -> list[str]:
+    """Which way each measurement may move, if at all — stated as the authority.
+
+    The voice pass used to be handed the spec and asked for rewrites free-hand,
+    and the spec truthfully says two things that pull opposite ways: sentences
+    run about seven words, and a third of them end before six. So one round told
+    a draft its sentences were too choppy and rewrote five passages into longer
+    ones; the writer complied; and the next round took the sentence it had just
+    asked for and split it back into three. Eight rounds, no convergence, and a
+    piece that ended unapproved while both verdicts were individually defensible.
+
+    What was missing is not more guidance — it is knowing which way this draft
+    is actually wrong. A measurement inside the brand's own range is settled,
+    and nothing about it is up for discussion.
+    """
+    prose = prose_only(draft) or draft
+    measured = shape_metrics(prose)
+    if not measured:
+        return []
+    directions = []
+    for key, label in _DIRECTION_LABELS.items():
+        band_values = _band_from_metrics(metrics, key)
+        if not band_values or key not in measured:
+            continue
+        actual, low, high = measured[key], band_values["low"], band_values["high"]
+        if low <= actual <= high:
+            verdict = ("SETTLED — inside the brand's own range. Do not ask for it to change in "
+                       "either direction, and do not raise it as a fault.")
+        elif actual < low:
+            # Deliberately not an instruction. Run against the hand-written
+            # correct version of a script, this measurement reports shorter
+            # sentences, plainer words and fewer abstractions than the brand's
+            # corpus — all three — because that version is clipped on purpose
+            # and the corpus includes its own commentary. A judge told to fix
+            # that would talk the right answer out of the writer.
+            verdict = ("BELOW the brand's range. You may ask for changes that raise it; you may "
+                       "never ask for changes that lower it further. Plainer or shorter than the "
+                       "brand is not a fault by itself — raise it only if something is missing, "
+                       "unclear, or reads as a list rather than prose.")
+        else:
+            verdict = ("ABOVE the brand's range. You may ask for changes that lower it; you may "
+                       "never ask for changes that raise it further.")
+        directions.append(f"{label}: this draft {actual:g}, brand {low:g}-{high:g}. {verdict}")
+    if not directions:
+        return []  # nothing measured for this brand, so nothing is ruled in or out
+    return ["These are not instructions to change anything. They are limits on what you are "
+            "allowed to ask for."] + directions
 
 
 def voice_diagnostics(draft: str, metrics: str) -> list[str]:

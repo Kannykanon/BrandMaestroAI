@@ -361,6 +361,12 @@ class BrandMetricsSQL(MetricPort):
         result = self._synthesis_llm.invoke(synthesis_prompt)
 
         context = result.content
+
+        # The synthesis is asked to describe the brand's moves, never to quote
+        # them. Checked here rather than trusted: it answered "the 'He realizes
+        # that...' declarative phrase", and a script written to that instruction
+        # opened a scene with somebody else's sentence.
+        context = self._strip_quotations(context)
     
         # Persist to Postgres
         with get_db_session() as session:
@@ -550,6 +556,24 @@ class BrandMetricsSQL(MetricPort):
             )
             )
         )
+
+    def _strip_quotations(self, context: str) -> str:
+        """Drop any line of the Brain's descriptive sections that quotes the corpus."""
+        from database import BrandDocument, DOC_ROLE_VOICE, get_db_session
+        from utils.brand_profile import strip_quoted_constructions
+
+        try:
+            with get_db_session() as session:
+                docs = session.query(BrandDocument.file_content).filter_by(
+                    business_id=self.business_id,
+                    content_type=self.content_type,
+                    doc_role=DOC_ROLE_VOICE,
+                ).all()
+            corpus = "\n".join(d[0] for d in docs if d and d[0])
+        except Exception as e:
+            logger.warning("Could not check the synthesis for quotations: %s", e)
+            return context
+        return strip_quoted_constructions(context, corpus)
 
     @staticmethod
     def _voice_spec_section(documents: list) -> str:

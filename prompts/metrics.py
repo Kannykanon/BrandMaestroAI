@@ -267,7 +267,12 @@ EVIDENCE PATTERN:
 [The rule for how claims are grounded — describe the pattern not the examples.]
 
 # SIGNATURE CONSTRUCTIONS
-[Describe 4-6 distinctive writing constructions as abstract moves. Describe WHAT THE CONSTRUCTION DOES, not what it says:]
+[Describe 4-6 distinctive writing constructions as abstract moves. Describe WHAT THE CONSTRUCTION DOES, not what it says.
+Never quote the documents. A construction written as a phrase in quotation marks is a sentence from somebody's
+document, and a writer given it will paste it into a new piece — one did, opening a scene with another story's line.
+  WRONG: The "He realizes that..." declarative phrase to introduce pivotal plot points
+  RIGHT: States a discovery flatly, as a fact the character has just arrived at, without dramatising the moment
+Any line here containing a quoted phrase found in the source documents is removed before the writer sees it.]
 - [Construction 1: describe the move]
 - [Construction 2: describe the move]
 
