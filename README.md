@@ -28,7 +28,7 @@ One Brand Brain per business and content type, so a brand's ads can sound differ
 BrandMaestro is two systems that work alone or together:
 
 - **Content writing** turns a brand's documents into on-brand copy. It needs nothing from the video side.
-- **YouTube Automation** turns an approved script into a published story video. It writes no scripts of its own. It takes them from content writing, so a video always starts as a brand-approved script.
+- **YouTube Automation** turns an approved script into a published story video. It writes no scripts of its own: it takes approved scripts and ads from content writing, or a script you paste in yourself, labelled as imported.
 
 Used together, one pipeline runs from brand voice to a published YouTube video:
 
@@ -90,6 +90,8 @@ flowchart TD
 - The lines are voiced, the storyboard is drawn for you to approve, and the video is rendered: speaking shots lip-synced, narration over the still images, captions burned in.
 - Details in [YouTube Automation](#youtube-automation).
 
+**Checks against AI slop.** Listings are checked for hype, promises, numbers and contact details that are not in the script, and the brand's banned punctuation; a flagged draft is rewritten once. Storyboard images are checked and redrawn once when they contain text, panels, blurred strips or repeated people. Uploads record how much of the video you actually played. None of it blocks you; it reports (`youtube/quality.py`).
+
 **5. Publish it** (YouTube Automation, drawing on the Brand Brain again)
 - The title, description and tags are drafted from the script **and the same Brand Brain**, so the listing sounds like the brand too.
 - You edit them, confirm you watched the video, and it is uploaded to your channel as private. You then publish it or schedule it.
@@ -101,6 +103,7 @@ flowchart TD
 | On-brand blogs, ads, proposals, scripts, press releases | Content writing only | The core app. YouTube Automation can stay unconfigured; its workers never start. |
 | Story videos on YouTube from brand scripts | Both | Content writing, plus the YouTube workers and settings ([Setting it up](#setting-it-up)) |
 | Scripts for a video team that films them | Content writing only | Generate and approve **Script** content, then copy it from the generator |
+| Videos from scripts you wrote elsewhere | YouTube Automation only | Paste or upload them in **Scripts → Import your own script**; the brand voice and checks are not applied to them |
 
 Information flows one way. YouTube Automation reads approved scripts and the Brand Brain, and never writes to content writing's data.
 
@@ -183,7 +186,7 @@ The vector table name includes the dimension, so switching backend starts a fres
 
 ## YouTube Automation
 
-An optional module that turns approved `script` generations into short stories on YouTube, with a recurring cast of AI characters. It lives in `youtube/`, has its own `yt_` tables, routes (`/youtube/...`), queues and workers, and marketing never imports it: the app runs the same whether or not it is set up. Full design, decisions and phase notes: [docs/youtube-automation.md](docs/youtube-automation.md).
+An optional module that turns approved scripts and ads (or a script you import) into short stories and ads on YouTube, with a recurring cast of AI characters, real product shots, sound and an end card. It lives in `youtube/`, has its own `yt_` tables, routes (`/youtube/...`), queues and workers, and marketing never imports it: the app runs the same whether or not it is set up. Full design, decisions and phase notes: [docs/youtube-automation.md](docs/youtube-automation.md).
 
 ### From script to YouTube
 
@@ -193,7 +196,7 @@ An optional module that turns approved `script` generations into short stories o
 | 2. Plan | The script is split into shots **in code**, so approved words never pass through a model; a word check proves nothing changed. A model only adds shot types and visuals. | — |
 | 3. Cast and products | Characters with a voice each. Product photos and logos are uploaded once per business (**Styles → Products & logos**); a project lists the products it features, and a shot shows a product when its line or visual names it, or when you tick it for that shot. On-screen characters get face photos (only after confirming the right to use them) and an approved character sheet. A style lock gives every scene one look. | You |
 | 4. Voice | Each line in its character's voice, joined into one track. | — |
-| 5. Storyboard | One image per shot, drawn from the approved sheets so faces stay consistent. Each image is checked automatically (borders in code; text, panels, blurred strips and repeated people by Gemini) and redrawn once if flagged; anything left is marked. Redraw any shot. | You approve |
+| 5. Storyboard | One image per shot, drawn from the approved sheets so faces stay consistent, with product photos copied in where a product appears. Each image is checked automatically (borders in code; text, panels, blurred strips and repeated people by Gemini) and redrawn once if flagged; anything left is marked. Each shot also carries a sound line for its ambience. Redraw any shot. | You approve |
 | 6. Render | Talking clips are upscaled, sharpened and colour-matched to their still so cuts do not jump. Music (an uploaded track) and per-shot ambience (generated from the shot's sound line with ElevenLabs, cached) play under the voice and duck while anyone speaks. An optional end card (logo, call to action, URL on a brand colour, drawn in code so the text is exact) closes the video. Speaking shots are lip-synced for up to 6 s each; narration plays over the still with a slow pan. Captions are burned in, loudness normalised, thumbnail made. A budget check runs before paying for animation. | You confirm if over budget |
 | 7. YouTube details | Title, description and tags drafted from the script and Brand Brain, then checked for hype, promises, numbers and contact details not in the script, and the brand's banned punctuation. A flagged draft is rewritten once; remaining issues are shown, and edits are checked too. | You edit |
 | 8. Upload | Only after you confirm you watched the video; the app records how much you played and asks again if it was under 80%. Uploaded **private**, resumable, marked as containing AI-generated content, waits for quota when the day's is used up. | You |
@@ -210,7 +213,7 @@ An optional module that turns approved `script` generations into short stories o
 | `StoragePort` | `gcs`, `local` | `YT_STORAGE_PROVIDER` (gcs when `YT_GCS_BUCKET` is set) | — |
 | `PublisherPort` | YouTube Data API v3 | — | Free, quota-limited |
 
-A 75-second Short with two characters cost about **$1.60** in images with still speaking shots (measured on production); animating its ten speaking lines with Kling is estimated at **$1.40** more.
+**Measured on production:** a 75-second vertical Short with two characters and 17 shots cost **$1.34** in Nano Banana images (including three redraws the image check asked for) and **$1.86** to animate its ten speaking lines with InfiniteTalk at 720p, so about **$3.50** in total. Planning took 26 s, voicing 111 s, drawing about 7 minutes, and assembly 6½ minutes; the animation itself was about 2½ minutes per line. Re-renders reuse the clips and cost nothing.
 
 ### Setting it up
 
@@ -228,8 +231,9 @@ A 75-second Short with two characters cost about **$1.60** in images with still 
    YT_OAUTH_REDIRECT_URI=https://<your-domain>/youtube/channel/callback
    ```
    Connect the channel from **YouTube Studio → Channel**.
-4. **Talking characters (optional).** `YT_AVATAR_PROVIDER=kling_standard` with `FAL_KEY`, or `infinitetalk` with `WAVESPEED_API_KEY`.
-5. **Restart after changing `.env`.** Containers read it only when they start:
+4. **Talking characters (optional).** `YT_AVATAR_PROVIDER=kling_standard` with `FAL_KEY`, or `infinitetalk` with `WAVESPEED_API_KEY`. Only speaking shots are animated, for up to `YT_MAX_TALKING_SECONDS` each; clips are cached per provider, so switching provider re-animates and charges again.
+5. **Sound (optional).** Music tracks are uploaded in the app and need no key. For generated per-shot ambience, set `YT_SOUND_PROVIDER=elevenlabs` with `ELEVENLABS_API_KEY`.
+6. **Restart after changing `.env`.** Containers read it only when they start:
    ```bash
    docker compose --profile youtube --profile render up -d --force-recreate api worker_youtube worker_render
    ```
