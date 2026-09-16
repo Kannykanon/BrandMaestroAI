@@ -20,7 +20,7 @@ from utils.llm_output import message_text
 PROVIDER_ENV = [
     "LLM_PROVIDER", "LLM_MODEL", "GEMINI_MODEL",
 ] + [f"{prefix}_{mode.upper()}"
-     for prefix in ("LLM_TEMPERATURE", "LLM_MAX_TOKENS")
+     for prefix in ("LLM_TEMPERATURE", "LLM_MAX_TOKENS", "LLM_MODEL")
      for mode in LLMSingleton.MODE_TEMPERATURES]
 
 
@@ -95,6 +95,41 @@ class TestSwitch:
     def test_gemini_model_still_honoured_on_vertex(self, env):
         env(GEMINI_MODEL="gemini-2.5-pro")
         assert LLMSingleton.create_provider().model == "gemini-2.5-pro"
+
+    def test_one_mode_can_run_a_stronger_model_than_the_rest(self, env):
+        """The judge decides whether a draft sounds like the brand, and per-
+        document extraction is checked in code afterwards. Without this, making
+        the first stronger made the second stronger too — the highest-volume,
+        most mechanical call in the system."""
+        env(LLM_MODEL="gemini-2.5-flash", LLM_MODEL_ENFORCEMENT="gemini-2.5-pro")
+        assert LLMSingleton.create_provider("enforcement").model == "gemini-2.5-pro"
+        assert LLMSingleton.create_provider("extraction").model == "gemini-2.5-flash"
+        assert LLMSingleton.create_provider("generation").model == "gemini-2.5-flash"
+
+    def test_the_per_mode_variable_outranks_the_shared_one(self, env):
+        env(LLM_PROVIDER="claude", LLM_MODEL="claude-haiku-4-5",
+            LLM_MODEL_SYNTHESIS="claude-opus-5")
+        assert LLMSingleton.create_provider("synthesis").model == "claude-opus-5"
+        assert LLMSingleton.create_provider("extraction").model == "claude-haiku-4-5"
+
+    def test_setting_nothing_changes_nothing(self, env):
+        """A deployment that sets no per-mode variable keeps the model it has
+        today, on every mode, and the bill it has today."""
+        env(LLM_PROVIDER="claude")
+        assert {LLMSingleton.create_provider(m).model for m in LLMSingleton.MODE_TEMPERATURES} == {
+            "claude-opus-5"
+        }
+
+    def test_a_built_in_default_applies_where_the_environment_is_silent(self, env, monkeypatch):
+        monkeypatch.setitem(LLMSingleton.MODE_MODELS, "enforcement", "gemini-2.5-pro")
+        env()
+        assert LLMSingleton.create_provider("enforcement").model == "gemini-2.5-pro"
+        assert LLMSingleton.create_provider("extraction").model == "gemini-2.5-flash"
+
+    def test_the_environment_still_beats_a_built_in_default(self, env, monkeypatch):
+        monkeypatch.setitem(LLMSingleton.MODE_MODELS, "enforcement", "gemini-2.5-pro")
+        env(LLM_MODEL_ENFORCEMENT="gemini-2.5-flash")
+        assert LLMSingleton.create_provider("enforcement").model == "gemini-2.5-flash"
 
 
 class TestAdapters:
