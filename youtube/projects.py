@@ -24,11 +24,13 @@ Any change to what the storyboard shows or says clears its approval.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from youtube import cancel
 from youtube.audio import Audio, concatenate
 from youtube.eligibility import get_eligible_script
 from youtube.models import FORMATS, YTCast, YTCharacter, YTCost, YTProject, YTShot
@@ -193,8 +195,17 @@ def _cast(db: Session, project: YTProject) -> list[YTCast]:
 
 
 def _require_not_busy(project: YTProject) -> None:
-    if project.status in BUSY_STATUSES:
-        raise ProjectError(f"The project is {project.status}; wait for it to finish")
+    """Refuse a second step while one is running — unless nobody is running it.
+
+    A project whose worker died keeps the status it was claimed with, and this
+    check is what then made it unusable: every request, including the ones that
+    would have got it moving again, was answered "wait for it to finish" for a
+    step that had stopped hours ago.
+    """
+    if project.status in BUSY_STATUSES and not cancel.is_stale(project):
+        raise ProjectError(
+            f"The project is {project.status}. Stop it first if you want to do something else."
+        )
 
 
 def _delete_files(storage: Optional[StoragePort], keys: list[Optional[str]]) -> None:
@@ -212,10 +223,28 @@ def mark_busy(db: Session, project: YTProject, status: str) -> None:
     """Claim the project for a background step, so a second request is refused."""
     _require_not_busy(project)
     project.status, project.error = status, None
+    # Stamped so an abandoned claim can be told from a slow one, and cleared so
+    # a stop asked for during the last run does not stop this one immediately.
+    project.busy_since, project.cancel_requested_at = datetime.now(timezone.utc), None
+    db.commit()
+
+
+def stopped(db: Session, project: YTProject, message: str) -> None:
+    """Record that a step stopped on request, keeping everything it finished.
+
+    Deliberately not `fail`. A stop is a decision, and a project that shows as
+    failed invites someone to start it again from the beginning — which, for a
+    render that has already paid an avatar provider for nine of its twelve
+    clips, is the expensive mistake.
+    """
+    cancel.clear(project)
+    settle_status(db, project)
+    project.error = message[:2000]
     db.commit()
 
 
 def fail(db: Session, project: YTProject, message: str) -> None:
+    cancel.clear(project)
     project.status, project.error = "failed", message[:2000]
     db.commit()
 
@@ -414,7 +443,10 @@ def voice_project(db: Session, project: YTProject, storage: StoragePort, force: 
     voices = {row.speaker_label: db.get(YTCharacter, row.character_id) for row in _cast(db, project)}
     shots = _shots(db, project)
     clips: list[Audio] = []
-    for shot in shots:
+    for index, shot in enumerate(shots):
+        # Between shots, never inside one: a half-written voice clip is worth
+        # nothing, and the one that just finished is already committed.
+        cancel.check(db, project.id, f"{index} of {len(shots)} shots voiced")
         character = voices[shot.speaker_label]
         key = business_key(project.business_id, "projects", str(project.id), "audio",
                            f"shot-{shot.position:04d}.wav")
@@ -449,7 +481,18 @@ def voice_project(db: Session, project: YTProject, storage: StoragePort, force: 
 
 
 def delete_project(db: Session, project: YTProject, storage: Optional[StoragePort]) -> None:
-    _require_not_busy(project)
+    """Delete a project, including one with a step still running.
+
+    Deleting used to be refused while busy, which meant a project that had
+    started a two-hour render could not be abandoned for two hours. The row is
+    removed and the running step notices at its next checkpoint: youtube.cancel
+    treats a missing project as a stop, so it does no further work.
+
+    A file written between this delete and that checkpoint is orphaned in
+    storage. That is the price of not waiting, and it is bounded by one shot.
+    """
+    if project.status in BUSY_STATUSES:
+        cancel.request(db, project)
     shots = _shots(db, project)
     from youtube.models import YTRender
     renders = db.execute(select(YTRender).where(YTRender.project_id == project.id)).scalars().all()
@@ -473,6 +516,27 @@ def _audio_summary(project: YTProject) -> dict:
     except ValueError as e:
         provider = {"sound_provider": None, "sound_enabled": False, "sound_missing": [str(e)]}
     return {**audio_settings(project), **provider}
+
+
+# Which step to offer when a project was stopped or abandoned part-way. Named
+# by the busy status it was in, because that is the step that did not finish;
+# re-running it skips the shots that already have their work.
+_RESUME_FROM = {
+    "planning": "plan",
+    "voicing": "voice",
+    "drawing": "storyboard",
+    "rendering": "render",
+    "uploading": "upload",
+}
+
+
+def _resumable_step(project: YTProject) -> Optional[str]:
+    if project.status in BUSY_STATUSES:
+        return _RESUME_FROM.get(project.status)
+    # Settled back after a stop. The error says a step was interrupted, and the
+    # status says what the project has, so the step to continue is the one that
+    # comes next — which is the one the UI already offers. Nothing extra here.
+    return None
 
 
 def serialize_project(db: Session, project: YTProject, include_script: bool = False) -> dict:
@@ -502,6 +566,13 @@ def serialize_project(db: Session, project: YTProject, include_script: bool = Fa
         "format": project.format,
         "status": project.status,
         "error": project.error,
+        # What the UI needs to offer the right button. A busy project can be
+        # stopped; one already asked to stop says so rather than looking hung;
+        # one whose worker is gone can be started again immediately.
+        "busy": project.status in BUSY_STATUSES,
+        "stopping": bool(project.cancel_requested_at),
+        "abandoned": cancel.is_stale(project),
+        "resumable_step": _resumable_step(project),
         "warnings": warnings,
         "duration_s": round(duration, 1) if duration else None,
         "duration_is_estimate": not project.audio_duration_s,

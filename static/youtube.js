@@ -1274,12 +1274,15 @@
                     <div class="yt-actions">
                         ${approvalBadge(p.approval)}
                         <span class="badge badge-neutral">${escapeHTML(FORMAT_LABELS[p.format] || p.format)}</span>
-                        <span class="output-status ${busy ? 'running' : ''}">${escapeHTML(p.status)}</span>
+                        <span class="output-status ${busy ? 'running' : ''}">${escapeHTML(p.stopping ? 'stopping' : p.status)}</span>
                         <span class="yt-muted">${formatSeconds(p.duration_s)}${p.duration_is_estimate && p.duration_s ? ' estimated' : ''}</span>
                     </div>
                     ${seriesPicker(p, busy)}
                     ${p.warnings.map(w => `<p class="yt-warning"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHTML(w)}</p>`).join('')}
                     ${p.error ? `<p class="yt-error"><i class="fa-solid fa-circle-exclamation"></i> ${escapeHTML(p.error)}</p>` : ''}
+                    ${p.abandoned ? `<p class="yt-warning"><i class="fa-solid fa-plug-circle-xmark"></i>
+                        This says ${escapeHTML(p.status)}, but the worker running it stopped responding.
+                        Stop it to clear that, then start the step again — finished work is kept.</p>` : ''}
                 </div>
                 <div class="yt-actions">
                     <button class="btn btn-secondary btn-sm" ${busy ? 'disabled' : ''} onclick="ytStudio.planProject(${p.id}, ${p.shots.length > 0})">
@@ -1288,7 +1291,12 @@
                         title="${castReady ? '' : 'Give every speaker a character with a voice first'}"
                         onclick="ytStudio.voiceProject(${p.id}, false)">
                         <i class="fa-solid fa-microphone"></i> <span>${p.has_audio ? 'Update voices' : 'Voice script'}</span></button>
-                    <button class="btn btn-sm btn-danger" ${busy ? 'disabled' : ''} onclick="ytStudio.deleteProject(${p.id})" title="Delete project">
+                    ${busy ? `
+                        <button class="btn btn-secondary btn-sm" ${p.stopping ? 'disabled' : ''}
+                            onclick="ytStudio.stopProject(${p.id})"
+                            title="Stop at the next shot. Everything already finished is kept.">
+                            <i class="fa-solid fa-stop"></i> <span>${p.stopping ? 'Stopping…' : 'Stop'}</span></button>` : ''}
+                    <button class="btn btn-sm btn-danger" onclick="ytStudio.deleteProject(${p.id}, ${busy})" title="Delete project">
                         <i class="fa-regular fa-trash-can"></i></button>
                 </div>
             </div>
@@ -1568,8 +1576,26 @@
         if (await uploadAction(projectId, uploadId, 'retry')) loadProjects();
     }
 
-    async function deleteProject(projectId) {
-        if (!confirm('Delete this project with its audio, images and videos? Videos already on YouTube stay there. The marketing script is not affected.')) return;
+    async function stopProject(projectId) {
+        // Not a cancel-and-discard. The step stops at its next shot and the
+        // project keeps every clip, image and voice line already finished, so
+        // starting the same step again continues rather than restarts.
+        try {
+            const data = await api(`/projects/${projectId}/stop`, { method: 'POST' });
+            showToast(data.stopped
+                ? 'Stopped. Everything finished was kept — start the step again to continue.'
+                : 'Stopping at the next shot. Everything finished is kept.', 'success');
+            openProject(projectId);
+        } catch (err) {
+            toastError(err);
+        }
+    }
+
+    async function deleteProject(projectId, busy) {
+        const warning = busy
+            ? 'A step is still running. Deleting stops it at its next shot and removes the project with its audio, images and videos. '
+            : 'Delete this project with its audio, images and videos? ';
+        if (!confirm(warning + 'Videos already on YouTube stay there. The marketing script is not affected.')) return;
         try {
             await api(`/projects/${projectId}`, { method: 'DELETE' });
             forgetFiles(`/projects/${projectId}`);
@@ -1589,7 +1615,7 @@
         loadStyles, createStyle, saveStyle, uploadStyleReference, removeStyleReference, deleteStyle,
         loadAssets, createAsset, drawAsset, deleteAsset, toggleProjectProduct, toggleShotProduct, saveEndCard, saveAudio, saveShotSound,
         setSeries,
-        loadProjects, openProject, planProject, voiceProject, castSpeaker, changeSpeaker, deleteProject,
+        loadProjects, openProject, planProject, voiceProject, castSpeaker, changeSpeaker, deleteProject, stopProject,
         setProjectStyle, generateStoryboard, changeShotType, redrawShot, approveStoryboard,
         renderVideo, watchRender,
         loadChannel, connectChannel, disconnectChannel,

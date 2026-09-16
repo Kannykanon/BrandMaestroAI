@@ -20,6 +20,8 @@ def _run(project_id: int, business_id: str, action, busy_status: str):
     from youtube import projects
     from youtube.storage import StorageSingleton
 
+    from youtube.cancel import Cancelled
+
     with get_db_session() as db:
         project = projects.get_project(db, business_id, project_id)
         if project is None:
@@ -28,6 +30,19 @@ def _run(project_id: int, business_id: str, action, busy_status: str):
         try:
             action(db, project, StorageSingleton.get())
             return {"status": project.status}
+        except Cancelled as stop:
+            # Asked to stop, or the project was deleted underneath it. Neither
+            # is a failure, and the work already finished stays: the project
+            # falls back to the status its own files justify, so the same step
+            # can be started again and will pick up where this one left off.
+            db.rollback()
+            project = projects.get_project(db, business_id, project_id)
+            if project is None:
+                logger.info("YouTube project %s was deleted while %s", project_id, busy_status)
+                return {"status": "deleted"}
+            projects.stopped(db, project, f"{stop.message}. Nothing finished was lost — start it again to continue.")
+            logger.info("YouTube project %s stopped while %s: %s", project_id, busy_status, stop.message)
+            return {"status": project.status, "stopped": True}
         except Exception as e:
             logger.exception("YouTube project %s failed while %s", project_id, busy_status)
             db.rollback()

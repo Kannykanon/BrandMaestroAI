@@ -462,6 +462,32 @@ def delete_project(project_id: int, db: Db, current_user: CurrentUser):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post("/projects/{project_id}/stop", status_code=status.HTTP_202_ACCEPTED)
+def stop_project(project_id: int, db: Db, current_user: CurrentUser):
+    """Ask the running step to stop at its next shot, keeping what it finished.
+
+    Returns immediately: the worker is mid-shot, and stopping means doing no
+    more work rather than abandoning the shot in flight. The project settles
+    into the status its own files justify, and starting the same step again
+    continues from there.
+    """
+    from youtube import cancel
+
+    p = _projects()
+    project = _project_or_404(db, current_user, project_id)
+    if project.status not in p.BUSY_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Nothing is running — the project is {project.status}.",
+        )
+    if cancel.is_stale(project):
+        # No worker is coming back to read the flag, so settle it here.
+        p.stopped(db, project, "The worker running this stopped responding. Start it again to continue.")
+        return {"status": project.status, "stopped": True}
+    cancel.request(db, project)
+    return {"status": project.status, "stopping": True}
+
+
 @router.post("/projects/{project_id}/plan", status_code=status.HTTP_202_ACCEPTED)
 def plan_project(project_id: int, db: Db, current_user: CurrentUser):
     """Queue the scene planner. Re-planning replaces the shots and discards their audio."""

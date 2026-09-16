@@ -27,7 +27,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session
 
-from youtube import projects, storyboard
+from youtube import cancel, projects, storyboard
 from youtube.audio import Audio, SAMPLE_RATE, concatenate, silence
 from youtube.avatar import AvatarPort, AvatarRegistry
 from youtube.captions import build_cues, to_ass, word_timings
@@ -208,6 +208,10 @@ def animate_shots(db: Session, project: YTProject, storage: StoragePort, port: A
     for item in timeline(projects._shots(db, project), port):
         if not _needs_clip(item, port):
             continue
+        # Checked before paying for the next clip rather than after. This is the
+        # step people actually want to stop: each clip costs real money, and a
+        # twelve-shot render that is wrong is wrong by the second shot.
+        cancel.check(db, project.id, f"shot {item.shot.position - 1}")
         shot = item.shot
         audio = _talk_audio(Audio.from_wav(storage.get(shot.audio_key)), item.talk_s, port.min_seconds)
         image = storage.get(shot.image_key)
