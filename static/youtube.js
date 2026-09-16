@@ -14,6 +14,7 @@
         characters: [],
         styles: [],
         assets: [],
+        series: [],
         characterId: null,
         projectId: null,
         pollTimer: null,
@@ -582,6 +583,27 @@
         }
     }
 
+    async function drawAsset(event) {
+        event.preventDefault();
+        const button = event.target.querySelector('button[type=submit]');
+        button.disabled = true;
+        button.querySelector('span').textContent = 'Drawing…';
+        try {
+            await api('/assets/draw', { method: 'POST', body: JSON.stringify({
+                name: document.getElementById('yt-draw-name').value.trim(),
+                kind: 'location',
+                description: document.getElementById('yt-draw-description').value.trim(),
+            }) });
+            document.getElementById('yt-draw-form').reset();
+            loadAssets();
+        } catch (err) {
+            toastError(err);
+        } finally {
+            button.disabled = false;
+            button.querySelector('span').textContent = 'Draw location';
+        }
+    }
+
     async function createAsset(event) {
         event.preventDefault();
         const form = new FormData();
@@ -750,6 +772,7 @@
             state.characters = (await api('/characters')).characters;
             state.styles = (await api('/styles')).styles;
             state.assets = (await api('/assets')).assets;
+            state.series = (await api('/series')).series;
             const project = await api(`/projects/${projectId}`);
             renderProject(project);
             if (BUSY.has(project.status)) {
@@ -763,9 +786,9 @@
     }
 
     function productPicker(p, busy) {
-        const products = state.assets.filter(a => a.kind === 'product');
-        if (!products.length) return '<p class="yt-muted">Add product photos in the Styles tab to show real products in shots.</p>';
-        return `<div class="yt-actions yt-products"><span class="yt-muted">Products in this video:</span>
+        const products = state.assets.filter(a => ['product', 'location'].includes(a.kind));
+        if (!products.length) return '<p class="yt-muted">Add product photos or locations in the Styles tab to keep real things and places consistent.</p>';
+        return `<div class="yt-actions yt-products"><span class="yt-muted">Products and locations in this video:</span>
             ${products.map(a => `<label class="yt-check"><input type="checkbox" ${busy ? 'disabled' : ''} ${p.asset_ids.includes(a.id) ? 'checked' : ''}
                 onchange="ytStudio.toggleProjectProduct(${p.id}, ${a.id}, this.checked, ${jsArg(p.asset_ids)})"> ${escapeHTML(a.name)}</label>`).join('')}</div>`;
     }
@@ -1196,6 +1219,45 @@
         }, 200);
     }
 
+    function seriesPicker(p, busy) {
+        const current = state.series.find(s => s.id === p.series_id);
+        return `
+            <div class="yt-actions yt-series">
+                <label class="yt-muted" for="yt-series-${p.id}">Series</label>
+                <select id="yt-series-${p.id}" ${busy ? 'disabled' : ''} onchange="ytStudio.setSeries(${p.id}, this.value)">
+                    <option value="">Stand-alone video</option>
+                    ${state.series.map(s => `<option value="${s.id}" ${s.id === p.series_id ? 'selected' : ''}>${escapeHTML(s.name)}</option>`).join('')}
+                    <option value="new">+ New series…</option>
+                </select>
+                ${current ? `<span class="yt-muted">episode ${p.episode || '?'}${p.recap ? ` · recap: ${escapeHTML(p.recap.slice(0, 90))}${p.recap.length > 90 ? '…' : ''}` : ''}</span>` : ''}
+            </div>`;
+    }
+
+    async function setSeries(projectId, value) {
+        let seriesId = value ? Number(value) : null;
+        if (value === 'new') {
+            const name = prompt('Name of the series (for example "The Bakery")');
+            if (!name) { openProject(projectId); return; }
+            const logline = prompt('One line about the story, for the writer of later episodes (optional)') || '';
+            try {
+                const created = await api('/series', { method: 'POST', body: JSON.stringify({ name, logline }) });
+                state.series = (await api('/series')).series;
+                seriesId = created.id;
+            } catch (err) {
+                toastError(err);
+                openProject(projectId);
+                return;
+            }
+        }
+        try {
+            renderProject(await api(`/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ series_id: seriesId }) }));
+            if (seriesId) showToast('Added to the series. It starts from the previous episode: cast, look, world, sound and end card.', 'success');
+        } catch (err) {
+            toastError(err);
+            openProject(projectId);
+        }
+    }
+
     function renderProject(p) {
         const card = document.getElementById('yt-project-detail');
         const busy = BUSY.has(p.status);
@@ -1215,6 +1277,7 @@
                         <span class="output-status ${busy ? 'running' : ''}">${escapeHTML(p.status)}</span>
                         <span class="yt-muted">${formatSeconds(p.duration_s)}${p.duration_is_estimate && p.duration_s ? ' estimated' : ''}</span>
                     </div>
+                    ${seriesPicker(p, busy)}
                     ${p.warnings.map(w => `<p class="yt-warning"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHTML(w)}</p>`).join('')}
                     ${p.error ? `<p class="yt-error"><i class="fa-solid fa-circle-exclamation"></i> ${escapeHTML(p.error)}</p>` : ''}
                 </div>
@@ -1524,7 +1587,8 @@
         previewVoice, previewSelectedVoice, generatePreviews,
         openCharacter, closeCharacter, confirmRights, uploadFace, deleteCharacterImage, generateSheet, approveSheet,
         loadStyles, createStyle, saveStyle, uploadStyleReference, removeStyleReference, deleteStyle,
-        loadAssets, createAsset, deleteAsset, toggleProjectProduct, toggleShotProduct, saveEndCard, saveAudio, saveShotSound,
+        loadAssets, createAsset, drawAsset, deleteAsset, toggleProjectProduct, toggleShotProduct, saveEndCard, saveAudio, saveShotSound,
+        setSeries,
         loadProjects, openProject, planProject, voiceProject, castSpeaker, changeSpeaker, deleteProject,
         setProjectStyle, generateStoryboard, changeShotType, redrawShot, approveStoryboard,
         renderVideo, watchRender,

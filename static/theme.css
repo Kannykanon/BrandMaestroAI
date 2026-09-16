@@ -2262,3 +2262,6 @@ body {
 .yt-music-icon { display: flex; width: 72px; height: 72px; align-items: center; justify-content: center; font-size: 26px; background: var(--bg-input); border-radius: 4px; color: var(--accent-red-light); }
 .yt-sound { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 4px 0; }
 .yt-sound input { flex: 1; background: var(--bg-input); color: inherit; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 4px 6px; font-size: 12px; }
+/* Series */
+.yt-series { margin: 6px 0 4px; gap: 8px; }
+.yt-series select { background: var(--bg-input); color: inherit; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 4px 6px; }

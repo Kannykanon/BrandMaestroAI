@@ -378,10 +378,16 @@ def scene_prompt(project: YTProject, shot: YTShot, style: Optional[YTStyle],
             lines.append(f"- {label}: {character.name}.{notes}")
     else:
         lines.append("ON SCREEN: no specific characters. People may appear only as unrecognisable background figures.")
-    if products:
+    locations = [p for p in (products or []) if p.kind == "location"]
+    goods = [p for p in (products or []) if p.kind != "location"]
+    if goods:
         lines += ["", "PRODUCTS (reproduce each exactly as in its reference photo: shape, proportions, colours, "
                       "materials, label and logo; place it naturally in the scene, clearly visible and in focus):"]
-        lines += [f"- {p.name}" for p in products]
+        lines += [f"- {p.name}" for p in goods]
+    if locations:
+        lines += ["", "LOCATION (the same place as in its reference photo: same architecture, layout, furniture and "
+                      "colours; the camera may look at it from another angle):"]
+        lines += [f"- {p.name}" for p in locations]
     lines.append("")
     speaker_names = dict(characters)
     if shot.shot_type == "dialogue" and shot.speaker_label in speaker_names:
@@ -419,8 +425,9 @@ def scene_references(db: Session, project: YTProject, shot: YTShot, storage: Sto
     for product in products or []:
         if len(references) >= port.max_references:
             break
-        references.append(prepare_reference(flatten_on_white(storage.get(product.storage_key)),
-                                            f"Product reference for {product.name} (reproduce this exact product):"))
+        label = (f"Location reference for {product.name} (the same place):" if product.kind == "location"
+                 else f"Product reference for {product.name} (reproduce this exact product):")
+        references.append(prepare_reference(flatten_on_white(storage.get(product.storage_key)), label))
     style = db.get(YTStyle, project.style_id) if project.style_id else None
     if style and style.reference_storage_key and len(references) < port.max_references:
         references.append(prepare_reference(

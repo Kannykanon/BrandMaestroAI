@@ -84,7 +84,7 @@ class TestProductsInShots:
         other = assets.create_asset(env.db, "biz", "Scone", "product", photo(), env.storage)
         with pytest.raises(projects.ProjectError, match="Add the product to the project first"):
             assets.set_shot_products(env.db, project, shots[2].id, [other.id])
-        with pytest.raises(projects.ProjectError, match="product assets"):
+        with pytest.raises(projects.ProjectError, match="product and location assets"):
             assets.set_project_products(env.db, project, [999])
 
     def test_a_product_shot_sends_its_photo_and_tells_the_model_and_the_checker(self, env):

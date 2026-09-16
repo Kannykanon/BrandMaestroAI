@@ -46,7 +46,7 @@ def test_youtube_tables_are_not_in_marketing_metadata():
 
     assert not [t for t in Model.metadata.tables if t.startswith("yt_")]
     assert all(t.startswith("yt_") for t in YTModel.metadata.tables)
-    assert len(YTModel.metadata.tables) == 13
+    assert len(YTModel.metadata.tables) == 14
 
 
 def test_youtube_tables_never_reference_marketing_tables():

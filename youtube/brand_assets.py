@@ -24,7 +24,11 @@ from youtube.models import YTAsset, YTProject, YTShot
 from youtube.projects import ProjectError
 from youtube.storage import StoragePort, business_key
 
-ASSET_KINDS = ("product", "logo", "music")
+logger = __import__("logging").getLogger(__name__)
+
+ASSET_KINDS = ("product", "logo", "music", "location")
+# Assets that can appear in a shot, matched by name in its line or visual.
+SCENE_KINDS = ("product", "location")
 AUDIO_TYPES = {"mp3": "audio/mpeg", "wav": "audio/wav", "m4a": "audio/mp4", "ogg": "audio/ogg", "flac": "audio/flac"}
 
 
@@ -134,10 +138,11 @@ def serialize_asset(asset: YTAsset) -> dict:
 #  Products in a project and its shots
 # ---------------------------------------------------------------------------
 def project_products(db: Session, project: YTProject) -> list[YTAsset]:
+    """The products and locations this project features, in the order they were added."""
     ids = project.asset_ids or []
     if not ids:
         return []
-    assets = {a.id: a for a in list_assets(db, project.business_id, "product")}
+    assets = {a.id: a for a in list_assets(db, project.business_id) if a.kind in SCENE_KINDS}
     return [assets[i] for i in ids if i in assets]
 
 
@@ -156,10 +161,10 @@ def shot_products(db: Session, project: YTProject, shot: YTShot,
 
 def set_project_products(db: Session, project: YTProject, asset_ids: list[int]) -> YTProject:
     projects._require_not_busy(project)
-    valid = {a.id for a in list_assets(db, project.business_id, "product")}
+    valid = {a.id for a in list_assets(db, project.business_id) if a.kind in SCENE_KINDS}
     unknown = [i for i in asset_ids if i not in valid]
     if unknown:
-        raise ProjectError("Only this business's product assets can be used")
+        raise ProjectError("Only this business's product and location assets can be used")
     ids = list(dict.fromkeys(asset_ids))
     if ids != (project.asset_ids or []):
         project.asset_ids = ids or None
@@ -188,6 +193,31 @@ def set_shot_products(db: Session, project: YTProject, shot_id: int, asset_ids: 
     db.commit()
     db.refresh(shot)
     return shot
+
+
+LOCATION_PROMPT = ("A photograph of this place, empty of people, for use as a location reference in a video: "
+                   "{description}\nShow the whole space clearly in even, natural light. "
+                   "No text, no logos, no watermarks.")
+
+
+def generate_asset_image(db: Session, business_id: str, name: str, kind: str, description: str,
+                         storage: StoragePort, port=None) -> YTAsset:
+    """Draw an asset (a location, usually) from a description instead of uploading a photo."""
+    from youtube.images import ImageRegistry
+
+    description = " ".join((description or "").split())[:1000]
+    if not description:
+        raise ProjectError("Describe the place to draw")
+    port = port or ImageRegistry.get()
+    prompt = LOCATION_PROMPT.format(description=description) if kind == "location" else description
+    try:
+        image = port.generate(prompt, [], "16:9")
+    except Exception as e:
+        raise ProjectError(f"Drawing {name!r} failed: {e}") from e
+    asset = create_asset(db, business_id, name, kind, image.data, storage)
+    from youtube.models import YTCost
+    logger.info("Generated %s asset %r with %s", kind, name, port.name)
+    return asset
 
 
 def flatten_on_white(data: bytes) -> bytes:

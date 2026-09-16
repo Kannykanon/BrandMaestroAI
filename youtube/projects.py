@@ -289,7 +289,8 @@ def plan_project(db: Session, project: YTProject, llm=None, storage: Optional[St
         fail(db, project, f"Could not plan the script without changing it: {e}")
         raise ProjectError(str(e)) from e
 
-    annotations = annotate_shots(shots, project.format, llm=llm)
+    from youtube.series import story_so_far
+    annotations = annotate_shots(shots, project.format, llm=llm, story=story_so_far(db, project))
 
     old = _shots(db, project)
     _delete_files(storage, [k for s in old for k in (s.audio_key, s.image_key, s.clip_key)] + [project.audio_key])
@@ -318,6 +319,13 @@ def plan_project(db: Session, project: YTProject, llm=None, storage: Optional[St
     settle_status(db, project)
     project.error = None
     db.commit()
+    if project.series_id:
+        # An episode inherits its cast from the one before, and leaves a recap for the next.
+        from youtube import series
+        series.inherit_cast(db, project)
+        series.write_recap(db, project, llm=llm)
+        settle_status(db, project)
+        db.commit()
     db.refresh(project)
     if annotations.used_fallback:
         logger.info("Project %s planned with default annotations for some shots", project.id)
@@ -483,6 +491,9 @@ def serialize_project(db: Session, project: YTProject, include_script: bool = Fa
     data = {
         "id": project.id,
         "topic": project.topic,
+        "series_id": project.series_id,
+        "episode": project.episode,
+        "recap": project.recap,
         "asset_ids": [p.id for p in products],
         "end_card": serialize_end_card(project),
         "audio": _audio_summary(project),
