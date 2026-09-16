@@ -603,6 +603,21 @@ def enforcer_node(state: GraphState) -> GraphState:
     voice_notes = ("\n".join(f"- {n}" for n in notes) if notes
                    else "- Nothing outside the brand's own range.")
 
+    # What this round is allowed to ask for, and what the last one already asked
+    # for. Together they stop the pass contradicting itself between rounds: one
+    # round told a draft its sentences were choppy and rewrote five passages
+    # into longer ones, the writer complied, and the next round split the
+    # sentence it had just been given back into three.
+    from utils.voice_spec import voice_directions
+
+    directions = voice_directions(content, metrics)
+    voice_directions_text = ("\n".join(f"- {d}" for d in directions) if directions
+                             else "- Nothing measured for this brand yet.")
+    previous = (state.get("feedback") or "").strip()
+    previous_voice_feedback = (
+        previous[:1500] if previous.startswith("VOICE") else "Nothing — this is the first round."
+    )
+
     # The enforcer no longer uses raw RAG examples, relying strictly on synthesized rules.
     result = LLMSingleton.get("enforcement").invoke(
         ENFORCER_PROMPT.format(
@@ -614,6 +629,8 @@ def enforcer_node(state: GraphState) -> GraphState:
             human_directive=human_directive,
             voice_spec=voice_spec,
             voice_notes=voice_notes,
+            voice_directions=voice_directions_text,
+            previous_voice_feedback=previous_voice_feedback,
         )
     )
 

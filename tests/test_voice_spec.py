@@ -109,7 +109,7 @@ class TestSpec:
     def test_rendered_spec_is_rules_and_shapes_never_the_brands_sentences(self):
         documents = [SCREENPLAY]
         spec = render_spec(corpus_spec(documents), beat_grammar(documents))
-        assert "Sentences run about" in spec and "OPENING IS BUILT AS" in spec
+        assert "Sentences run about" in spec and "HOW ITS OPENINGS TEND TO GO" in spec
         assert "transition line" in spec and "scene heading" in spec
         assert longest_shared_run(spec, SCREENPLAY) < 8, "the spec quoted the brand's own writing back"
         assert "John" not in spec, "the corpus's content leaked into the spec"
@@ -118,6 +118,13 @@ class TestSpec:
         grammar = beat_grammar([SCREENPLAY])
         assert grammar["opening"][0].startswith("transition line")
         assert any("sentence" in shape for shape in grammar["opening"])
+
+    def test_shapes_carry_no_word_count_to_be_matched(self):
+        """Printed as "(3 words)" these read as a specification, and the
+        enforcer twice refused a draft for not matching "the brand's specific
+        sentence length sequence"."""
+        grammar = beat_grammar([SCREENPLAY])
+        assert not any("words)" in shape for shape in grammar["opening"] + grammar["closing"])
 
 
 class TestDiagnostics:

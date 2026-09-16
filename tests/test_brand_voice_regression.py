@@ -94,7 +94,10 @@ class TestTheBrainBuiltFromTheRealCorpus:
 
     def test_the_corpus_reads_as_short_plain_sentences(self, brain):
         assert "Sentences run about 7 words" in brain
-        assert "OPENING IS BUILT AS" in brain and "scene heading" in brain
+        assert "HOW ITS OPENINGS TEND TO GO" in brain and "scene heading" in brain
+        assert "Nothing here is a template" in brain, (
+            "the enforcer read the opening description as a sequence to match exactly"
+        )
 
     def test_register_is_measured_over_prose_not_the_appendices(self, brain):
         """Measured whole, this corpus came out at 6.3 four-syllable words per

@@ -141,6 +141,69 @@ def extract_asset_bank(metrics: str) -> str:
     return header + "\n" + asset_text
 
 
+# Sections of the Brain that are supposed to describe the brand's writing
+# rather than reproduce it. The synthesis prompt asks for moves described
+# abstractly, and asking is not the same as getting: from four screenplays it
+# returned "the 'He realizes that...' declarative phrase", the enforcer told a
+# draft to use it, and the draft duly wrote "He realizes that his wallet is
+# gone" — a phrase lifted from somebody else's story, arriving by the one route
+# nothing was checking.
+_DESCRIBED_SECTIONS = ("SIGNATURE CONSTRUCTIONS", "STRUCTURAL PATTERNS", "THINKING TEMPLATES")
+
+# A run this long shared with the corpus is a quotation, not a description.
+# Four words is where ordinary English overlap ends: "the way that it" is
+# coincidence, "He realizes that his" is the corpus.
+MAX_DESCRIBED_RUN = 4
+
+# The commoner shape is shorter than that and announces itself: a construction
+# written as a quoted fragment. "The 'He realizes that...' declarative phrase"
+# shares only three words with the corpus — under any sane run threshold — and
+# is still the corpus's sentence, handed to the writer to reuse.
+_OPEN_QUOTE, _CLOSE_QUOTE = "['‘“\"]", "['’”\"]"
+_QUOTED_FRAGMENT = re.compile(_OPEN_QUOTE + "([^'’”\"]{4,80})" + _CLOSE_QUOTE)
+
+
+def _is_quotation(line: str, corpus: str) -> bool:
+    """Whether a line meant to describe a move reproduces one instead."""
+    from utils.voice_spec import longest_shared_run
+
+    if longest_shared_run(line, corpus) > MAX_DESCRIBED_RUN:
+        return True
+    for fragment in _QUOTED_FRAGMENT.findall(line):
+        words = re.findall(r"[A-Za-z0-9']+", fragment)
+        if len(words) >= 2 and longest_shared_run(fragment, corpus) >= len(words):
+            return True
+    return False
+
+
+def strip_quoted_constructions(brain: str, corpus: str) -> str:
+    """Remove lines from the descriptive sections that quote the corpus instead.
+
+    The brand's own sentences must never reach a prompt. Everywhere else this is
+    guaranteed by construction — the voice spec is measured, the asset bank is
+    grounded per claim — but the synthesis sections are free text from a model,
+    so what it returns is checked rather than trusted.
+    """
+    from utils.voice_spec import longest_shared_run
+
+    if not brain or not corpus:
+        return brain
+    out, in_section, dropped = [], False, 0
+    for line in brain.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            in_section = any(name in stripped.upper() for name in _DESCRIBED_SECTIONS)
+            out.append(line)
+            continue
+        if in_section and stripped and _is_quotation(stripped, corpus):
+            dropped += 1
+            continue
+        out.append(line)
+    if dropped:
+        logger.info("Dropped %d quoted line(s) from the Brain's descriptive sections", dropped)
+    return "\n".join(out)
+
+
 def extract_permitted_claims(metrics: str, content_type: str = "") -> str:
     """
     Extract the BRAND ASSET BANK section from the brand brain and format it

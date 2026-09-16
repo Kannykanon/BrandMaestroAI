@@ -10,7 +10,7 @@ STEP 1 — HALLUCINATION PRE-SCREEN (run this FIRST, before anything else)
 This step is MANDATORY and its result is a HARD GATE. If it fails, the content is rejected immediately — no scoring, no approval.
 
 HALLUCINATION DEFINITION: A hallucination is any specific claim in the content that cannot be matched to:
-  (a) the PERMITTED FACTUAL CLAIMS list, OR
+  (a) what the brand is permitted to claim, per the section below (which for narrative content says there is no list — a story's own names, titles and characters are never hallucinations), OR
   (b) the REQUESTED TOPIC (it is the brief, not a claim — never flag it), OR
   (c) the RESEARCH / SOURCE MATERIAL FOR THIS SPECIFIC TOPIC, OR
   (d) a universally verifiable public fact (e.g. "email marketing exists")
@@ -67,6 +67,18 @@ HOW THIS BRAND BUILDS SENTENCES:
 WHERE THIS DRAFT SITS OUTSIDE THE BRAND'S OWN RANGE (measured, advisory):
 {voice_notes}
 
+WHAT YOU MAY ASK FOR (measured, and binding on you):
+{voice_directions}
+
+WHAT THE LAST ROUND ASKED THIS DRAFT FOR:
+{previous_voice_feedback}
+
+You may not reverse an instruction the last round gave. One round told a draft its sentences were
+choppy and rewrote five passages into longer ones; the writer did exactly that; the next round took
+the sentence it had just been given and split it back into three. Eight rounds, no convergence, and
+the piece ended unapproved with both verdicts individually defensible. If the last round asked for
+something and the writer did it, that subject is closed — say so by leaving it alone.
+
 Read the content sentence by sentence against that. You are looking for word choice and sentence
 shape, not length and not vocabulary size:
   - A plain brand writing "He bows" does not write "He demonstrates profound deference".
@@ -80,6 +92,9 @@ Return:
     as generic, stilted, or as somebody imitating the rules rather than writing.
   voice_rewrites: up to 5 of the worst sentences, each with a rewrite in the brand's voice that keeps every
     fact. Rewrite the sentence in front of you — do not invent new material and do not quote any other document.
+    Every rewrite must obey the limits above: nothing that moves a settled measurement, nothing that pushes an
+    out-of-range one further out. If the only thing you can find to say is already ruled out, the draft's voice
+    is fine — score it accordingly and return no rewrites.
 
 ═══════════════════════════════════════════════════
 STEP 1B — PUBLISHABILITY (run after STEP 1, also a HARD GATE)
@@ -214,7 +229,7 @@ CRITICAL — VALID JSON ONLY: When quoting a passage from the content inside any
     "hallucination_check": {{
         "verdict": "PASS or FAIL",
         "hallucinated_claims": [
-            "exact quoted passage — reason it is not in the permitted claims list"
+            "exact quoted passage — why it is not something this brand may claim, in the terms the permissions section sets out"
         ]
     }},
     "structural_precheck": {{
@@ -247,7 +262,7 @@ CRITICAL — VALID JSON ONLY: When quoting a passage from the content inside any
         "quote the exact passage that most needs revision + 1-sentence explanation of what is wrong and what it should be instead",
         "quote another passage if applicable (max 5 passages)"
     ],
-    "feedback": "specific actionable feedback per dimension. For hallucination failures: list every fabricated claim and provide the nearest permitted alternative. CRITICAL CONSTRAINT: permitted alternatives MUST be copied verbatim from the PERMITTED FACTUAL CLAIMS list — do NOT invent outcome percentages, metrics, or client counts that are not explicitly listed there. If no permitted outcome exists for a numbered point, instruct the writer to remove the specific number entirely and rewrite that point as a general brand observation without any statistic. For structural failures: provide the correct canonical form with an example. If approved and no issues, return empty string.",
+    "feedback": "specific actionable feedback per dimension. For hallucination failures: name every fabricated claim and say what to do with it. Where the section above gives a closed list, the replacement MUST be copied verbatim from that list and you must invent nothing — no percentages, metrics or counts that are not listed — and where no listed claim fits, tell the writer to drop the specific number and state the point without one. Where the section above says there is no closed list, the fix is the source material: name what the source actually says and tell the writer to write that instead. Never tell a writer to consult a list of permitted claims that this section did not give them. For structural failures: provide the correct canonical form with an example. If approved and no issues, return empty string.",
     "creative_angle": "brief description of the angle or approach used in the content"
 }}
 
@@ -270,7 +285,7 @@ BRAND METRICS:
 {metrics}
 
 
-PERMITTED FACTUAL CLAIMS (CLOSED LIST — the ONLY specific numbers, counts, percentages, dates, and named claims this brand is allowed to make. The shape of these varies by brand: client counts and ROI figures for one, product specifications or customer ratings for another. Judge against what is listed, not against what you expect a brand to cite):
+WHAT THIS BRAND IS PERMITTED TO CLAIM (read this before judging any fact. It is written for the kind of content being judged, and it decides whether a closed list applies at all: marketing copy gets one — the only specific numbers, counts, percentages, dates and named claims the brand may make, whatever shape those take for this brand — while narrative content gets none, because a story's section titles, act names and invented characters are the writer's own work and are not claims about the world. Judge against what this section says, not against what you expect a brand to cite):
 {permitted_claims}
 
 ═══════════════════════════════════════════════════
