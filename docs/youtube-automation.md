@@ -249,6 +249,9 @@ Each adapter reports its cost per call (per second, image or character) so the b
 | `yt_quota_usage` | day (Pacific), bucket (`uploads` / `units`), used |
 | `yt_assets` | id, business_id, name, kind (`product` / `logo` / `music`), storage_key |
 | `yt_imported_scripts` | id, business_id, title, content, created_at |
+| `yt_series` | id, business_id, name, logline |
+
+**Columns added for series:** `yt_projects.series_id`, `.episode`, `.recap`.
 
 **Columns added for products, end cards and sound:** `yt_projects.asset_ids`, `.end_card`, `.audio`; `yt_shots.asset_ids`, `.sound`, `.image_issues`; `yt_renders.end_card`, `.mix`; `yt_uploads.watched_seconds`.
 | `yt_costs` | id, project_id, stage, provider, units, unit, cost_usd, created_at |
@@ -310,7 +313,9 @@ Prices checked on 2026-09-14 from provider pages; recheck before building.
 |---|---|---|
 | GET | `/youtube/scripts` | Eligible scripts and ads, and imported scripts, with approval labels |
 | POST/DELETE | `/youtube/scripts/import`, `/youtube/scripts/{id}` | Import your own script (paste or .txt/.md); delete an imported one |
-| GET/POST/DELETE | `/youtube/assets` | Product photos, logos and music tracks |
+| GET/POST/DELETE | `/youtube/assets` | Product photos, locations, logos and music tracks |
+| POST | `/youtube/assets/draw` | Draw a location from a description |
+| GET/POST/PATCH/DELETE | `/youtube/series`, `/youtube/series/{id}` | Series and their episodes |
 | POST/GET/PATCH/DELETE | `/youtube/characters` | Character library |
 | POST | `/youtube/characters/{id}/sheet` | Generate or regenerate a character sheet |
 | POST/GET | `/youtube/styles` | Style locks |
@@ -364,6 +369,8 @@ Each phase is useful on its own and ends with a working, testable result.
 
 **Ads: product references and end card (added 2026-09-15, `youtube/brand_assets.py`):** businesses upload product photos and logos once (`yt_assets`). A project lists the products it features; a shot shows a product when its line or visual names it, or when a person picks products for it. Product photos go to the image model as labelled references with an instruction to reproduce the product exactly (transparent PNGs are flattened on white), the prompt allows only the product's own printed text, and the image check ignores that text. The end card (logo, call to action, URL, brand colour, 2–6 s) is drawn with Pillow, appended after the last shot with silence under it, previewed in the UI, and stored on each render so changing it marks the render out of date. Routes: `/youtube/assets` (GET, POST multipart, DELETE, `/{id}/image`), `PATCH /youtube/projects/{id}` with `asset_ids` or `end_card` (only fields sent change), `PATCH .../shots/{id}` with `asset_ids`, `GET .../end-card/preview`. Not built: background music, brand fonts, product placement guarantees (the model can still alter a product, so check the storyboard).
 
+**Series, story so far and locations (added 2026-09-16, `youtube/series.py`):** projects can belong to a `yt_series` and are numbered as episodes. Joining a series copies the previous episode's style lock, products and locations, sound settings and end card, and casts each speaker as the character who played them before (once the new episode is planned). Each episode's script is summarised into a short recap (one `LLMSingleton` call, failure is logged and skipped), and the planner of later episodes receives the series logline plus those recaps under STORY SO FAR. Locations are a new asset kind: uploaded, or drawn from a description with `ImagePort` (people-free reference), matched into shots by name like products and passed as a "the same place" reference with its own prompt section. Deleting a series leaves its episodes as stand-alone projects. Routes: `/youtube/series` (GET, POST), `/youtube/series/{id}` (GET with episodes, PATCH, DELETE), `series_id` on project create and PATCH, `POST /youtube/assets/draw`. Not built: continuity of props or wardrobe beyond the character sheets, and automatic ordering of episodes by script.
+
 **Imports and the handoff button (added 2026-09-16):** `youtube/imports.py` stores scripts a person pastes or uploads; approved ads join approved scripts as video sources; approving either in content writing offers **Make a video**, which creates the project, starts planning and opens YouTube Studio.
 
 **Sound design (added 2026-09-16, `youtube/sound.py`, `media.mix_audio`):** uploaded music per project, per-shot generated ambience behind `SoundPort` (off by default), both ducked under the voice; the mix is stored on each render. Talking clips are upscaled with Lanczos, sharpened, and colour-matched where the avatar model redrew the frame (`media.color_match_filter`, applied through `alphamerge`/`overlay`; `maskedmerge` shifted the whole frame and was wrong for this).
@@ -409,6 +416,7 @@ Each phase is useful on its own and ends with a working, testable result.
 | Q6 | Retention period for intermediate assets in storage. |
 | Q7 | ~~Background music source and licensing?~~ Music is uploaded by the business as an asset, so licensing stays with them; generated ambience comes from `SoundPort`. |
 | Q8 | Which full-body animation model replaces the talking-head adapter when lip-sync quality matters more than cost? |
+| Q9 | How far should series continuity go: props and wardrobe sheets, or is the cast plus locations enough? |
 
 ---
 

@@ -34,6 +34,7 @@ Return JSON only, in this shape:
 
 VIDEO FORMAT: {format}
 SPEAKERS: {speakers}
+{story}
 
 SHOTS:
 {shots}
@@ -138,7 +139,7 @@ def _validate(raw: dict, shots: list[Shot]) -> PlanAnnotations:
     return PlanAnnotations(result, speaker_notes, fallback)
 
 
-def annotate_shots(shots: list[Shot], video_format: str, llm=None) -> PlanAnnotations:
+def annotate_shots(shots: list[Shot], video_format: str, llm=None, story: str = "") -> PlanAnnotations:
     """Ask the model for shot types and visuals. Falls back to defaults on any failure."""
     from utils.llm_output import parse_llm_json
 
@@ -150,6 +151,7 @@ def annotate_shots(shots: list[Shot], video_format: str, llm=None) -> PlanAnnota
     prompt = PLANNER_PROMPT.format(
         format="Short (vertical, under 3 minutes)" if video_format == "short" else "Long-form (16:9)",
         speakers=", ".join(speakers),
+        story=f"\nSTORY SO FAR (earlier episodes; keep places and people consistent with it):\n{story}\n" if story else "",
         shots=_format_shots(shots),
     )
     try:

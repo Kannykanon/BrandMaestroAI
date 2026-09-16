@@ -153,7 +153,12 @@ class YTProject(YTModel):
     # When a person approved the storyboard. Cleared by any change to it.
     storyboard_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # YouTube metadata, written by a person or drafted by the metadata step.
-    # Product assets this video features, and its end card (see youtube/brand_assets.py).
+    # The series this project is an episode of, if any.
+    series_id: Mapped[Optional[int]] = mapped_column(ForeignKey("yt_series.id", ondelete="SET NULL"), index=True)
+    episode: Mapped[Optional[int]] = mapped_column(Integer)
+    # What happened in this episode, for the planner of the next one.
+    recap: Mapped[Optional[str]] = mapped_column(Text)
+    # Product and location assets this video features, and its end card (see youtube/brand_assets.py).
     asset_ids: Mapped[Optional[list]] = mapped_column(JSON)
     end_card: Mapped[Optional[dict]] = mapped_column(JSON)
     # Music track and bed volumes (see youtube/sound.py).
@@ -240,6 +245,18 @@ class YTRender(YTModel):
     end_card: Mapped[Optional[dict]] = mapped_column(JSON)
     # The music, ambience and volumes this render was mixed with.
     mix: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class YTSeries(YTModel):
+    """Several videos that continue one story: same cast, world and look."""
+
+    __tablename__ = "yt_series"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    logline: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -386,6 +403,9 @@ COLUMN_MIGRATIONS = (
     ("yt_projects", "audio", "JSON"),
     ("yt_shots", "sound", "VARCHAR(120)"),
     ("yt_renders", "mix", "JSON"),
+    ("yt_projects", "series_id", "INTEGER"),
+    ("yt_projects", "episode", "INTEGER"),
+    ("yt_projects", "recap", "TEXT"),
 )
 
 

@@ -47,6 +47,24 @@ class CharacterPatch(BaseModel):
 class ProjectIn(BaseModel):
     generation_id: str
     format: str = Field("long_form", pattern="^(long_form|short)$")
+    # Continue a series: the project becomes its next episode and inherits its setup.
+    series_id: Optional[int] = None
+
+
+class SeriesIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    logline: str = Field("", max_length=2000)
+
+
+class SeriesPatch(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    logline: Optional[str] = Field(None, max_length=2000)
+
+
+class AssetDrawIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    kind: str = Field("location", pattern="^(location|product)$")
+    description: str = Field(..., min_length=3, max_length=1000)
 
 
 class CastIn(BaseModel):
@@ -83,6 +101,7 @@ class ProjectPatch(BaseModel):
     asset_ids: Optional[list[int]] = Field(None, max_length=20)
     end_card: Optional[dict] = None
     audio: Optional[dict] = None
+    series_id: Optional[int] = None
 
 
 class StoryboardIn(BaseModel):
@@ -413,9 +432,14 @@ def list_projects(db: Db, current_user: CurrentUser):
 
 @router.post("/projects", status_code=status.HTTP_201_CREATED)
 def create_project(body: ProjectIn, db: Db, current_user: CurrentUser):
+    from youtube import series as series_module
+
     p = _projects()
     try:
         project = p.create_project(db, current_user.business_id, body.generation_id, body.format)
+        if body.series_id is not None:
+            series = _series_or_404(db, current_user, body.series_id)
+            series_module.add_to_series(db, project, series)
     except ValueError as e:
         raise _bad_request(e)
     return p.serialize_project(db, project, include_script=True)
@@ -674,6 +698,10 @@ def update_project(project_id: int, body: ProjectPatch, db: Db, current_user: Cu
         if "audio" in fields:
             from youtube import sound
             sound.set_project_audio(db, project, body.audio or {})
+        if "series_id" in fields:
+            from youtube import series as series_module
+            target = _series_or_404(db, current_user, body.series_id) if body.series_id is not None else None
+            series_module.add_to_series(db, project, target)
     except ValueError as e:
         raise _bad_request(e)
     return _projects().serialize_project(db, project)
@@ -1044,3 +1072,70 @@ def end_card_preview(project_id: int, db: Db, current_user: CurrentUser, as_link
     width, height = SIZES[project.format]
     png = _assets().render_end_card(db, project, StorageSingleton.get(), width // 2, height // 2)
     return Response(content=png, media_type="image/png", headers={"Content-Disposition": 'inline; filename="end-card.png"'})
+
+
+# ---------------------------------------------------------------------------
+#  Series
+# ---------------------------------------------------------------------------
+def _series():
+    from youtube import series
+    return series
+
+
+def _series_or_404(db: Session, user, series_id: int):
+    series = _series().get_series(db, user.business_id, series_id)
+    if series is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such series")
+    return series
+
+
+@router.get("/series")
+def list_series(db: Db, current_user: CurrentUser):
+    """Series this business has, with how many episodes each holds."""
+    s = _series()
+    return {"series": [s.serialize_series(db, x) for x in s.list_series(db, current_user.business_id)]}
+
+
+@router.post("/series", status_code=status.HTTP_201_CREATED)
+def create_series(body: SeriesIn, db: Db, current_user: CurrentUser):
+    s = _series()
+    try:
+        return s.serialize_series(db, s.create_series(db, current_user.business_id, body.name, body.logline))
+    except ValueError as e:
+        raise _bad_request(e)
+
+
+@router.get("/series/{series_id}")
+def get_series(series_id: int, db: Db, current_user: CurrentUser):
+    """One series with its episodes in order, and what each left behind (its recap)."""
+    s = _series()
+    return s.serialize_series(db, _series_or_404(db, current_user, series_id), with_episodes=True)
+
+
+@router.patch("/series/{series_id}")
+def update_series(series_id: int, body: SeriesPatch, db: Db, current_user: CurrentUser):
+    s = _series()
+    try:
+        return s.serialize_series(db, s.update_series(db, _series_or_404(db, current_user, series_id),
+                                                      name=body.name, logline=body.logline), with_episodes=True)
+    except ValueError as e:
+        raise _bad_request(e)
+
+
+@router.delete("/series/{series_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_series(series_id: int, db: Db, current_user: CurrentUser):
+    """Delete the series. Its episodes stay as projects of their own."""
+    _series().delete_series(db, _series_or_404(db, current_user, series_id))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/assets/draw", status_code=status.HTTP_201_CREATED)
+def draw_asset(body: AssetDrawIn, db: Db, current_user: CurrentUser):
+    """Draw a location (or product) from a description instead of uploading a photo."""
+    a = _assets()
+    try:
+        asset = a.generate_asset_image(db, current_user.business_id, body.name, body.kind, body.description,
+                                       StorageSingleton.get())
+    except ValueError as e:
+        raise _bad_request(e)
+    return a.serialize_asset(asset)

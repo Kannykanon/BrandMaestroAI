@@ -746,11 +746,23 @@
                         <form id="yt-asset-form" onsubmit="ytStudio.createAsset(event)">
                             <div class="input-row yt-form-row">
                                 <div class="input-group"><label for="yt-asset-name">Name</label><input id="yt-asset-name" maxlength="100" required placeholder="e.g. Crumb Sourdough Loaf"></div>
-                                <div class="input-group"><label for="yt-asset-kind">Kind</label><select id="yt-asset-kind"><option value="product">Product</option><option value="logo">Logo</option><option value="music">Music track</option></select></div>
+                                <div class="input-group"><label for="yt-asset-kind">Kind</label><select id="yt-asset-kind"><option value="product">Product</option><option value="location">Location</option><option value="logo">Logo</option><option value="music">Music track</option></select></div>
                                 <div class="input-group"><label for="yt-asset-file">Image</label><input id="yt-asset-file" type="file" accept="image/jpeg,image/png,image/webp,audio/mpeg,audio/wav,audio/mp4,audio/ogg,audio/flac,.mp3,.wav,.m4a,.ogg,.flac" required></div>
                             </div>
                             <div class="yt-actions"><button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-upload"></i> <span>Add asset</span></button></div>
                         </form>
+                        <details class="yt-import" style="margin-top:12px">
+                            <summary><strong><i class="fa-solid fa-mountain-sun"></i> Draw a location instead</strong>
+                                <span class="yt-muted">for a place that recurs across episodes</span></summary>
+                            <form id="yt-draw-form" onsubmit="ytStudio.drawAsset(event)">
+                                <div class="input-row yt-form-row">
+                                    <div class="input-group"><label for="yt-draw-name">Name</label><input id="yt-draw-name" maxlength="100" required placeholder="e.g. Storm Peak"></div>
+                                    <div class="input-group"><label for="yt-draw-description">Description</label><input id="yt-draw-description" maxlength="1000" required placeholder="e.g. A jagged black mountain summit above the clouds at dusk"></div>
+                                </div>
+                                <div class="yt-actions"><button type="submit" class="btn btn-secondary btn-sm"><i class="fa-solid fa-wand-magic-sparkles"></i> <span>Draw location</span></button>
+                                    <span class="yt-muted">One image, about $0.07. Shots that name it are drawn in the same place.</span></div>
+                            </form>
+                        </details>
                         <div id="yt-assets-list" class="yt-assets"></div>
                     </div>
                 </div>
