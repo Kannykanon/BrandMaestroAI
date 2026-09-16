@@ -35,6 +35,9 @@ def deployer_node(state: GraphState) -> GraphState:
             score=score,
             approved=approved,
             content=state["content"],
+            # Carried from the rejected draft this run was triggered by, so the
+            # reviewer who wrote the feedback can see what it produced.
+            parent_generation_id=state.get("parent_generation_id") or None,
             completed_at=completed_at
         ).on_conflict_do_update(
             index_elements=["generation_id"],

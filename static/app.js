@@ -430,6 +430,11 @@ async function triggerGeneration(e) {
         let buffer = '';
         let generationId = '';
         let fullGeneratedText = '';
+        // The auditor's verdict, which is not the same thing as the run finishing.
+        // A draft that runs out of revision rounds is still saved and still
+        // streamed, and the UI called that 'Completed' — so the one draft that
+        // most needed a reviewer's eye arrived looking like the approved ones.
+        let lastApproved = null;
 
         while (true) {
             const { value, done } = await reader.read();
@@ -485,6 +490,9 @@ async function triggerGeneration(e) {
                     if (stateUpdate.score) {
                         logConsole(`[Auditor Evaluator] Compliance Score: ${stateUpdate.score} / 10`);
                     }
+                    if (typeof stateUpdate.approved === 'boolean') {
+                        lastApproved = stateUpdate.approved;
+                    }
                     if (stateUpdate.content) {
                         // Render generated markdown/text to screen
                         fullGeneratedText = stateUpdate.content;
@@ -515,9 +523,18 @@ async function triggerGeneration(e) {
         }
 
         // Completion
-        statusBadge.innerText = 'Completed';
+        const auditPassed = lastApproved !== false;
+        statusBadge.innerText = auditPassed ? 'Completed' : 'Needs review';
         statusBadge.className = 'output-status';
-        logConsole('Content synthesis completed successfully!', 'success');
+        if (auditPassed) {
+            logConsole('Content synthesis completed successfully!', 'success');
+        } else {
+            logConsole(
+                'Finished without the auditor approving it — the revision rounds ran out. ' +
+                'Read it before using it, and reject it with a reason to have it rewritten.',
+                'error'
+            );
+        }
 
         // Show human quality feedback form
         feedbackBox.classList.remove('hidden');
@@ -534,7 +551,7 @@ async function triggerGeneration(e) {
             contentType: contentType,
             time: timestamp,
             status: 'completed',
-            score: 'Pending human verification'
+            score: auditPassed ? 'Pending human verification' : 'Unapproved — needs review'
         });
         updateGenerationsListHTML();
 
@@ -612,7 +629,17 @@ async function submitFeedback(e) {
             throw new Error('Failed to register feedback');
         }
 
-        showToast('Feedback submitted! Model alignment retrained.', 'success');
+        // A rejection queues a full rewrite against the reason given. It always
+        // did; nothing said so, so a reviewer who rejected a draft with a
+        // detailed reason saw a success toast about retraining and concluded
+        // the system had ignored them. The rewrite arrives as its own
+        // generation, which is why this says where to look for it.
+        showToast(
+            humanApproved
+                ? 'Approved — saved to model memory.'
+                : 'Rejected. Rewriting against your reason now — the new draft appears in History when it lands.',
+            'success'
+        );
 
         // Optional: offer to turn an approved script or ad into a video.
         if (humanApproved && window.ytStudio && typeof window.ytStudio.offerVideo === 'function') {
@@ -628,6 +655,7 @@ async function submitFeedback(e) {
         const genRecord = appState.generations.find(g => g.id === generationId);
         if (genRecord) {
             genRecord.score = `${humanScore}/10 (${humanApproved ? 'Approved' : 'Rejected'})`;
+            genRecord.note = humanApproved ? '' : 'Rewriting from your feedback…';
             updateGenerationsListHTML();
         }
 
@@ -721,6 +749,14 @@ async function uploadDocument(e) {
         showToast(docKind === 'product'
             ? 'Product document indexed for retrieval'
             : 'Brand voice document sent to the Brand Brain', 'success');
+
+        // The upload succeeded; the server is saying it looks like the wrong
+        // kind of document for the role it was given. Shown for longer than the
+        // success toast, because acting on it means deleting and re-uploading.
+        if (data.warning) {
+            showToast(data.warning, 'error');
+            logConsole(data.warning, 'error');
+        }
 
         // Re-read the list from the server instead of appending a locally
         // constructed row. The upload has already been persisted, so the server
@@ -835,6 +871,7 @@ function updateGenerationsListHTML() {
                 <div class="meta">
                     <span><i class="fa-solid fa-layer-group"></i> ${escapeHTML(contentTypeLabel(gen.contentType))}</span>
                     <span><i class="fa-regular fa-id-card"></i> ${gen.id.substring(0, 8)}...</span>
+                    ${gen.note ? `<span><i class="fa-solid fa-rotate"></i> ${escapeHTML(gen.note)}</span>` : ''}
                 </div>
             </div>
             <div class="history-score">

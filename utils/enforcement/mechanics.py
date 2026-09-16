@@ -38,9 +38,25 @@ _CONTRACTION_RE = re.compile(r"\b\w+['\u2019](?:t|s|re|ve|ll|d|m)\b", re.I)
 UNDER_USED_KEYS = frozenset({
     "exclamation_marks_per_100_words",
     "question_marks_per_100_words",
+})
+
+# Register — how abstract the words are, how long they run — is no longer
+# judged here. It was, with a single corpus number attached to it, and a draft
+# spent its whole revision loop chasing that number: 2.9 four-syllable words
+# per 100, then 23.5, then 1.5, then padded with "convene" and "congregation"
+# until it passed and read like nobody. The rate was right and meant nothing:
+# the brand's own long words were "protagonist" and "identity", the draft's
+# were longer ways of saying plain things.
+#
+# These are now measured against the brand's range and described in words by
+# utils.voice_spec.voice_diagnostics(), which feeds the voice pass of the
+# enforcer instead of blocking a draft on a ratio. Punctuation and capitals
+# stay here: a mark the brand never uses is a convention, not a register.
+REGISTER_KEYS = frozenset({
     "nominalisations_per_100_words",
     "four_plus_syllable_words_per_100_words",
     "contractions_per_100_words",
+    "mean_word_length",
 })
 
 
@@ -103,6 +119,8 @@ def check_measured_mechanics(content: str, metrics: str) -> list[dict]:
 
     failures = []
     for key, actual in observed.items():
+        if key in REGISTER_KEYS:
+            continue  # described by voice_diagnostics(), not blocked on here
         try:
             target = float(targets.get(key, ""))
         except ValueError:

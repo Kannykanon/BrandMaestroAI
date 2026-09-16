@@ -127,9 +127,9 @@ The list lives in `schema.CONTENT_TYPES`; chunking in `chunking_stategy.CHUNKING
 
 **1. Researcher** — pulls relevant passages from the brand's uploaded product documents (vector search), strips internal planning notes out of them, and, when web research is on, adds current context from the Parallel Search API.
 
-**2. Writer** — plans, drafts and edits the piece against the Brand Brain, the research, and past reviewer feedback. On a revision pass it also gets the Enforcer's notes.
+**2. Writer** — plans, drafts and edits the piece against the Brand Brain, the research, and past reviewer feedback. It is given the brand's voice spec (how its sentences, openings and closings are built) and the facts from the source that must appear word for word. On a revision pass it also gets the Enforcer's notes.
 
-**3. Enforcer** — runs deterministic checks first (punctuation the brand never uses, measured writing rates, unfilled placeholders, invented quotes and contact details, copied source passages), then scores style, tone, structure and signature phrases with the model. Below threshold, it sends the draft back with notes. Content with invented claims is never approved.
+**3. Enforcer** — runs deterministic checks first (punctuation the brand never uses, measured writing rates, unfilled placeholders, invented quotes and contact details, copied source passages, facts dropped from the source), then judges two things with the model: whether the draft is true and publishable, and separately whether it sounds like the brand. A draft that satisfies every rule and still reads like nobody fails the voice pass, which returns rewritten sentences rather than a score to chase. Below threshold, it sends the draft back with notes. Content with invented claims is never approved.
 
 **4. Deployer** — saves the approved content, sends a webhook if configured, and feeds high-scoring output back into memory.
 
@@ -348,6 +348,12 @@ Example generation request:
 **A synthesized Brand Brain, not raw chunks.** Raw examples contradict each other. The Brain is one distilled profile per business and content type, cached in Redis and Postgres. Invalidation is soft — a superseded profile keeps serving while its replacement is rebuilt — and synthesis is debounced, so ten uploads cost one rebuild.
 
 **Two intake paths.** Past writing teaches voice and goes to the Brand Brain. Product documents supply facts and go to the vector index. Keeping them apart stops facts from diluting style.
+
+**The Brain describes how the brand writes; it never quotes it.** The voice spec is measured — sentence lengths, how often a sentence ends early, how abstract the words are, what an opening is built from — and stated as habits with the brand's own range around each one. No sentence from a brand-voice document reaches a prompt, and the Brain is checked against its own corpus to prove it (`utils/voice_spec.py`).
+
+**Facts are the one thing quoted verbatim, and they come from product documents only.** Quantities, money and dates are extracted as short spans, given to the writer as must-keep, and blocked if a draft loses one (`utils/fact_spans.py`). A treatment saying "more than seven men" produced a draft saying "They exceed seven": not fabricated, not unattributed, not copied — the count was simply gone, and nothing objected.
+
+**Register is described, not blocked.** Sentence length and punctuation are still checked in code. How abstract the words are is not: given one number to hit, a draft spent its revision rounds oscillating around it — 2.9, then 23.5, then 1.5 — and passed by padding with longer words. That drift is now described in words and judged by a voice pass that answers with rewritten sentences rather than a ratio.
 
 **Deterministic gates before model scoring.** A scoring model can approve an empty-brain draft on one sample and reject it on the next. Rules that must hold — no invented quotes, no unfilled placeholders, no punctuation the brand never uses — are enforced in code.
 

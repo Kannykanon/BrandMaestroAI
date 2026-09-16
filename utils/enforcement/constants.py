@@ -14,6 +14,15 @@ import os
 # coincidence rate and the length of a typical signature phrase.
 MAX_VERBATIM_SPAN_WORDS = 8
 
+# Narrative content retells the source: the brief IS the story, so its facts
+# arrive in the order the brief states them and often in the only plain words
+# there are for them. At 8 words this check flagged a hand-written, correct
+# retelling for "More than seven men. Seated. Drinking. They wave him over",
+# and the pressure to paraphrase plain facts is what turned "They tell him to
+# drink" into "They ask him to drink. The atmosphere shifts abruptly." Wholesale
+# lifting is still caught; a run of plain facts is not.
+NARRATIVE_VERBATIM_SPAN_WORDS = 14
+
 # A verbatim span needs at least this many words the writer actually chose
 # before it counts as copying. Capitalised name components and function words
 # do not count: an award title or festival name cannot be paraphrased, so a

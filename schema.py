@@ -14,6 +14,17 @@ RESEARCH_MODE_PATTERN = f"^({'|'.join(RESEARCH_MODES)})$"
 # silently ignored — when the same user tries to clear it.
 CONTENT_TYPES = ("blog", "ad", "proposal", "script", "press_release")
 
+# Content types that tell a story rather than make claims about a business.
+# They have no client counts, percentages or methodology names to police, and
+# their section titles are the writer's own invention: a script forced to reuse
+# the "permitted" act titles harvested from another story is not being kept
+# honest, it is being made wrong.
+NARRATIVE_CONTENT_TYPES = ("script",)
+
+
+def is_narrative(content_type: str) -> bool:
+    return (content_type or "").strip().lower() in NARRATIVE_CONTENT_TYPES
+
 # How each type is named to the model, so a prompt asks for "a business
 # proposal" rather than for "a proposal" or an internal key.
 CONTENT_TYPE_LABELS = {
@@ -69,6 +80,10 @@ class TaskResponse(BaseModel):
     generation_id: str
     task_id: str
     status: str
+    # Set when an upload was accepted but looks like the wrong kind of document
+    # for the role it was given. Not an error: the document is processed either
+    # way, because only the person who uploaded it knows what it is.
+    warning: Optional[str] = None
 
 class ResultResponse(BaseModel):
     task_id: str

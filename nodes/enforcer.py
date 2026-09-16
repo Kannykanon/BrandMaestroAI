@@ -29,6 +29,7 @@ from utils.enforcement import (
     sanitize_banned_punctuation,
     sanitize_unbranded_emphasis_caps,
 )
+from utils.fact_spans import extract_fact_spans, missing_fact_spans
 from utils.llm_output import parse_llm_json
 from utils.observe import observe
 
@@ -158,7 +159,7 @@ def enforcer_node(state: GraphState) -> GraphState:
         state = {**state, "content": content}
 
     # Build permitted claims whitelist from asset bank
-    permitted_claims = extract_permitted_claims(metrics)
+    permitted_claims = extract_permitted_claims(metrics, state.get("content_type", ""))
 
     # 1a. Fabricated-attribution gate — a quote attributed to a named person
     # who appears nowhere in this generation's actual source material (the
@@ -337,13 +338,53 @@ def enforcer_node(state: GraphState) -> GraphState:
     # against the brand brain — reusing the brand's signature constructions is
     # the point of the product, reproducing its source documents is not.
     research_text = state.get("research", "") or ""
+
+    # Facts with no second correct wording. A draft that writes about the same
+    # subject in vaguer terms has lost something no style rule can restore, and
+    # nothing else in this file would notice: the claim is not fabricated, not
+    # unattributed and not copied — it is simply gone.
+    fact_spans = extract_fact_spans(research_text)
+    dropped_facts = missing_fact_spans(content, fact_spans)
+    if dropped_facts:
+        listed = "\n".join(f'  - "{span}"' for span in dropped_facts)
+        logger.warning("FACT LOSS at iteration %d — %d span(s)", iteration, len(dropped_facts))
+        return {
+            **state,
+            "approved": False,
+            "score": 0.0,
+            "style_match": 0.0,
+            "tone_match": 0.0,
+            "structure_match": 0.0,
+            "signature_match": 0.0,
+            "feedback": (
+                "FACTS LOST — the draft writes about these things but no longer states them "
+                "accurately. Each of these appears in the source and must appear in the content "
+                "exactly as written:\n" + listed + "\n\nThese are not phrasing. A number without "
+                "its qualifier is a different claim, and a description that stands in for a "
+                "count ('a congregation', 'numerous individuals') is not the fact. Put each one "
+                "back in the brand's own sentence — do not rebuild the source's sentence "
+                "around it."
+            ),
+            "flagged_passages": "\n".join(f'"{span}" — fact dropped from the source' for span in dropped_facts),
+            "violation_history": with_violation(
+                "state the source's facts exactly",
+                "; ".join(f'"{span}"' for span in dropped_facts[:5]),
+            ),
+            "creative_angle": "unknown",
+        }
+
     # Which words are names is a property of the brand, so the evidence is
     # every document this business has uploaded — not this content type's
     # research, which for trailer copy contains the award names only in
     # capitals and so shows nothing about them being names at all.
     name_evidence = brand_name_evidence(state["business_id"]) + "\n\n" + grounding_text
+    from schema import is_narrative
+    from utils.enforcement.constants import NARRATIVE_VERBATIM_SPAN_WORDS
+
+    max_span = (NARRATIVE_VERBATIM_SPAN_WORDS if is_narrative(state.get("content_type", ""))
+                else MAX_VERBATIM_SPAN_WORDS)
     extractive_spans = find_extractive_spans(
-        content, research_text, name_evidence=name_evidence
+        content, research_text, max_span=max_span, name_evidence=name_evidence
     )
     if extractive_spans:
         logger.warning(
@@ -369,7 +410,7 @@ def enforcer_node(state: GraphState) -> GraphState:
 
         feedback = (
             "EXTRACTIVE COPYING DETECTED — this draft reproduces its source material "
-            f"verbatim. Passages of more than {MAX_VERBATIM_SPAN_WORDS} consecutive "
+            f"verbatim. Passages of more than {max_span} consecutive "
             "words are copied from the research:\n"
         )
         flagged_lines = []
@@ -407,6 +448,17 @@ def enforcer_node(state: GraphState) -> GraphState:
                 "rationale) rather than something the brand would publish, drop it entirely "
                 "instead of rephrasing it."
             )
+            # "Discard the source's wording" read as an instruction to reword
+            # everything, numbers included, and a draft answered it by turning
+            # "more than seven men" into "a congregation" that "exceeds seven".
+            # The quantities are named here so the instruction above cannot be
+            # taken to cover them.
+            if fact_spans:
+                kept = ", ".join(f'"{span}"' for span in fact_spans[:8])
+                feedback += (
+                    "\n\nThese are facts, not wording, and they stay exactly as they are — "
+                    f"they are what is true: {kept}. Rewrite the sentences around them."
+                )
         return {
             **state,
             "approved": False,
@@ -466,6 +518,17 @@ def enforcer_node(state: GraphState) -> GraphState:
         if human_feedback else ""
     )
 
+    # How this brand builds sentences, and where this draft sits outside its
+    # range — stated as habits, never as numbers to hit. The voice pass reads
+    # both and answers with rewrites of the draft's own sentences.
+    from utils.brand_profile import extract_section
+    from utils.voice_spec import voice_diagnostics
+
+    voice_spec = extract_section(metrics, "VOICE SPEC") or "No voice spec measured for this brand yet."
+    notes = voice_diagnostics(content, metrics)
+    voice_notes = ("\n".join(f"- {n}" for n in notes) if notes
+                   else "- Nothing outside the brand's own range.")
+
     # The enforcer no longer uses raw RAG examples, relying strictly on synthesized rules.
     result = LLMSingleton.get("enforcement").invoke(
         ENFORCER_PROMPT.format(
@@ -474,7 +537,9 @@ def enforcer_node(state: GraphState) -> GraphState:
             topic=state.get("topic", "") or "No topic provided.",
             research=state.get("research", "") or "No research/source material was provided for this generation.",
             permitted_claims=permitted_claims,
-            human_directive=human_directive
+            human_directive=human_directive,
+            voice_spec=voice_spec,
+            voice_notes=voice_notes,
         )
     )
 
@@ -615,6 +680,34 @@ def enforcer_node(state: GraphState) -> GraphState:
             f"\n\nADDITIONAL FEEDBACK:\n{existing_feedback}" if existing_feedback else ""
         )
         
+
+    # Voice gate. Separate from the checks above on purpose: those decide
+    # whether the draft is true and publishable, this decides whether it sounds
+    # like the brand. A draft can pass every factual gate and still read as
+    # "He demonstrates profound deference" where the brand writes "He bows".
+    MIN_VOICE_SCORE = 6.0
+    try:
+        voice_score = float(evaluation.get("voice_score", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        voice_score = 0.0
+    rewrites = evaluation.get("voice_rewrites") or []
+    if isinstance(rewrites, list) and rewrites:
+        lines = []
+        for item in rewrites[:5]:
+            if isinstance(item, dict) and item.get("from") and item.get("to"):
+                lines.append(f'  - as written: "{item["from"]}"\n    in the brand\'s voice: "{item["to"]}"')
+        if lines and voice_score < MIN_VOICE_SCORE:
+            evaluation["feedback"] = (
+                "VOICE — these sentences do not sound like the brand. Rewrite them along these lines, keeping "
+                "every fact:\n" + "\n".join(lines)
+                + "\n\nThis is about word choice and sentence shape, not length. Never swap a plain word for a "
+                  "longer one, and never drop a fact to shorten a sentence.\n\n"
+                + (evaluation.get("feedback") or "")
+            ).strip()
+    if voice_score and voice_score < MIN_VOICE_SCORE:
+        evaluation["approved"] = False
+        evaluation["score"] = min(float(evaluation.get("score", 0.0) or 0.0), 6.5)
+        logger.info("Voice score %.1f below %.1f — draft does not sound like the brand", voice_score, MIN_VOICE_SCORE)
 
     # Score gate: force revision if below threshold and iterations remain
     MIN_SCORE = 8.0

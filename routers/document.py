@@ -115,6 +115,7 @@ async def _ingest_document(
 ):
     from celery_task import refresh_rag, extract_metrics
     from database import BrandDocument, DOC_ROLES, DOC_ROLE_VOICE
+    from utils.voice_spec import looks_like_a_brief
 
     require_business_access(current_user, business_id)
 
@@ -197,8 +198,24 @@ async def _ingest_document(
     result = group(*tasks).delay()
     request.app.state.redis.set(_idempotency_key, "processing", ex=86400)
 
+    # A treatment uploaded as brand voice teaches the Brain the wrong thing
+    # twice: its section titles become assets the writer is told it may use, and
+    # its explanatory register sets the rates the writer aims at. Four
+    # screenplays and one treatment produced a script ordered to reuse another
+    # story's act titles. Only the person uploading knows which document they
+    # have, so this says what it looks like and processes it anyway.
+    warning = None
+    if doc_role == DOC_ROLE_VOICE and looks_like_a_brief(doc_content):
+        warning = (
+            f"'{doc.filename}' reads like a brief or treatment — a document about writing "
+            "rather than a piece of the brand's writing. Uploaded as brand voice it will "
+            "teach the Brand Brain its headings and its planning register. If it is source "
+            "material, delete it and upload it as a product document instead."
+        )
+        logger.info("Document %s uploaded as voice but reads as a brief", doc_id)
+
     # Return required generation_id along with task_id and status to satisfy TaskResponse schema
-    return {"generation_id": "", "task_id": result.id, "status": "queued"}
+    return {"generation_id": "", "task_id": result.id, "status": "queued", "warning": warning}
 
 
 def _purge_vectors(business_id: str, content_type: str) -> bool:

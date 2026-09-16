@@ -74,6 +74,7 @@ def handle_review_outcome(generation_id: str) -> None:
             use_search=use_search,
             human_feedback=human_feedback,
             regeneration_depth=next_depth,
+            parent_generation_id=generation_id,
         )
         logger.info(
             "Re-generation triggered from rejected generation_id=%s (depth=%d, use_search=%s)",

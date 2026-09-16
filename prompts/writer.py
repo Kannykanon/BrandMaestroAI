@@ -61,6 +61,9 @@ STRUCTURAL PLAN (Follow this outline exactly, including the output shape it decl
 REFERENCE MATERIAL
 ═══════════════════════════════════════════════════
 
+HOW THIS BRAND BUILDS SENTENCES (measured from the brand's own writing — follow it)
+{voice_spec}
+
 BRAND NAME: {brand_name}
 
 PERMITTED BRAND CLAIMS — CLOSED LIST (Use ONLY these exact numbers/facts for brand experience claims):
@@ -120,6 +123,9 @@ EDITING INSTRUCTIONS
 Polish the draft now.
 
 ═══════════════════════════════════════════════════
+HOW THIS BRAND BUILDS SENTENCES (measured from the brand's own writing — follow it)
+{voice_spec}
+
 BRAND REFERENCE (stable for this brand and content type)
 ═══════════════════════════════════════════════════
 {human_directive}
@@ -211,6 +217,9 @@ REVISION RULES
 Write the revision now.
 
 ═══════════════════════════════════════════════════
+HOW THIS BRAND BUILDS SENTENCES (measured from the brand's own writing — follow it)
+{voice_spec}
+
 BRAND REFERENCE (stable for this brand and content type)
 ═══════════════════════════════════════════════════
 {human_directive}
@@ -250,6 +259,9 @@ BRAND REFERENCE (match these patterns)
 
 GENERATION INSTRUCTIONS (follow these exactly — highest priority):
 {generation_instructions}
+
+HOW THIS BRAND BUILDS SENTENCES (measured from the brand's own writing — follow it)
+{voice_spec}
 
 BRAND NAME: {brand_name}
 
