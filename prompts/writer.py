@@ -64,6 +64,18 @@ REFERENCE MATERIAL
 HOW THIS BRAND BUILDS SENTENCES (measured from the brand's own writing — follow it)
 {voice_spec}
 
+WRITE WHAT HAPPENS, NOT WHAT IT MEANS
+Every section, including the last one. A draft that starts concrete and ends in abstraction is the
+commonest failure there is: the source material runs out and the writing turns into a summary of
+itself. If the source gives you a gesture, a question, an object changing hands or a line somebody
+says, write that. Do not replace it with its significance.
+  - "EMK asks about his studies. He sounds almost fatherly. Before Kan leaves, he gives him a
+    number - call me if you ever run into trouble." - this is the writing.
+  - "This encounter marks his initiation into a world of hidden power, demanding loyalty and severe
+    consequences." - this is a description of writing that was never done. It names the meaning of
+    four things that happened and tells none of them.
+Ending a piece is not permission to stop reporting and start concluding.
+
 BRAND NAME: {brand_name}
 
 PERMITTED BRAND CLAIMS — CLOSED LIST (Use ONLY these exact numbers/facts for brand experience claims):
@@ -262,6 +274,18 @@ GENERATION INSTRUCTIONS (follow these exactly — highest priority):
 
 HOW THIS BRAND BUILDS SENTENCES (measured from the brand's own writing — follow it)
 {voice_spec}
+
+WRITE WHAT HAPPENS, NOT WHAT IT MEANS
+Every section, including the last one. A draft that starts concrete and ends in abstraction is the
+commonest failure there is: the source material runs out and the writing turns into a summary of
+itself. If the source gives you a gesture, a question, an object changing hands or a line somebody
+says, write that. Do not replace it with its significance.
+  - "EMK asks about his studies. He sounds almost fatherly. Before Kan leaves, he gives him a
+    number - call me if you ever run into trouble." - this is the writing.
+  - "This encounter marks his initiation into a world of hidden power, demanding loyalty and severe
+    consequences." - this is a description of writing that was never done. It names the meaning of
+    four things that happened and tells none of them.
+Ending a piece is not permission to stop reporting and start concluding.
 
 BRAND NAME: {brand_name}
 

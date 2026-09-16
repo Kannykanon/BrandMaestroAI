@@ -375,6 +375,12 @@ def _enough_evidence(measured: dict, key: str, actual: float, low: float, high: 
     bar = max(2.0, 2.0 * (expected ** 0.5))
     return abs(seen - expected) >= bar
 
+def band_high(metrics: str, key: str) -> float:
+    """The top of the brand's own range for one measurement, or 0.0 if unmeasured."""
+    band_values = _band_from_metrics(metrics, key)
+    return float(band_values["high"]) if band_values else 0.0
+
+
 def voice_diagnostics(draft: str, metrics: str) -> list[str]:
     """Where a draft's shapes sit outside the brand's own range, in words rather than targets.
 

@@ -10,6 +10,7 @@ import logging
 
 from graph.state import GraphState
 from model import LLMSingleton
+from schema import is_narrative
 from prompts.enforcer import ENFORCER_HUMAN_DIRECTIVE, ENFORCER_PROMPT
 from utils.brand_profile import (
     brand_brain_is_usable,
@@ -29,6 +30,7 @@ from utils.enforcement import (
     sanitize_banned_punctuation,
     sanitize_unbranded_emphasis_caps,
 )
+from utils.coverage import dropped_detail, vague_sections
 from utils.fact_spans import extract_fact_spans, missing_fact_spans
 from utils.llm_output import parse_llm_json
 from utils.observe import observe
@@ -373,12 +375,66 @@ def enforcer_node(state: GraphState) -> GraphState:
             "creative_angle": "unknown",
         }
 
+    # Story the draft reached and then summarised away. Blocking for narrative
+    # work, where retelling the source IS the job: a script that replaced EMK
+    # asking about Kan's studies, the two-handed greetings and the phone number
+    # with "This encounter marks his initiation into a world of hidden power"
+    # passed every other check in this file. Nothing it wrote was false — it
+    # had simply stopped telling the story and started describing it.
+    #
+    # Advisory elsewhere. A blog uses a fraction of its research on purpose, and
+    # demanding coverage of all of it would be the tight-rule failure again.
+    if is_narrative(state.get("content_type", "")):
+        from utils.voice_spec import band_high
+
+        thin_beats = dropped_detail(
+            content, research_text,
+            abstraction_high=band_high(metrics, "nominalisations_per_100_words"),
+        )
+        if thin_beats:
+            logger.warning("DROPPED STORY at iteration %d — %d beat(s)", iteration, len(thin_beats))
+            lines = []
+            for beat in thin_beats:
+                how = "NOT TOLD AT ALL" if beat["skipped"] else "told without its detail"
+                lines.append(
+                    f'  - {how}: "{beat["beat"]}"\n'
+                    f'    missing from the draft: ' + ", ".join(beat["missing"][:8])
+                )
+            feedback = (
+                "STORY DROPPED — the draft covers these parts of the source and leaves out what "
+                "happens in them:\n"
+                + "\n".join(lines)
+                + "\n\nWrite what happens. A gesture, a question, a line of dialogue, an object "
+                  "changing hands — those are the story, and naming what they add up to is not a "
+                  "substitute for them. \"This marks the beginning of his entanglement\" is the "
+                  "summary of a scene, not the scene.\n"
+                  "Keep the source's facts in its own words where they have no second correct "
+                  "wording, and build your own sentences around them."
+            )
+            return {
+                **state,
+                "approved": False,
+                "score": 0.0,
+                "style_match": 0.0,
+                "tone_match": 0.0,
+                "structure_match": 0.0,
+                "signature_match": 0.0,
+                "feedback": feedback,
+                "flagged_passages": "\n".join(
+                    f'"{beat["beat"][:90]}" — source beat left out of the draft' for beat in thin_beats
+                ),
+                "violation_history": with_violation(
+                    "tell the story, do not summarise it",
+                    "; ".join(f"missing: {', '.join(b['missing'][:4])}" for b in thin_beats[:3]),
+                ),
+                "creative_angle": "unknown",
+            }
+
     # Which words are names is a property of the brand, so the evidence is
     # every document this business has uploaded — not this content type's
     # research, which for trailer copy contains the award names only in
     # capitals and so shows nothing about them being names at all.
     name_evidence = brand_name_evidence(state["business_id"]) + "\n\n" + grounding_text
-    from schema import is_narrative
     from utils.enforcement.constants import NARRATIVE_VERBATIM_SPAN_WORDS
 
     max_span = (NARRATIVE_VERBATIM_SPAN_WORDS if is_narrative(state.get("content_type", ""))
@@ -526,6 +582,24 @@ def enforcer_node(state: GraphState) -> GraphState:
 
     voice_spec = extract_section(metrics, "VOICE SPEC") or "No voice spec measured for this brand yet."
     notes = voice_diagnostics(content, metrics)
+
+    # Where the draft gave up on showing and started summarising. Advisory, and
+    # per section rather than over the whole piece: the act that read "This
+    # encounter marks his initiation into a world of hidden power" sat in a
+    # draft whose overall register was fine, so the average hid it entirely.
+    # Whether naming a thing instead of showing it is wrong depends on what is
+    # being written — it is the defect in a scene and the job in a proposal —
+    # so this is evidence for the voice pass, not a rule.
+    from utils.voice_spec import band_high
+
+    for section in vague_sections(content, band_high(metrics, "nominalisations_per_100_words")):
+        examples = " ".join(f'"{e}"' for e in section["examples"][:2])
+        notes.append(
+            f"{section['section']} names what things mean rather than showing them "
+            f"({section['rate']} abstract nouns per 100 words against the brand's {section['high']}, "
+            f"and well above the rest of this draft). {examples}".strip()
+        )
+
     voice_notes = ("\n".join(f"- {n}" for n in notes) if notes
                    else "- Nothing outside the brand's own range.")
 
