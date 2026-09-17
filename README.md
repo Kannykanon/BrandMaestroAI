@@ -351,6 +351,8 @@ Example generation request:
 
 ---
 
+**An unapproved run delivers its best round, not its last.** Revision is not monotonic: each round rewrites the whole piece from feedback, so a round that fixes one fault can break something the round before had right. One run scored 6.3, 6.3, 7.5, 7.5, 6.0 and then failed a gate — and handed over the 6.0, which had also turned "more than seven men" into "Seven men sat together". The enforcer now remembers the best draft, preferring one that cleared every deterministic gate over one that merely scored well, and the deployer delivers that. Approved content is never substituted: the approval belongs to the draft that earned it.
+
 ### Gold pairs
 
 `tests/fixtures/gold/<name>/` holds a brief, the hand-written piece it should have produced, the brand-voice documents behind it, and known-bad drafts that must stay refused. `tests/test_gold_regression.py` scores every rubric change against them: the correct answer must clear every deterministic gate, each bad draft must be refused *by the gate named in its `.expect` file*, and the writer's habits must contain no rate a draft could chase.
