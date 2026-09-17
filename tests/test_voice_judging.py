@@ -27,7 +27,7 @@ import pytest
 from utils.brand_profile import extract_permitted_claims, strip_quoted_constructions
 from utils.voice_spec import beat_grammar, corpus_spec, longest_shared_run, render_spec, voice_directions
 
-FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "kancity")
+FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "gold", "kancity")
 
 BRAND = """# MEASURED MECHANICS
 - median_words_per_sentence: 7.0
