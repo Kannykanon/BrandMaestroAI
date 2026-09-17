@@ -351,6 +351,12 @@ Example generation request:
 
 ---
 
+### Gold pairs
+
+`tests/fixtures/gold/<name>/` holds a brief, the hand-written piece it should have produced, the brand-voice documents behind it, and known-bad drafts that must stay refused. `tests/test_gold_regression.py` scores every rubric change against them: the correct answer must clear every deterministic gate, each bad draft must be refused *by the gate named in its `.expect` file*, and the writer's habits must contain no rate a draft could chase.
+
+Adding a pair is adding a directory — nothing is registered by name. The gates run without a model or a database, so the harness costs nothing and runs on every commit. It cannot judge whether prose sounds right; it exists because corrections written after reading one bad run have repeatedly threatened to refuse the right answer.
+
 ## Design decisions
 
 **Four agents, not one prompt.** Each can be tuned and tested on its own, and the Enforcer can reject without re-running research. Costs latency; buys consistency.

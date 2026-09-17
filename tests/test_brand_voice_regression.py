@@ -36,7 +36,7 @@ from utils.enforcement.provenance import find_extractive_spans
 from utils.fact_spans import extract_fact_spans, missing_fact_spans
 from utils.voice_spec import longest_shared_run, voice_diagnostics
 
-FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "kancity")
+FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "gold", "kancity")
 
 
 def _read(*parts):
@@ -59,17 +59,17 @@ def brain(voice_documents):
 
 @pytest.fixture(scope="module")
 def treatment():
-    return _read("treatment.txt")
+    return _read("brief.txt")
 
 
 @pytest.fixture(scope="module")
 def gold():
-    return _read("gold_script.txt")
+    return _read("gold.txt")
 
 
 @pytest.fixture(scope="module")
 def rejected():
-    return _read("rejected_draft.txt")
+    return _read("rejected/padded_register.txt")
 
 
 def blocking_failures(content, brain, source):
@@ -165,7 +165,7 @@ class TestTheSecondRun:
 
     @pytest.fixture(scope="class")
     def draft(self):
-        return _read("second_run_draft.txt")
+        return _read("rejected/summarised_the_ending.txt")
 
     def test_it_keeps_the_fact_the_first_run_lost(self, draft, treatment):
         assert missing_fact_spans(draft, extract_fact_spans(treatment)) == []

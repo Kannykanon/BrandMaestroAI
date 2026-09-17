@@ -20,7 +20,7 @@ import pytest
 
 from utils.coverage import dropped_detail, story_beats, vague_sections
 
-FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "kancity")
+FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "gold", "kancity")
 
 # The top of this brand's own abstraction range, measured from the four
 # screenplays in fixtures/kancity/voice (see test_brand_voice_regression).
@@ -34,12 +34,12 @@ def _read(name):
 
 @pytest.fixture(scope="module")
 def treatment():
-    return _read("treatment.txt")
+    return _read("brief.txt")
 
 
 @pytest.fixture(scope="module")
 def gold():
-    return _read("gold_script.txt")
+    return _read("gold.txt")
 
 
 class TestWhatCountsAsStory:
@@ -87,7 +87,7 @@ class TestDroppedDetail:
     def test_the_generated_draft_that_told_none_of_its_ending(self, treatment):
         """The real second run. It tells the first five beats, then replaces the
         last four with two sentences about what they all mean."""
-        findings = dropped_detail(_read("second_run_draft.txt"), treatment, BRAND_HIGH)
+        findings = dropped_detail(_read("rejected/summarised_the_ending.txt"), treatment, BRAND_HIGH)
         assert len(findings) == 4, "the whole collapsed ending must be reported, not one beat of it"
         assert any(f["skipped"] for f in findings), (
             "the two-handed greetings are not in this draft at all"
