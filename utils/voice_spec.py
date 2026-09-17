@@ -143,6 +143,10 @@ def shape_metrics(text: str) -> dict:
         "sentences": total_sents,
         "mean_words_per_sentence": round(statistics.mean(lengths), 1),
         "median_words_per_sentence": round(statistics.median(lengths), 1),
+        # How much the sentence lengths move. Flatness is the one thing about
+        # rhythm a reader can feel and a judge cannot measure, and asking the
+        # judge to rule on it is what condemned this brand's own gold script.
+        "words_per_sentence_variation": round(statistics.pstdev(lengths), 2) if len(lengths) > 4 else 0.0,
         "share_sentences_under_6_words": _share(sum(1 for n in lengths if n < 6), total_sents),
         "share_sentences_over_20_words": _share(sum(1 for n in lengths if n > 20), total_sents),
         "share_sentences_opening_with_pronoun": _share(
@@ -481,6 +485,34 @@ def _enough_evidence(measured: dict, key: str, actual: float, low: float, high: 
     seen = actual * words / 100.0
     bar = max(2.0, 2.0 * (expected ** 0.5))
     return abs(seen - expected) >= bar
+
+# A draft with less than this share of the brand's own sentence-length
+# variation is flat. Not the brand's range, which for this corpus is 3.38-3.49
+# and would condemn its own gold script at 2.7 — a hand-written retelling is
+# tighter than a full screenplay and right to be. What separates it from the
+# drafts that shipped wrongly is a gap, not a band: those sit at 1.5 and 1.8,
+# under half the brand's variation, while the gold keeps four fifths of it.
+FLAT_SHARE = 0.6
+
+
+def flatness_note(draft: str, metrics: str) -> str:
+    """Whether this draft's sentences barely move, in words rather than a rate."""
+    typical = _band_from_metrics(metrics, "words_per_sentence_variation")
+    if not typical or not typical.get("median"):
+        return ""
+    measured = shape_metrics(prose_only(draft) or draft)
+    actual = measured.get("words_per_sentence_variation", 0.0)
+    if not actual or measured.get("sentences", 0) < 10:
+        return ""
+    if actual >= typical["median"] * FLAT_SHARE:
+        return ""
+    return (
+        "Sentence rhythm is flat: the sentences here are nearly all the same length, where this "
+        "brand's move between clipped ones and longer ones. Let a sentence run on to the detail "
+        "or the consequence that matters, then clip back. Do not lengthen everything — that is "
+        "the same fault the other way."
+    )
+
 
 def band_high(metrics: str, key: str) -> float:
     """The top of the brand's own range for one measurement, or 0.0 if unmeasured."""

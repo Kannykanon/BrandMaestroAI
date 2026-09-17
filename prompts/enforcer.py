@@ -101,6 +101,11 @@ What a genuine failure looks like:
 What is NOT a failure:
   - Sentences shorter or plainer than the brand's other work. The brand's own best writing is often
     its plainest, and a piece is not wrong for being lean.
+  - Sentence rhythm, sentence length, and how much they vary. All three are measured before you
+    are called, and a draft whose rhythm is wrong has already been told so in words. You cannot
+    measure them by reading and you are not being asked to: every time a judge has tried, it has
+    told one draft to join its sentences and the next to split them, and once faulted this brand's
+    own hand-written script for the rhythm the brand actually writes in.
   - Layout — line breaks, paragraph length, where a scene heading sits. That is format, not voice.
   - Anything you would have to measure to notice.
 
