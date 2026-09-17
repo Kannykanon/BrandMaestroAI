@@ -165,6 +165,33 @@ def enforcer_node(state: GraphState) -> GraphState:
         )
     state = {**state, "content": content}
 
+    # 0a. Scene headings, for narrative content only.
+    #
+    # The brand's scripts write "INT. WICK HOME - DAY" with an em dash. A draft
+    # came back with "INT. UNIVERSITY CAMPUS, DAY" and nothing objected, because
+    # nothing was reading headings at all. Which separator the brand uses is not
+    # a judgement call, so it is corrected here rather than sent back — the same
+    # argument as the punctuation fix above.
+    heading_findings = []
+    if is_narrative(state.get("content_type", "")):
+        from utils.documents import voice_documents
+        from utils.screenplay import heading_findings as _heading_findings
+        from utils.screenplay import sanitize_scene_headings
+
+        corpus = voice_documents(state["business_id"], state.get("content_type", ""))
+        if corpus:
+            content, heading_fixes = sanitize_scene_headings(content, corpus)
+            if heading_fixes:
+                logger.info("Scene headings normalised at iteration %d: %s", iteration, heading_fixes)
+                state = {**state, "content": content}
+        # Whether a heading is true is a different question, and it is reported
+        # rather than corrected: this brand's own hand-written script contains
+        # "INT. CAMPUS - AFTER CLASSES", and a check that rewrites the answer a
+        # person wrote by hand has stopped being evidence.
+        heading_findings = _heading_findings(content)
+        if heading_findings:
+            logger.info("Scene heading mismatches at iteration %d: %d", iteration, len(heading_findings))
+
     # 0b. Same treatment for capitals the brand does not shout. Bouncing the
     # draft did not work: social copy was corrected at round two for EXCLUSIVE,
     # GRAND, NOT and UNIQUE, reached 7.9 by round five, then shouted PERCEPTION,
@@ -855,6 +882,17 @@ def enforcer_node(state: GraphState) -> GraphState:
         evaluation["approved"] = False
         evaluation["score"] = min(float(evaluation.get("score", 0.0) or 0.0), 6.5)
         logger.info("Voice score %.1f below %.1f — draft does not sound like the brand", voice_score, MIN_VOICE_SCORE)
+
+    # Scene headings whose prefix contradicts the place they name. Advisory, so
+    # it rides along with whatever else is being sent back rather than refusing
+    # the draft on its own.
+    if heading_findings and not evaluation.get("approved"):
+        listed = "\n".join(f"  - {f['message']}" for f in heading_findings[:5])
+        evaluation["feedback"] = (
+            (evaluation.get("feedback") or "").rstrip()
+            + "\n\nSCENE HEADINGS — check these against where the scene actually happens:\n"
+            + listed
+        ).strip()
 
     # A deterministic finding that has already had its rounds alone. It still
     # refuses the draft — nothing here is softened — but it now travels with

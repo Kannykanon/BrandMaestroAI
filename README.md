@@ -351,6 +351,8 @@ Example generation request:
 
 ---
 
+**Scene headings are corrected where the answer is measurable and reported where it is not.** Which separator sits between the place and the time is the brand's own habit, read off its scripts, so a draft writing "INT. UNIVERSITY CAMPUS, DAY" against a corpus of "INT. WICK HOME — DAY" is fixed in code. Whether the heading is *true* — a campus is outdoors — is reported instead: this brand's hand-written script contains "INT. CAMPUS — AFTER CLASSES", and a check that silently rewrites what a person wrote has stopped being evidence. Continuity, a scene headed for one place whose action happens in another, is the judge's to catch (`utils/screenplay.py`).
+
 **An unapproved run delivers its best round, not its last.** Revision is not monotonic: each round rewrites the whole piece from feedback, so a round that fixes one fault can break something the round before had right. One run scored 6.3, 6.3, 7.5, 7.5, 6.0 and then failed a gate — and handed over the 6.0, which had also turned "more than seven men" into "Seven men sat together". The enforcer now remembers the best draft, preferring one that cleared every deterministic gate over one that merely scored well, and the deployer delivers that. Approved content is never substituted: the approval belongs to the draft that earned it.
 
 ### Gold pairs
