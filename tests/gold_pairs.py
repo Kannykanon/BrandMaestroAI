@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "gold")
 
 # The gates a piece must clear. Each returns a list of human-readable failures.
-GATES = ("mechanics", "preflight", "copying", "facts", "story")
+GATES = ("mechanics", "preflight", "copying", "facts", "story", "headings")
 
 
 def _read(path: str) -> str:
@@ -120,4 +120,8 @@ def failures(content: str, pair: Pair) -> dict:
         for beat in dropped_detail(content, pair.brief,
                                    abstraction_high=band_high(brain, "nominalisations_per_100_words"))
     ]
+    # Prose has no scene headings, so this is empty for everything but a script.
+    from utils.screenplay import heading_findings
+
+    found["headings"] = [f["message"] for f in heading_findings(content)]
     return {gate: items for gate, items in found.items() if items}
