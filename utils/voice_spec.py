@@ -47,7 +47,22 @@ _LABEL_LINE = re.compile(r"^\s*([A-Z][A-Z .'\-]{1,30}):\s*\S")
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 _WORD = re.compile(r"[A-Za-z0-9']+")
 _NOMINALISATION = re.compile(r"\b\w{4,}(?:tion|sion|ment|ity|ance|ence|ness|ism|ivity)\b", re.I)
-_CONTRACTION = re.compile(r"\b\w+['’](?:t|s|re|ve|ll|d|m)\b", re.I)
+# "'s" is a contraction after a pronoun and a possessive after a noun, and
+# telling them apart is the whole job here. Counting both, a screenplay's
+# possessives — Kan's, EMK's, the group's — read as contractions: one draft was
+# measured at 1.71 per 100 words while containing none at all, and told it used
+# more contractions than the brand. The brand's own band was built the same
+# wrong way, from possessives in its screenplays.
+#
+# The other endings are unambiguous: nothing takes "'re", "'ve", "'ll" or "n't"
+# except a contraction.
+_CONTRACTION_STEMS = (
+    "he|she|it|that|there|here|what|who|where|when|how|why|let|one|this|"
+    "everybody|somebody|nobody|everyone|someone|no one|nothing|something"
+)
+_CONTRACTION = re.compile(
+    rf"\b(?:\w+['’](?:t|re|ve|ll|d|m)|(?:{_CONTRACTION_STEMS})['’]s)\b", re.I
+)
 _OPENERS = ("he", "she", "they", "it", "we", "you", "i", "his", "her", "their")
 
 
@@ -190,13 +205,13 @@ def beat_grammar(documents: Iterable[str], lines_per_beat: int = 6) -> dict:
     def shape(line: str) -> str:
         stripped = line.strip()
         if _TRANSITION.match(stripped):
-            return "transition line (e.g. FADE IN:)"
+            return "a transition line"
         if _SCENE_HEADING.match(stripped):
-            return "scene heading (INT./EXT. PLACE — TIME)"
+            return "a scene heading"
         if _ACT_OR_SECTION.match(stripped) or _is_heading(stripped):
-            return "section or act title in capitals"
+            return "an act or section title"
         if _LABEL_LINE.match(stripped):
-            return "speaker label followed by a line of dialogue"
+            return "a speaker label and a line of dialogue"
         # Bands, not counts. Printed as "(3 words)" these were read as a
         # specification: the enforcer twice refused a draft because "the opening
         # pattern fails to match the brand's specific sentence length sequence",
@@ -233,45 +248,70 @@ def beat_grammar(documents: Iterable[str], lines_per_beat: int = 6) -> dict:
 
 
 def _rule_lines(spec: dict) -> list[str]:
-    """Rules a writer can follow, derived from the bands."""
+    """How this brand writes, in words. Deliberately without rates.
+
+    Every rule here used to carry the number it came from — "sentences run
+    about 7 words (typical range 7-8)", "34 in 100 sentences are under six
+    words". Handed a list of numbers, the judge could fault any draft against
+    one of them in some direction, and it did: three rounds telling a script to
+    join its sentences, then a fourth telling it to split them, because the
+    draft had crossed the band in between. A number you can cross is a target
+    to oscillate around, not a description of a voice.
+
+    What is left is what a writer can actually write to, and what a reader can
+    check by reading. The rates are still measured — they live in MEASURED
+    MECHANICS, where the deterministic checks use them — but they are not
+    quoted here and the voice pass never sees them.
+    """
     bands, rules = spec.get("bands", {}), []
+
     def value(key, field="median"):
         return bands.get(key, {}).get(field)
 
     median_length = value("median_words_per_sentence")
-    if median_length is not None:
-        rules.append(f"Sentences run about {median_length:.0f} words (typical range "
-                     f"{value('median_words_per_sentence', 'low'):.0f}–{value('median_words_per_sentence', 'high'):.0f}).")
     short = value("share_sentences_under_6_words")
-    if short is not None:
-        rules.append(f"About {short:.0f} in 100 sentences are under six words. Let sentences end early.")
+    if median_length is not None:
+        if median_length <= 8:
+            rules.append("Sentences are short. They carry one thing each and stop.")
+        elif median_length <= 14:
+            rules.append("Sentences are medium-length — long enough to carry a clause, short enough to end cleanly.")
+        else:
+            rules.append("Sentences run long, carrying several clauses before they close.")
+    if short is not None and short > 25:
+        rules.append("Many end early, well before they have to. Let one land and move on.")
     long_share = value("share_sentences_over_20_words")
     if long_share is not None and long_share < 5:
-        rules.append("Sentences over twenty words are rare; break them instead of joining them.")
-    paragraphs = value("share_single_sentence_paragraphs")
-    if paragraphs is not None and paragraphs > 50:
-        rules.append(f"Most paragraphs are a single sentence ({paragraphs:.0f} in 100 lines).")
+        rules.append("Sentences that run past twenty words are rare. Break them rather than join them.")
+
     nominal = value("nominalisations_per_100_words")
     if nominal is not None:
         rules.append(
-            f"Abstract nouns (-tion, -ment, -ance, -ity) are {'rare' if nominal < 3 else 'common'}: about "
-            f"{nominal:.1f} per 100 words. Prefer the verb: write what someone does, not the name of the doing."
+            "Abstract nouns (-tion, -ment, -ance, -ity) are rare. Write what someone does, "
+            "not the name of the doing."
             if nominal < 3 else
-            f"Abstract nouns appear about {nominal:.1f} per 100 words.")
+            "Abstract nouns are part of how this brand writes; it names concepts as well as actions."
+        )
     long_words = value("four_plus_syllable_words_per_100_words")
-    if long_words is not None:
+    if long_words is not None and long_words < 7:
         rules.append(
-            f"Long words (four syllables or more) appear about {long_words:.1f} per 100 words, and they are the "
-            f"subject's own words, not fancier ways to say plain ones. Never reach for a longer word to raise a rate.")
+            "Plain words. Where a long word appears it is the subject's own — a name, a term of "
+            "art — never a fancier way of saying a simple thing."
+        )
     contractions = value("contractions_per_100_words")
     if contractions is not None and contractions < 1:
         rules.append("Contractions are rare outside dialogue.")
     pronouns = value("share_sentences_opening_with_pronoun")
     if pronouns is not None and pronouns > 30:
-        rules.append(f"{pronouns:.0f} in 100 sentences open with a pronoun ('He', 'They'), stating the subject first.")
+        rules.append("Sentences usually open with their subject — 'He', 'They', the name — and state it first.")
     dialogue = value("share_lines_that_are_dialogue")
     if dialogue is not None and dialogue > 3:
-        rules.append(f"About {dialogue:.0f} in 100 lines are dialogue, introduced by a speaker label.")
+        rules.append("Dialogue appears, introduced by a speaker label on its own line.")
+
+    # share_single_sentence_paragraphs is measured and deliberately not reported.
+    # In a screenplay corpus it sits near 99 because screenplays are laid out one
+    # action per line — it describes the format, not the writing. Reported as a
+    # voice rule, it produced an instruction to reformat an entire script:
+    # "place each sentence on its own line, as its own paragraph."
     return rules
 
 
@@ -288,8 +328,14 @@ def _describe(shapes: list[str]) -> str:
             runs[-1] = (shape, runs[-1][1] + 1)
         else:
             runs.append((shape, 1))
-    parts = [shape if count == 1 else f"{_COUNTS.get(count, str(count))} of {_plural(shape)}"
-             for shape, count in runs]
+    parts = []
+    for shape, count in runs:
+        if count == 1:
+            parts.append(shape)
+        elif count == 2:
+            parts.append(f"a couple of {_plural(shape)}")
+        else:
+            parts.append(f"{_COUNTS.get(count, str(count))} {_plural(shape)}")
     if len(parts) == 1:
         return parts[0] + "."
     return ", then ".join(parts[:-1]) + ", then " + parts[-1] + "."

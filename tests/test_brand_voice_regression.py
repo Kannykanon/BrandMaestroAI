@@ -93,7 +93,7 @@ class TestTheBrainBuiltFromTheRealCorpus:
             )
 
     def test_the_corpus_reads_as_short_plain_sentences(self, brain):
-        assert "Sentences run about 7 words" in brain
+        assert "Sentences are short" in brain
         assert "HOW ITS OPENINGS TEND TO GO" in brain and "scene heading" in brain
         assert "Nothing here is a template" in brain, (
             "the enforcer read the opening description as a sequence to match exactly"
