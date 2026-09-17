@@ -50,6 +50,10 @@ def enforcer_node(state: GraphState) -> GraphState:
     # that was acceptable two rounds earlier.
     prior_violations = list(state.get("violation_history") or [])
 
+    def gate_has_had_its_rounds(label: str) -> bool:
+        """Whether this gate has already led enough rounds on its own."""
+        return sum(1 for v in prior_violations if v.startswith(label)) >= GATE_ROUNDS_ALONE
+
     def with_violation(label: str, detail: str = "") -> list[str]:
         # The detail matters for a repeat offender. Social copy was told
         # "extractive copying" at rounds one, three, five and six and reached for
@@ -57,6 +61,26 @@ def enforcer_node(state: GraphState) -> GraphState:
         # which phrase to stop using, so the constraint could not be acted on.
         entry = f"{label}: {detail}" if detail else label
         return prior_violations if entry in prior_violations else prior_violations + [entry]
+
+    # How many rounds one deterministic gate may have to itself before the rest
+    # of the enforcer gets a turn.
+    #
+    # These gates return the moment they find something, which is right the
+    # first time: the finding is certain, the fix is specific, and a model call
+    # would be wasted. It is wrong the sixth time. A leaked line of pipeline
+    # boilerplate once entered the story-coverage check as a beat to dramatise,
+    # and because it could never be satisfied it led every round of a six-round
+    # run — so the voice pass, which is the only thing that would have noticed
+    # that the draft read "He needs cash. His wallet holds money.", was never
+    # invoked once in the entire generation.
+    #
+    # After this many rounds the finding is carried into the full evaluation
+    # instead of short-circuiting it. The draft still cannot be approved while
+    # it stands; the writer simply gets everything wrong with the draft in one
+    # round rather than one fault at a time.
+    GATE_ROUNDS_ALONE = 2
+
+    carried_findings: list[str] = []
 
     content        = state["content"]
     metrics        = analyzer.get_context()
@@ -350,6 +374,22 @@ def enforcer_node(state: GraphState) -> GraphState:
     if dropped_facts:
         listed = "\n".join(f'  - "{span}"' for span in dropped_facts)
         logger.warning("FACT LOSS at iteration %d — %d span(s)", iteration, len(dropped_facts))
+        fact_feedback = (
+            "FACTS LOST — the draft writes about these things but no longer states them "
+            "accurately. Each of these appears in the source and must appear in the content "
+            "exactly as written:\n" + listed + "\n\nThese are not phrasing. A number without "
+            "its qualifier is a different claim, and a description that stands in for a "
+            "count ('a congregation', 'numerous individuals') is not the fact. Put each one "
+            "back in the brand's own sentence — do not rebuild the source's sentence "
+            "around it."
+        )
+    if dropped_facts and gate_has_had_its_rounds("state the source's facts exactly"):
+        carried_findings.append(fact_feedback)
+        prior_violations = with_violation(
+            "state the source's facts exactly",
+            "; ".join(f'"{span}"' for span in dropped_facts[:5]),
+        )
+    elif dropped_facts:
         return {
             **state,
             "approved": False,
@@ -358,15 +398,7 @@ def enforcer_node(state: GraphState) -> GraphState:
             "tone_match": 0.0,
             "structure_match": 0.0,
             "signature_match": 0.0,
-            "feedback": (
-                "FACTS LOST — the draft writes about these things but no longer states them "
-                "accurately. Each of these appears in the source and must appear in the content "
-                "exactly as written:\n" + listed + "\n\nThese are not phrasing. A number without "
-                "its qualifier is a different claim, and a description that stands in for a "
-                "count ('a congregation', 'numerous individuals') is not the fact. Put each one "
-                "back in the brand's own sentence — do not rebuild the source's sentence "
-                "around it."
-            ),
+            "feedback": fact_feedback,
             "flagged_passages": "\n".join(f'"{span}" — fact dropped from the source' for span in dropped_facts),
             "violation_history": with_violation(
                 "state the source's facts exactly",
@@ -411,6 +443,14 @@ def enforcer_node(state: GraphState) -> GraphState:
                   "Keep the source's facts in its own words where they have no second correct "
                   "wording, and build your own sentences around them."
             )
+            if gate_has_had_its_rounds("tell the story, do not summarise it"):
+                carried_findings.append(feedback)
+                prior_violations = with_violation(
+                    "tell the story, do not summarise it",
+                    "; ".join(f"missing: {', '.join(b['missing'][:4])}" for b in thin_beats[:3]),
+                )
+                thin_beats = []
+        if thin_beats:
             return {
                 **state,
                 "approved": False,
@@ -800,6 +840,20 @@ def enforcer_node(state: GraphState) -> GraphState:
         evaluation["score"] = min(float(evaluation.get("score", 0.0) or 0.0), 6.5)
         logger.info("Voice score %.1f below %.1f — draft does not sound like the brand", voice_score, MIN_VOICE_SCORE)
 
+    # A deterministic finding that has already had its rounds alone. It still
+    # refuses the draft — nothing here is softened — but it now travels with
+    # everything else the enforcer found, so one revision can address the lot.
+    if carried_findings:
+        evaluation["approved"] = False
+        evaluation["score"] = min(float(evaluation.get("score", 0.0) or 0.0), 5.0)
+        evaluation["feedback"] = "\n\n".join(
+            carried_findings + [evaluation.get("feedback") or ""]
+        ).strip()
+        logger.info(
+            "Carried %d deterministic finding(s) into the full evaluation at iteration %d",
+            len(carried_findings), iteration,
+        )
+
     # Score gate: force revision if below threshold and iterations remain
     MIN_SCORE = 8.0
     if evaluation.get("score", 0.0) < MIN_SCORE and iteration < max_iterations:
@@ -832,6 +886,12 @@ def enforcer_node(state: GraphState) -> GraphState:
         evaluation.get("directive_compliance", "FAIL")
     ).strip().upper().startswith("FAIL"):
         blocking.append("reviewer directive not met")
+    if carried_findings:
+        # Carrying a deterministic finding into the evaluation changes when the
+        # writer hears about it, never whether it counts. Left out of this list,
+        # a draft that had lost one of its source's facts would be force-
+        # approved at the last iteration as a mere quality shortfall.
+        blocking.append("facts or story missing from the source")
 
     if not evaluation["approved"] and iteration >= max_iterations:
         if blocking:
@@ -874,5 +934,6 @@ def enforcer_node(state: GraphState) -> GraphState:
         "signature_match": evaluation.get("signature_match", 0.0),
         "feedback":        evaluation.get("feedback", ""),
         "flagged_passages": flagged_str,
+        "violation_history": prior_violations,
         "creative_angle":  evaluation.get("creative_angle", "unknown")
     }

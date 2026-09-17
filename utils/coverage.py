@@ -121,7 +121,16 @@ def content_words(text: str) -> set:
 
 
 def story_beats(source: str) -> list[str]:
-    """The source's story paragraphs, with its planning sections left out."""
+    """The source's story paragraphs, with its planning sections left out.
+
+    The pipeline's own banners go first. They explain to the writer how to treat
+    each source, and a note about which source wins a disagreement was read as a
+    beat to dramatise — for six rounds, a draft was told it had failed to tell
+    it. See utils/research_sections.py.
+    """
+    from utils.research_sections import strip_framing
+
+    source = strip_framing(source)
     # Only headings at the document's own section level switch sections. The
     # character list is introduced by "## CHARACTER PROFILES" and each entry by
     # a bold name, and treating "**EMK**" as a new section turned the profiles

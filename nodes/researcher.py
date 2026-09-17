@@ -9,6 +9,7 @@ from utils.brand_profile import extract_section
 from utils.documents import has_reference_documents
 
 logger = logging.getLogger(__name__)
+from utils.research_sections import NO_RESEARCH, external_section, source_section
 from utils.observe import observe
 
 
@@ -103,12 +104,7 @@ def researcher_node(state: GraphState, search: SearchPort) -> GraphState:
             logger.warning("Publishable-facts filter failed, using raw source: %s", e)
 
     if owned.strip():
-        sources.append(
-            "═══ SOURCE MATERIAL — THE BRAND'S OWN DOCUMENTS (AUTHORITATIVE) ═══\n"
-            "Facts about the subject itself come from here. Where this and the\n"
-            "external context below disagree, this wins.\n\n"
-            + owned.strip()
-        )
+        sources.append(source_section(owned))
 
     external = ""
     if use_web:
@@ -126,19 +122,12 @@ def researcher_node(state: GraphState, search: SearchPort) -> GraphState:
             logger.warning("Web search failed for topic=%r: %s", topic, e)
 
         if external.strip():
-            sources.append(
-                "═══ EXTERNAL CONTEXT — LIVE WEB SEARCH (SUPPORTING) ═══\n"
-                "Current market/reception context to position the piece against.\n"
-                "Use it for framing and timeliness. Do NOT use it to assert facts\n"
-                "about the brand's own product that the source material above does\n"
-                "not already establish.\n\n"
-                + external.strip()
-            )
+            sources.append(external_section(external))
 
     research = "\n\n".join(sources)
 
     if not research.strip():
-        research = "No research available — write from the topic brief alone."
+        research = NO_RESEARCH
 
     mode = (
         "rag+web_search" if (owned.strip() and external.strip())
