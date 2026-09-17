@@ -120,6 +120,28 @@ def content_words(text: str) -> set:
     return words
 
 
+# A document talking about itself: its format, its status, how many parts are
+# planned. Caught by content rather than by position, because the heading it
+# sits under does not always survive — retrieval returns chunks, and a fallback
+# to the research blob gets prose with its structure gone.
+_ABOUT_THE_DOCUMENT = re.compile(
+    r"\b(?:status:|part \d+ of|installments?|treatment|screenplay|logline|"
+    r"based on true events|to be added|ongoing account|draft \d|version \d)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_about_the_document(beat: str) -> bool:
+    """Whether a beat describes the document rather than anything in the story.
+
+    "Film / Limited Series Treatment — Based on True Events. Status: Part 1 of
+    an ongoing account. Additional installments to be added as the story
+    continues." is a title block. It was reported as story a draft had failed to
+    tell, in every round of a run, and no draft could ever have satisfied it.
+    """
+    return bool(_ABOUT_THE_DOCUMENT.search(beat))
+
+
 def story_beats(source: str) -> list[str]:
     """The source's story paragraphs, with its planning sections left out.
 
@@ -157,7 +179,8 @@ def story_beats(source: str) -> list[str]:
             current.append(stripped)
     if current:
         beats.append(" ".join(current))
-    return [b for b in beats if len(_WORD.findall(b)) >= MIN_BEAT_WORDS]
+    return [b for b in beats
+            if len(_WORD.findall(b)) >= MIN_BEAT_WORDS and not _is_about_the_document(b)]
 
 
 def dropped_detail(content: str, source: str, abstraction_high: float = 0.0,

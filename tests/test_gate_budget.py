@@ -254,3 +254,87 @@ class TestCarryingChangesWhenNotWhether:
     def test_the_gate_is_recorded_so_it_cannot_lead_every_round(self, scored_enforcer):
         history = scored_enforcer(LOST_THE_COUNT, history=self.HAD_ITS_ROUNDS)["violation_history"]
         assert sum(1 for v in history if v.startswith(FACT_GATE)) >= 2
+
+
+# ---------------------------------------------------------------------------
+#  A document's title block is not a scene
+# ---------------------------------------------------------------------------
+TITLE_BLOCK = (
+    "Film / Limited Series Treatment - Based on True Events\n"
+    "Status: Part 1 of an ongoing account. Additional installments to be added "
+    "as the story continues.\n"
+)
+
+
+class TestTheDocumentTalkingAboutItself:
+    def test_a_title_block_is_not_a_beat_to_dramatise(self):
+        """Reported as story in every round of a run: "missing from the draft:
+        account, add, additional, bas, continu, event, film, limit". There is no
+        scene there and no draft could have satisfied it."""
+        from utils.coverage import _is_about_the_document
+
+        assert _is_about_the_document(TITLE_BLOCK)
+        assert story_beats(TITLE_BLOCK + "\n\n" + STORY) == story_beats(STORY)
+
+    def test_it_is_caught_without_its_heading(self):
+        """Retrieval returns chunks, so the heading that would have marked this
+        as front matter is often gone by the time anything reads it."""
+        from utils.coverage import _is_about_the_document
+
+        soup = " ".join(TITLE_BLOCK.split())
+        assert _is_about_the_document(soup)
+
+    def test_the_story_is_not_mistaken_for_metadata(self):
+        from utils.coverage import _is_about_the_document
+
+        for beat in ("He finds a group of more than seven men, seated, drinking.",
+                     "EMK asks about his studies. He gives him a number.",
+                     "They greet EMK with both hands. Kan notices."):
+            assert not _is_about_the_document(beat), beat
+
+    def test_coverage_prefers_the_document_over_what_retrieval_returned(self):
+        """The check compares against reference_documents() when the brand has
+        them, and only falls back to the research blob when it does not."""
+        import inspect
+
+        from nodes import enforcer
+
+        source = inspect.getsource(enforcer.enforcer_node)
+        assert "reference_documents(state[\"business_id\"]" in source
+        assert "or research_text" in source, "a brand with no product document must still be checked"
+
+
+class TestFabricationFeedbackFitsTheContent:
+    PAYLOAD = dict(
+        CLEAN_EVALUATION,
+        hallucination_check={"verdict": "FAIL",
+                             "hallucinated_claims": ["The men stand there. They watch the street."]},
+        approved=True,
+    )
+
+    def _feedback(self, monkeypatch, content_type):
+        monkeypatch.setattr(
+            graph.deps, "resolve_deps",
+            lambda business_id, ct: (None, _Analyzer(), None),
+        )
+        monkeypatch.setattr("model.LLMSingleton.get", lambda *a, **k: _Scored(self.PAYLOAD))
+        kept = "He calls after lectures.\n\nMore than seven men. Seated. Drinking.\n\nHe says no."
+        return enforcer_node({
+            "business_id": "b1", "content_type": content_type, "topic": "t",
+            "research": SOURCE, "content": kept, "iteration": 1, "violation_history": [],
+        })["feedback"]
+
+    def test_a_script_is_sent_back_to_its_source_not_to_an_asset_bank(self, monkeypatch):
+        """A screenplay has no client counts. Told to "use only exact client
+        counts, percentages, and framework names", its writer goes looking for a
+        list it was never given."""
+        feedback = self._feedback(monkeypatch, "script")
+        assert "Go back to the source" in feedback
+        assert "client counts" not in feedback and "asset bank" not in feedback
+
+    def test_marketing_copy_still_gets_the_asset_bank(self, monkeypatch):
+        feedback = self._feedback(monkeypatch, "blog")
+        assert "brand asset bank" in feedback and "client counts" in feedback
+
+    def test_a_script_is_told_its_own_names_are_not_the_problem(self, monkeypatch):
+        assert "are not claims" in self._feedback(monkeypatch, "script")

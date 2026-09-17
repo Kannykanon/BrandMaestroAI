@@ -419,8 +419,15 @@ def enforcer_node(state: GraphState) -> GraphState:
     if is_narrative(state.get("content_type", "")):
         from utils.voice_spec import band_high
 
+        # Compared against the document, not against what retrieval returned
+        # from it. Chunks arrive without their headings, so the rule that skips
+        # a document's cast list and its title block has nothing to match, and
+        # both have been reported as story a draft failed to tell.
+        from utils.documents import reference_documents
+
+        story_source = reference_documents(state["business_id"], state.get("content_type", "")) or research_text
         thin_beats = dropped_detail(
-            content, research_text,
+            content, story_source,
             abstraction_high=band_high(metrics, "nominalisations_per_100_words"),
         )
         if thin_beats:
@@ -782,17 +789,32 @@ def enforcer_node(state: GraphState) -> GraphState:
 
         # Build actionable feedback pointing to permitted alternatives
         hallucination_feedback = (
-            "HALLUCINATION DETECTED — content contains fabricated claims not in the brand's asset bank.\n"
+            "HALLUCINATION DETECTED — content states things the source does not.\n"
             "Fabricated claims found:\n"
         )
         for claim in hallucinated:
             hallucination_feedback += f"  - {claim}\n"
-        hallucination_feedback += (
-            "\nReplace all fabricated claims with permitted alternatives from the brand asset bank. "
-            "Use only exact client counts, percentages, and framework names from the permitted claims list. "
-            "If no suitable permitted claim exists for a numbered point, rewrite that point to use "
-            "a general brand observation without specific numbers."
-        )
+        # What to do about a fabricated claim depends on what is being written.
+        # A screenplay has no asset bank to replace claims from, and telling its
+        # writer to "use only exact client counts, percentages, and framework
+        # names" sends it looking for a list it was never given. What it has is
+        # the source: the men were seated and drinking, and the draft said they
+        # were standing.
+        if is_narrative(state.get("content_type", "")):
+            hallucination_feedback += (
+                "\nEach of these contradicts the source material or invents something that is not in it. "
+                "Go back to the source, find what actually happens at that point in the story, and write "
+                "that instead. Do not soften the claim or remove it — replace it with what is true. "
+                "Names, act titles and scene headings you wrote yourself are not claims and are not the "
+                "problem here."
+            )
+        else:
+            hallucination_feedback += (
+                "\nReplace all fabricated claims with permitted alternatives from the brand asset bank. "
+                "Use only exact client counts, percentages, and framework names from the permitted claims list. "
+                "If no suitable permitted claim exists for a numbered point, rewrite that point to use "
+                "a general brand observation without specific numbers."
+            )
         # Prepend hallucination feedback — it is the priority fix
         existing_feedback = evaluation.get("feedback", "")
         evaluation["feedback"] = hallucination_feedback + (
