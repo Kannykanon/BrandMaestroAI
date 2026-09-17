@@ -18,8 +18,21 @@ the brief will help — the fix is to anchor the judge with the gold itself.
 This costs one model call per draft and is never run by the test suite. Run it
 after changing the judge's brief, the voice spec, or the model:
 
-    python -m scripts.calibrate_judge                 # every pair
-    python -m scripts.calibrate_judge kancity         # one pair
+    python -m scripts.calibrate_judge                       # every pair
+    python -m scripts.calibrate_judge kancity               # one pair
+    python -m scripts.calibrate_judge --live <biz> script   # a deployed Brain
+
+By default the Brain is built from the pair's own fixture documents, so the
+script answers "is the rubric sound?" and needs no database. That is deliberate,
+and it is also a trap: deleting every document a business has uploaded changes
+nothing here, which is exactly what one operator found when they cleared their
+Brand Brain and got identical scores back. To score a deployed Brain — to ask
+"is THIS brand's brain good?" — pass --live with a business id and content type.
+
+The prompt cache is switched off for the whole run. Every call goes through a
+Redis cache keyed on the exact prompt text, so a second run of an unchanged
+rubric would be answered entirely from it: identical numbers, no model
+consulted, and no way to tell that from a stable result.
 
 Exit status is 0 when every pair is calibrated, 1 when one is not, so it can
 gate a deploy if that is ever wanted.
@@ -37,14 +50,14 @@ MIN_VOICE_SCORE = 6.0
 GOLD_EXPECTED = 8.0
 
 
-def judge(content: str, pair, topic: str = "") -> dict:
+def judge(content: str, pair, topic: str = "", brain: str = "") -> dict:
     """Score one draft with the real voice pass, in the real prompt."""
     from model import LLMSingleton
     from prompts.enforcer import ENFORCER_PROMPT
     from utils.brand_profile import extract_permitted_claims, extract_section, strip_invented_counts
     from utils.llm_output import parse_llm_json
 
-    brain = pair.brain
+    brain = brain or pair.brain
     craft = [extract_section(brain, name) for name in
              ("OPENING PATTERN", "CLOSING PATTERN", "SIGNATURE CONSTRUCTIONS", "STRUCTURAL PATTERNS")]
     prompt = ENFORCER_PROMPT.format(
@@ -96,9 +109,16 @@ def verdict(gold_score: float, worst_rejected: float, had_rejected: bool) -> tup
     return True, "calibrated: the gold scores well and beats every draft that shipped wrongly."
 
 
-def report(pair) -> bool:
-    print(f"\n=== {pair.name} ===")
-    gold = judge(pair.gold, pair)
+def live_brain(business_id: str, content_type: str) -> str:
+    """The Brain this business is actually generating against, from the database."""
+    from brand_metrics import BrandMetricsSQL
+
+    return BrandMetricsSQL(business_id=business_id, content_type=content_type).get_context()
+
+
+def report(pair, brain: str = "") -> bool:
+    print(f"\n=== {pair.name}{' (live Brain)' if brain else ''} ===")
+    gold = judge(pair.gold, pair, brain=brain)
     print(f"  gold{'':24} voice {gold['voice_score']:.1f}  overall {gold['score']:.1f}")
     if gold["rewrites"]:
         first = gold["rewrites"][0]
@@ -110,7 +130,7 @@ def report(pair) -> bool:
 
     worst = 0.0
     for draft in pair.rejected:
-        result = judge(draft.content, pair)
+        result = judge(draft.content, pair, brain=brain)
         worst = max(worst, result["voice_score"])
         print(f"  {draft.name:28} voice {result['voice_score']:.1f}  overall {result['score']:.1f}")
 
@@ -120,7 +140,24 @@ def report(pair) -> bool:
 
 
 def main(argv: list) -> int:
+    from langchain_core.globals import set_llm_cache
+
     from tests.gold_pairs import discover
+
+    brain = ""
+    if "--live" in argv:
+        index = argv.index("--live")
+        try:
+            business_id, content_type = argv[index + 1], argv[index + 2]
+        except IndexError:
+            print("--live needs a business id and a content type.", file=sys.stderr)
+            return 1
+        argv = argv[:index] + argv[index + 3:]
+        brain = live_brain(business_id, content_type)
+        if not brain.strip():
+            print(f"No Brand Brain for {business_id} / {content_type}. Upload documents first.",
+                  file=sys.stderr)
+            return 1
 
     wanted = set(argv)
     pairs = [p for p in discover() if not wanted or p.name in wanted]
@@ -128,8 +165,14 @@ def main(argv: list) -> int:
         print("No gold pairs found.", file=sys.stderr)
         return 1
 
+    # Every call is cached in Redis on the exact prompt text, so a repeat run
+    # would be answered from the cache and look like a stable result.
+    set_llm_cache(None)
+
     print("Scoring writing whose quality is already settled. One model call per draft.")
-    return 0 if all([report(pair) for pair in pairs]) else 1
+    if not brain:
+        print("Brain: the pair's own fixture documents (the rubric, not a deployment).")
+    return 0 if all([report(pair, brain) for pair in pairs]) else 1
 
 
 if __name__ == "__main__":

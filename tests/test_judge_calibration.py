@@ -45,3 +45,47 @@ def test_the_thresholds_are_the_ones_the_enforcer_uses():
 
     assert f"MIN_VOICE_SCORE = {MIN_VOICE_SCORE}" in inspect.getsource(enforcer.enforcer_node)
     assert GOLD_EXPECTED > MIN_VOICE_SCORE
+
+
+class TestWhichBrainIsBeingScored:
+    """An operator cleared their Brand Brain and every document, re-ran this,
+    and got identical scores back. Nothing was broken: the script builds the
+    Brain from the pair's own fixture documents, so it never reads the database
+    at all. That is the right default — it asks whether the rubric is sound —
+    but it has to say so, and there has to be a way to ask the other question.
+    """
+
+    def test_live_needs_to_be_told_which_brain(self):
+        from scripts.calibrate_judge import main
+
+        assert main(["--live"]) == 1, "a half-given --live must not fall back to fixtures"
+
+    def test_the_default_says_which_brain_it_used(self, capsys, monkeypatch):
+        import scripts.calibrate_judge as calibrate
+
+        monkeypatch.setattr(calibrate, "report", lambda pair, brain="": True)
+        assert calibrate.main([]) == 0
+        printed = capsys.readouterr().out
+        assert "fixture documents" in printed and "not a deployment" in printed
+
+    def test_the_prompt_cache_is_off_for_the_run(self, capsys, monkeypatch):
+        """Calls are cached in Redis on the exact prompt text. A second run of
+        an unchanged rubric would be answered entirely from that cache —
+        identical numbers, no model consulted, indistinguishable from a stable
+        result."""
+        import scripts.calibrate_judge as calibrate
+
+        seen = {}
+        monkeypatch.setattr("langchain_core.globals.set_llm_cache",
+                            lambda cache: seen.update(cache=cache))
+        monkeypatch.setattr(calibrate, "report", lambda pair, brain="": True)
+        calibrate.main([])
+        assert "cache" in seen and seen["cache"] is None
+
+    def test_an_empty_live_brain_is_refused_rather_than_scored(self, monkeypatch):
+        """Scoring against nothing would report the rubric's own numbers and
+        call them the brand's."""
+        import scripts.calibrate_judge as calibrate
+
+        monkeypatch.setattr(calibrate, "live_brain", lambda business_id, content_type: "   ")
+        assert calibrate.main(["--live", "biz", "script"]) == 1
