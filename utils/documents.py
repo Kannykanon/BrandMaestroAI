@@ -54,3 +54,25 @@ def reference_documents(business_id: str, content_type: str) -> str:
     except Exception as e:
         logger.warning("Could not load reference documents: %s", e)
         return ""
+
+
+def voice_documents(business_id: str, content_type: str) -> str:
+    """The brand's own writing for this content type, whole.
+
+    Used where a habit has to be read off the documents rather than off the
+    Brain — scene-heading format, for instance, which is punctuation the brand
+    chose and which nothing measures into the spec.
+    """
+    try:
+        from database import BrandDocument, DOC_ROLE_VOICE, get_db_session
+
+        with get_db_session() as session:
+            rows = session.query(BrandDocument.file_content).filter_by(
+                business_id=business_id,
+                content_type=content_type,
+                doc_role=DOC_ROLE_VOICE,
+            ).all()
+        return "\n\n".join(row[0] for row in rows if row and row[0])
+    except Exception as e:
+        logger.warning("Could not load voice documents: %s", e)
+        return ""

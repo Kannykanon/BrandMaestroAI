@@ -93,6 +93,10 @@ What a genuine failure looks like:
   - Writing so clipped it reads as a list of facts rather than a scene — judged by whether it reads
     that way, never by how many words the sentences have.
   - Broken or unidiomatic English ("He must convene beyond campus boundaries") is an automatic fail.
+  - In a script: a scene whose action could not happen where its heading says it does. A scene headed
+    INT. UNIVERSITY HOSTEL whose action is the character walking away from a group across town is two
+    scenes pretending to be one. Check each heading against what happens under it, and against where
+    the previous scene left everybody.
 
 What is NOT a failure:
   - Sentences shorter or plainer than the brand's other work. The brand's own best writing is often
