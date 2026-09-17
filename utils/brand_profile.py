@@ -176,6 +176,30 @@ def _is_quotation(line: str, corpus: str) -> bool:
     return False
 
 
+# Word-count prescriptions an extraction or synthesis model wrote into the
+# Brain: "(3-8 words)", "10-15 words", "2 to 4 sentences". They are invented —
+# the same corpus produced "10-15" in one round and "10-20" in the next — and
+# they are the thing the voice pass is not allowed to reason from, so they are
+# removed before it sees them rather than left to its discretion.
+_INVENTED_COUNT = re.compile(
+    r"\s*[\(\[]?\b\d+\s*(?:-|–|—|to)\s*\d+\s+(?:words?|sentences?|lines?|syllables?)\b[\)\]]?",
+    re.IGNORECASE,
+)
+_SINGLE_COUNT = re.compile(
+    r"\s*[\(\[]?\b(?:under|over|about|around|roughly|at least|at most|no more than|fewer than|"
+    r"more than)\s+\d+\s+(?:words?|sentences?|lines?|syllables?)\b[\)\]]?",
+    re.IGNORECASE,
+)
+
+
+def strip_invented_counts(text: str) -> str:
+    """Remove word-count prescriptions from a passage of the Brand Brain."""
+    if not text:
+        return text
+    cleaned = _SINGLE_COUNT.sub("", _INVENTED_COUNT.sub("", text))
+    return re.sub(r"[ \t]{2,}", " ", cleaned)
+
+
 def strip_quoted_constructions(brain: str, corpus: str) -> str:
     """Remove lines from the descriptive sections that quote the corpus instead.
 

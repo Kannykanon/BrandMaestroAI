@@ -227,3 +227,81 @@ class TestTheJudgeIsGivenCraftNotRates:
 
         for placeholder in ("{voice_notes}", "{voice_directions}", "{previous_voice_feedback}"):
             assert placeholder not in ENFORCER_PROMPT
+
+
+class TestInventedWordCountsNeverReachTheJudge:
+    """Where the numbers were still coming from after the rates were removed.
+
+    The extraction prompt's own example taught the model to write them:
+    "alternates short declarative sentences (3-8 words) with longer explanatory
+    ones (15-25 words)". The Brain carried that into the voice pass, which
+    faulted a draft for missing a rhythm it quoted as "(10-15 words)" in one
+    round and "(10-20 words)" in the next. The same corpus, two different
+    numbers, both invented.
+    """
+
+    def test_a_range_is_removed_and_the_move_survives(self):
+        from utils.brand_profile import strip_invented_counts
+
+        line = ("Sentence rhythm: alternates very short sentences (2-8 words) with slightly "
+                "longer ones (10-15 words) to create a punchy, varied pace.")
+        cleaned = strip_invented_counts(line)
+        assert "2-8" not in cleaned and "10-15" not in cleaned
+        assert "alternates very short sentences with slightly longer ones" in cleaned
+        assert "punchy, varied pace" in cleaned
+
+    def test_single_bounds_go_too(self):
+        from utils.brand_profile import strip_invented_counts
+
+        assert "40" not in strip_invented_counts("Keep paragraphs under 40 words for scannability.")
+        assert "three" in strip_invented_counts("Uses three-beat escalation.")
+
+    def test_numbers_that_are_not_prescriptions_are_left_alone(self):
+        from utils.brand_profile import strip_invented_counts
+
+        for kept in ("Cites 40 retail clients as proof.", "Opens on Act 1 with a cold scene."):
+            assert strip_invented_counts(kept) == kept
+
+    def test_the_extraction_prompt_no_longer_teaches_them(self):
+        from prompts.metrics import METRICS_EXTRACTION
+
+        assert "(3-8 words)" not in METRICS_EXTRACTION
+        assert "Never write a number of words" in METRICS_EXTRACTION
+
+    def test_the_enforcer_scrubs_the_craft_it_passes_on(self):
+        import inspect
+
+        from nodes import enforcer
+
+        source = inspect.getsource(enforcer.enforcer_node)
+        assert "strip_invented_counts(" in source, (
+            "an instruction in a prompt is not a guarantee; the codebase checks instead"
+        )
+
+
+class TestRhythmIsDescribedAsAMix:
+    """Told only "sentences are short", the writer produced a script whose every
+    line was four words long. The corpus it was imitating runs a third of its
+    sentences short, half middling and a sixth longer."""
+
+    def _habits(self):
+        import glob
+        import os
+
+        documents = [open(p, encoding="utf-8").read()
+                     for p in glob.glob(os.path.join(FIXTURES, "voice", "*.txt"))]
+        spec = render_spec(corpus_spec(documents), beat_grammar(documents))
+        return spec.split("SENTENCE AND PARAGRAPH HABITS:")[1].split("HOW ITS")[0]
+
+    def test_it_says_the_sentences_vary(self):
+        habits = self._habits()
+        assert "not uniformly short" in habits
+        assert "Vary them" in habits
+
+    def test_it_names_flatness_as_the_failure(self):
+        assert "reads as a list whatever that length is" in self._habits()
+
+    def test_it_still_quotes_no_rates(self):
+        import re
+
+        assert not re.search(r"\d", self._habits())

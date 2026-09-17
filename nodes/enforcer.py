@@ -643,7 +643,9 @@ def enforcer_node(state: GraphState) -> GraphState:
         extract_section(metrics, name) for name in
         ("OPENING PATTERN", "CLOSING PATTERN", "SIGNATURE CONSTRUCTIONS", "STRUCTURAL PATTERNS")
     ]
-    voice_craft = "\n\n".join(part for part in craft if part) or (
+    from utils.brand_profile import strip_invented_counts
+
+    voice_craft = strip_invented_counts("\n\n".join(part for part in craft if part)) or (
         "Nothing extracted yet — judge against the writing habits above."
     )
 

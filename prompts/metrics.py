@@ -40,7 +40,7 @@ Return ONLY a JSON object with no preamble or markdown. Use this schema:
     "metaphor_usage": "<describe metaphor/analogy patterns — source domains the brand draws from, how metaphors are used (to explain processes, evoke emotions, simplify complexity), and what domains are avoided. Return 'none' if brand avoids metaphor>",
     "qualification_style": "<describe how the brand handles nuance and certainty — does it hedge ('might', 'could', 'perhaps'), qualify with data ('in 73% of cases'), qualify with experience ('in our experience'), or assert without qualification? Note what it avoids>",
     "mechanical_rules": {{
-      "sentence_rhythm": "<describe the rhythm mechanics — e.g. 'alternates short declarative sentences (3-8 words) with longer explanatory ones (15-25 words); uses 1-2 fragment sentences per section for punch'>",
+      "sentence_rhythm": "<describe the rhythm mechanics WITHOUT word counts — e.g. 'runs several clipped declaratives together, then breaks the run with one longer sentence that carries the consequence; drops to a fragment when a beat lands'. Never write a number of words, a range, or a ratio: a writer given '3-8 words' writes to the number and the result reads like nobody, and a judge given one faults any draft that crosses it.>",
       "paragraph_constraints": "<describe paragraph limits — e.g. 'max 4 sentences per paragraph; opening paragraph is always 2-3 sentences; single-sentence paragraphs used for emphasis'>",
       "heading_format": "<describe heading conventions — e.g. 'numbered bold headings for main sections; no bullet points as primary structure'>",
       "evidence_anchoring": "<describe how claims are grounded — e.g. 'every major claim is anchored to a specific number, client count, timeframe, or measurable outcome; vague assertions are never left unanchored'>"
@@ -241,7 +241,7 @@ QUALIFICATION STYLE:
 [How certainty and nuance are expressed — what replaces hedging, how claims are qualified.]
 
 MECHANICAL RULES:
-- Sentence rhythm: [how rhythm is mechanically achieved — describe the alternation pattern]
+- Sentence rhythm: [how rhythm is mechanically achieved — describe the alternation pattern in words, never in word counts, ranges or ratios]
 - Paragraph constraints: [specific structural limits]
 - Heading format: [exact format convention]
 - Evidence anchoring: [the rule for how claims must be grounded]
