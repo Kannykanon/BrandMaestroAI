@@ -73,7 +73,14 @@ def judge(content: str, pair, topic: str = "", brain: str = "") -> dict:
         closed_subjects="- Nothing yet; this is the first voice pass on this draft.",
     )
     raw = LLMSingleton.get("enforcement").invoke(prompt)
-    evaluation = parse_llm_json(getattr(raw, "content", raw)) or {}
+    try:
+        evaluation = parse_llm_json(getattr(raw, "content", raw)) or {}
+    except Exception as e:
+        # One unreadable answer should cost one draft's score, not the run. The
+        # enforcer retries with a repair prompt here; this reports and moves on,
+        # because a calibration that dies halfway tells you nothing at all.
+        print(f"      (could not read the judge's answer: {e})")
+        return {"voice_score": None, "score": None, "subject": "", "rewrites": []}
     return {
         "voice_score": float(evaluation.get("voice_score", 0.0) or 0.0),
         "score": float(evaluation.get("score", 0.0) or 0.0),
@@ -118,8 +125,17 @@ def live_brain(business_id: str, content_type: str) -> str:
 
 def report(pair, brain: str = "") -> bool:
     print(f"\n=== {pair.name}{' (live Brain)' if brain else ''} ===")
+    def line(name: str, result: dict) -> None:
+        if result["voice_score"] is None:
+            print(f"  {name:28} unreadable")
+        else:
+            print(f"  {name:28} voice {result['voice_score']:.1f}  overall {result['score']:.1f}")
+
     gold = judge(pair.gold, pair, brain=brain)
-    print(f"  gold{'':24} voice {gold['voice_score']:.1f}  overall {gold['score']:.1f}")
+    line("gold", gold)
+    if gold["voice_score"] is None:
+        print("  -> NO VERDICT: the judge's answer could not be read, so nothing was measured.")
+        return False
     if gold["rewrites"]:
         first = gold["rewrites"][0]
         if isinstance(first, dict):
@@ -131,8 +147,9 @@ def report(pair, brain: str = "") -> bool:
     worst = 0.0
     for draft in pair.rejected:
         result = judge(draft.content, pair, brain=brain)
-        worst = max(worst, result["voice_score"])
-        print(f"  {draft.name:28} voice {result['voice_score']:.1f}  overall {result['score']:.1f}")
+        line(draft.name, result)
+        if result["voice_score"] is not None:
+            worst = max(worst, result["voice_score"])
 
     calibrated, why = verdict(gold["voice_score"], worst, bool(pair.rejected))
     print(f"  -> {why}")
