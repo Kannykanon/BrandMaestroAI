@@ -268,18 +268,35 @@ def _rule_lines(spec: dict) -> list[str]:
     def value(key, field="median"):
         return bands.get(key, {}).get(field)
 
+    # Rhythm is described as a mix, because that is what the corpus is. Told
+    # only "sentences are short", the writer produced a script whose every line
+    # was four words long and read as a list of facts — while the corpus it was
+    # imitating runs a third of its sentences short, half at middling length and
+    # a sixth longer still. Flat is a failure even when every sentence is the
+    # right length on its own, so the description says so outright.
     median_length = value("median_words_per_sentence")
     short = value("share_sentences_under_6_words")
+    long_share = value("share_sentences_over_20_words")
+
     if median_length is not None:
         if median_length <= 8:
-            rules.append("Sentences are short. They carry one thing each and stop.")
+            rules.append(
+                "Sentences are short, and not uniformly short. Clipped ones carry the action, and a "
+                "longer one arrives to carry a consequence or a detail before the writing clips back."
+            )
         elif median_length <= 14:
-            rules.append("Sentences are medium-length — long enough to carry a clause, short enough to end cleanly.")
+            rules.append(
+                "Sentences run to about a line — long enough to carry a clause, short enough to close "
+                "cleanly — with shorter ones cutting in."
+            )
         else:
             rules.append("Sentences run long, carrying several clauses before they close.")
+        rules.append(
+            "Vary them. A passage where every sentence is the same length reads as a list whatever "
+            "that length is, and that is the commonest way to get this voice wrong."
+        )
     if short is not None and short > 25:
-        rules.append("Many end early, well before they have to. Let one land and move on.")
-    long_share = value("share_sentences_over_20_words")
+        rules.append("Let a sentence end early when it has said its thing. Do not pad it out to match the others.")
     if long_share is not None and long_share < 5:
         rules.append("Sentences that run past twenty words are rare. Break them rather than join them.")
 
