@@ -109,15 +109,32 @@ class TestSpec:
     def test_rendered_spec_is_rules_and_shapes_never_the_brands_sentences(self):
         documents = [SCREENPLAY]
         spec = render_spec(corpus_spec(documents), beat_grammar(documents))
-        assert "Sentences run about" in spec and "HOW ITS OPENINGS TEND TO GO" in spec
+        assert "Sentences are short" in spec and "HOW ITS OPENINGS TEND TO GO" in spec
         assert "transition line" in spec and "scene heading" in spec
         assert longest_shared_run(spec, SCREENPLAY) < 8, "the spec quoted the brand's own writing back"
         assert "John" not in spec, "the corpus's content leaked into the spec"
 
     def test_beat_grammar_describes_shapes(self):
         grammar = beat_grammar([SCREENPLAY])
-        assert grammar["opening"][0].startswith("transition line")
+        assert "transition line" in grammar["opening"][0]
         assert any("sentence" in shape for shape in grammar["opening"])
+
+    def test_the_habits_carry_no_rates_for_a_judge_to_cite(self):
+        """Every rule used to quote the number it came from, and the voice pass
+        faulted drafts against whichever one they had crossed — three rounds
+        ordering sentences joined, then one ordering them split."""
+        import re
+
+        spec = render_spec(corpus_spec([SCREENPLAY]), beat_grammar([SCREENPLAY]))
+        habits = spec.split("SENTENCE AND PARAGRAPH HABITS:")[1].split("HOW ITS")[0]
+        assert not re.search(r"\d", habits), f"a rate survived into the habits: {habits}"
+
+    def test_layout_is_not_reported_as_voice(self):
+        """Screenplays are laid out one action per line, so this measures 99 in
+        a plain corpus. Reported as a rule it produced an instruction to
+        reformat an entire script."""
+        spec = render_spec(corpus_spec([SCREENPLAY]), beat_grammar([SCREENPLAY]))
+        assert "paragraphs are a single sentence" not in spec
 
     def test_shapes_carry_no_word_count_to_be_matched(self):
         """Printed as "(3 words)" these read as a specification, and the

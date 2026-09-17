@@ -178,3 +178,52 @@ class TestTheBrainDescribesMovesAndNeverQuotesThem:
 
     def test_no_corpus_means_no_filtering(self):
         assert strip_quoted_constructions(self.BRAIN, "") == self.BRAIN
+
+
+class TestTheJudgeIsGivenCraftNotRates:
+    """The run that forced this: three rounds telling a script to join its
+    sentences, then one telling it to put every sentence on its own line —
+    each defensible against a different statistic the judge had been handed."""
+
+    def _brief(self, **fields):
+        from prompts.enforcer import ENFORCER_PROMPT
+
+        defaults = dict(
+            metrics="", content="", topic="", research="", permitted_claims="",
+            human_directive="", voice_spec="SPEC", voice_craft="CRAFT",
+            closed_subjects="- sentence rhythm",
+        )
+        defaults.update(fields)
+        return ENFORCER_PROMPT.format(**defaults)
+
+    def test_the_brief_asks_one_question(self):
+        brief = self._brief()
+        assert "would a reader who knows this brand believe it wrote this" in brief
+
+    def test_it_is_forbidden_to_reason_from_numbers(self):
+        brief = self._brief()
+        assert "do not count words, clauses, syllables or paragraphs" in brief
+        assert "If your only complaint can be expressed as a" in brief
+        assert "there is no complaint" in brief
+        assert "not cite a rate or a range as the reason for anything" in brief
+
+    def test_layout_is_named_as_not_voice(self):
+        """The final round of that run ordered a whole script reformatted."""
+        assert "That is format, not voice" in self._brief()
+
+    def test_being_plainer_than_the_brand_is_named_as_not_a_fault(self):
+        """The hand-written correct script is plainer than its own corpus."""
+        assert "not wrong for being lean" in self._brief()
+
+    def test_closed_subjects_reach_the_judge(self):
+        brief = self._brief(closed_subjects="- sentence rhythm")
+        assert "CLOSED, DO NOT RAISE AGAIN" in brief and "sentence rhythm" in brief
+
+    def test_the_craft_section_is_where_the_brand_is_described(self):
+        assert "THE MOVES THIS BRAND MAKES" in self._brief()
+
+    def test_the_old_numeric_channels_are_gone(self):
+        from prompts.enforcer import ENFORCER_PROMPT
+
+        for placeholder in ("{voice_notes}", "{voice_directions}", "{previous_voice_feedback}"):
+            assert placeholder not in ENFORCER_PROMPT

@@ -30,7 +30,7 @@ from utils.enforcement import (
     sanitize_banned_punctuation,
     sanitize_unbranded_emphasis_caps,
 )
-from utils.coverage import dropped_detail, vague_sections
+from utils.coverage import dropped_detail
 from utils.fact_spans import extract_fact_spans, missing_fact_spans
 from utils.llm_output import parse_llm_json
 from utils.observe import observe
@@ -618,45 +618,34 @@ def enforcer_node(state: GraphState) -> GraphState:
     # range — stated as habits, never as numbers to hit. The voice pass reads
     # both and answers with rewrites of the draft's own sentences.
     from utils.brand_profile import extract_section
-    from utils.voice_spec import voice_diagnostics
 
     voice_spec = extract_section(metrics, "VOICE SPEC") or "No voice spec measured for this brand yet."
-    notes = voice_diagnostics(content, metrics)
 
-    # Where the draft gave up on showing and started summarising. Advisory, and
-    # per section rather than over the whole piece: the act that read "This
-    # encounter marks his initiation into a world of hidden power" sat in a
-    # draft whose overall register was fine, so the average hid it entirely.
-    # Whether naming a thing instead of showing it is wrong depends on what is
-    # being written — it is the defect in a scene and the job in a proposal —
-    # so this is evidence for the voice pass, not a rule.
-    from utils.voice_spec import band_high
-
-    for section in vague_sections(content, band_high(metrics, "nominalisations_per_100_words")):
-        examples = " ".join(f'"{e}"' for e in section["examples"][:2])
-        notes.append(
-            f"{section['section']} names what things mean rather than showing them "
-            f"({section['rate']} abstract nouns per 100 words against the brand's {section['high']}, "
-            f"and well above the rest of this draft). {examples}".strip()
-        )
-
-    voice_notes = ("\n".join(f"- {n}" for n in notes) if notes
-                   else "- Nothing outside the brand's own range.")
-
-    # What this round is allowed to ask for, and what the last one already asked
-    # for. Together they stop the pass contradicting itself between rounds: one
-    # round told a draft its sentences were choppy and rewrote five passages
-    # into longer ones, the writer complied, and the next round split the
-    # sentence it had just been given back into three.
-    from utils.voice_spec import voice_directions
-
-    directions = voice_directions(content, metrics)
-    voice_directions_text = ("\n".join(f"- {d}" for d in directions) if directions
-                             else "- Nothing measured for this brand yet.")
-    previous = (state.get("feedback") or "").strip()
-    previous_voice_feedback = (
-        previous[:1500] if previous.startswith("VOICE") else "Nothing — this is the first round."
+    # The moves the brand makes, in its own Brain's words: how it opens, how it
+    # closes, the constructions it reaches for. This is what the voice pass is
+    # asked to judge against.
+    #
+    # It is given no rates, and that is the point. Handed the measured numbers,
+    # the judge faulted a draft against whichever one it had crossed: three
+    # rounds ordering a script to join its sentences, then one ordering every
+    # sentence onto its own line, each defensible against a different statistic.
+    # A number a draft can cross is a target to oscillate around, not a voice.
+    # The rates are still measured and still enforced where they are mechanical
+    # — punctuation, placeholders, capitals — and the voice pass never sees them.
+    craft = [
+        extract_section(metrics, name) for name in
+        ("OPENING PATTERN", "CLOSING PATTERN", "SIGNATURE CONSTRUCTIONS", "STRUCTURAL PATTERNS")
+    ]
+    voice_craft = "\n\n".join(part for part in craft if part) or (
+        "Nothing extracted yet — judge against the writing habits above."
     )
+
+    # Subjects this draft has already been pulled up on. Closed for the rest of
+    # the run: the writer acted on them, and reopening one is how a loop spends
+    # six rounds arguing with itself instead of converging.
+    raised = [v.split(":", 1)[1].strip() for v in prior_violations if v.startswith("voice:")]
+    closed_subjects = ("\n".join(f"- {subject}" for subject in dict.fromkeys(raised))
+                       if raised else "- Nothing yet; this is the first voice pass on this draft.")
 
     # The enforcer no longer uses raw RAG examples, relying strictly on synthesized rules.
     result = LLMSingleton.get("enforcement").invoke(
@@ -668,9 +657,8 @@ def enforcer_node(state: GraphState) -> GraphState:
             permitted_claims=permitted_claims,
             human_directive=human_directive,
             voice_spec=voice_spec,
-            voice_notes=voice_notes,
-            voice_directions=voice_directions_text,
-            previous_voice_feedback=previous_voice_feedback,
+            voice_craft=voice_craft,
+            closed_subjects=closed_subjects,
         )
     )
 
@@ -835,6 +823,10 @@ def enforcer_node(state: GraphState) -> GraphState:
                   "longer one, and never drop a fact to shorten a sentence.\n\n"
                 + (evaluation.get("feedback") or "")
             ).strip()
+    subject = str(evaluation.get("voice_subject") or "").strip()
+    if subject and voice_score and voice_score < MIN_VOICE_SCORE:
+        prior_violations = with_violation("voice", subject)
+
     if voice_score and voice_score < MIN_VOICE_SCORE:
         evaluation["approved"] = False
         evaluation["score"] = min(float(evaluation.get("score", 0.0) or 0.0), 6.5)

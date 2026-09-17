@@ -61,40 +61,54 @@ The checks in this prompt decide whether the content is true, publishable and st
 This step decides something else: whether the sentences sound like this brand wrote them.
 A draft can satisfy every rule below and still fail here.
 
-HOW THIS BRAND BUILDS SENTENCES:
+HOW THIS BRAND WRITES:
 {voice_spec}
 
-WHERE THIS DRAFT SITS OUTSIDE THE BRAND'S OWN RANGE (measured, advisory):
-{voice_notes}
+THE MOVES THIS BRAND MAKES:
+{voice_craft}
 
-WHAT YOU MAY ASK FOR (measured, and binding on you):
-{voice_directions}
+SUBJECTS ALREADY RAISED ON THIS DRAFT — CLOSED, DO NOT RAISE AGAIN:
+{closed_subjects}
 
-WHAT THE LAST ROUND ASKED THIS DRAFT FOR:
-{previous_voice_feedback}
+A subject raised once and acted on is finished, whichever way the writing has since moved. One run
+told a script its sentences were choppy and rewrote five passages into longer ones; the writer did
+exactly that; two rounds later the same pass ordered every sentence onto its own line. Both verdicts
+were arguable and the piece never converged. If sentence rhythm is listed above, the rhythm of this
+draft is settled and you have nothing further to say about it.
 
-You may not reverse an instruction the last round gave. One round told a draft its sentences were
-choppy and rewrote five passages into longer ones; the writer did exactly that; the next round took
-the sentence it had just been given and split it back into three. Eight rounds, no convergence, and
-the piece ended unapproved with both verdicts individually defensible. If the last round asked for
-something and the writer did it, that subject is closed — say so by leaving it alone.
+You are answering one question: would a reader who knows this brand believe it wrote this?
 
-Read the content sentence by sentence against that. You are looking for word choice and sentence
-shape, not length and not vocabulary size:
+Read it as a reader, not as an auditor. You have no statistics and you are not owed any: do not ask
+for sentences to be longer or shorter, do not count words, clauses, syllables or paragraphs, and do
+not cite a rate or a range as the reason for anything. If your only complaint can be expressed as a
+number, there is no complaint — say so and score accordingly.
+
+What a genuine failure looks like:
   - A plain brand writing "He bows" does not write "He demonstrates profound deference".
-  - Naming an action instead of performing it ("this starts his deep involvement") is the common failure.
-  - So is padding: a longer word chosen over a plain one, or a clause added to fill a sentence out.
-  - So is the opposite: chopping every sentence to three words until the piece reads as a list.
+  - Naming an action instead of performing it: "this starts his deep involvement" where the brand
+    would show what happened.
+  - Padding: a longer word chosen over a plain one, a clause added to fill a sentence out.
+  - Copying the brief's own commentary instead of dramatising it — "this marks the beginning of his
+    entanglement" is the source explaining its story, not the brand telling one.
+  - Writing so clipped it reads as a list of facts rather than a scene — judged by whether it reads
+    that way, never by how many words the sentences have.
   - Broken or unidiomatic English ("He must convene beyond campus boundaries") is an automatic fail.
+
+What is NOT a failure:
+  - Sentences shorter or plainer than the brand's other work. The brand's own best writing is often
+    its plainest, and a piece is not wrong for being lean.
+  - Layout — line breaks, paragraph length, where a scene heading sits. That is format, not voice.
+  - Anything you would have to measure to notice.
 
 Return:
   voice_score: 0-10. 10 = a reader could not tell this from the brand's own documents. Below 6 = it reads
     as generic, stilted, or as somebody imitating the rules rather than writing.
   voice_rewrites: up to 5 of the worst sentences, each with a rewrite in the brand's voice that keeps every
     fact. Rewrite the sentence in front of you — do not invent new material and do not quote any other document.
-    Every rewrite must obey the limits above: nothing that moves a settled measurement, nothing that pushes an
-    out-of-range one further out. If the only thing you can find to say is already ruled out, the draft's voice
-    is fine — score it accordingly and return no rewrites.
+    Every rewrite must be a better sentence, not a differently-shaped one. If the only thing you can find to
+    say is a closed subject or a number, the draft's voice is fine: score it accordingly and return no rewrites.
+  voice_subject: two or three words naming what your rewrites are about ("sentence rhythm", "abstraction",
+    "borrowed commentary"), or "" when there are none. It is recorded, and the next round may not raise it again.
 
 ═══════════════════════════════════════════════════
 STEP 1B — PUBLISHABILITY (run after STEP 1, also a HARD GATE)
@@ -244,6 +258,7 @@ CRITICAL — VALID JSON ONLY: When quoting a passage from the content inside any
     "voice_rewrites": [
         {{"from": "a sentence from the content that does not sound like this brand", "to": "the same sentence in the brand's voice, every fact kept"}}
     ],
+    "voice_subject": "two or three words naming what the rewrites are about, or empty string",
     "approved": true or false,
     "directive_compliance": "PASS, FAIL, or NOT_APPLICABLE (use NOT_APPLICABLE when no reviewer directive was supplied). If FAIL, name the unmet requirement.",
     "publishability": "PASS or FAIL from STEP 1B. If FAIL, name each sentence that restates internal material and what it reveals.",
