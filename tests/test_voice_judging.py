@@ -305,3 +305,65 @@ class TestRhythmIsDescribedAsAMix:
         import re
 
         assert not re.search(r"\d", self._habits())
+
+
+class TestRhythmIsMeasuredNotJudged:
+    """The calibration run that forced this. Against the live Brain the judge
+    scored this brand's hand-written gold 7.0 and faulted it for "Sentence
+    rhythm" — while rating a draft that had turned "more than seven men" into
+    "Seven men sat together" above it.
+
+    Rhythm is the one thing about voice that is measurable and the one thing a
+    judge cannot measure by reading. Every oscillation this system has had was a
+    judge ruling on it: join these sentences, then split them, then join them.
+    """
+
+    @pytest.fixture(scope="class")
+    def pair(self):
+        from tests.gold_pairs import discover
+
+        return discover()[0]
+
+    def test_the_gold_is_not_flat(self, pair):
+        from utils.voice_spec import flatness_note
+
+        assert flatness_note(pair.gold, pair.brain) == "", (
+            "the answer this brand's reviewer wrote must not be called flat"
+        )
+
+    def test_the_drafts_that_were_genuinely_flat_are_caught(self, pair):
+        from utils.voice_spec import flatness_note
+
+        flat = {d.name for d in pair.rejected if flatness_note(d.content, pair.brain)}
+        assert {"dropped_the_qualifier", "padded_register"} <= flat
+
+    def test_a_draft_whose_fault_was_something_else_is_left_alone(self, pair):
+        """It summarised its ending away. Its rhythm was never the problem, and
+        a check that fires on everything says nothing."""
+        from utils.voice_spec import flatness_note
+
+        draft = next(d for d in pair.rejected if d.name == "summarised_the_ending")
+        assert flatness_note(draft.content, pair.brain) == ""
+
+    def test_the_brands_own_range_would_have_condemned_the_gold(self, pair):
+        """Why this is a share of the brand's variation rather than its band:
+        the corpus sits at 3.38-3.49 and the gold at 2.7. A hand-written
+        retelling is tighter than a full screenplay and right to be."""
+        from utils.voice_spec import _band_from_metrics, prose_only, shape_metrics
+
+        band = _band_from_metrics(pair.brain, "words_per_sentence_variation")
+        gold = shape_metrics(prose_only(pair.gold))["words_per_sentence_variation"]
+        assert gold < band["low"], "the gold is outside the band and must still pass"
+
+    def test_a_short_piece_is_not_judged_on_its_rhythm(self):
+        from utils.voice_spec import flatness_note
+
+        brain = ("# MEASURED MECHANICS\n- words_per_sentence_variation: 3.4\n"
+                 "- words_per_sentence_variation_low: 3.3\n- words_per_sentence_variation_high: 3.5\n")
+        assert flatness_note("He waits. Nobody comes. The road is closed.", brain) == ""
+
+    def test_the_judge_is_told_to_leave_rhythm_alone(self):
+        from prompts.enforcer import ENFORCER_PROMPT
+
+        assert "Sentence rhythm, sentence length, and how much they vary" in ENFORCER_PROMPT
+        assert "measured before you" in ENFORCER_PROMPT

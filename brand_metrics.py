@@ -539,6 +539,10 @@ class BrandMetricsSQL(MetricPort):
             + band_line("mean_word_length", 0.0)
             + band_line("contractions_per_100_words", 0.0)
             + band_line("median_words_per_sentence", 0.0)
+            # How much the sentence lengths move. Flatness is the part of
+            # rhythm a reader feels and a judge cannot measure, so it is
+            # measured here and the voice pass is told to leave it alone.
+            + band_line("words_per_sentence_variation", 0.0)
             + band_line("share_sentences_under_6_words", 0.0)
             + band_line("share_sentences_over_20_words", 0.0)
             + band_line("share_sentences_opening_with_pronoun", 0.0)

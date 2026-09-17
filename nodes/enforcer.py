@@ -881,6 +881,15 @@ def enforcer_node(state: GraphState) -> GraphState:
         evaluation["score"] = min(float(evaluation.get("score", 0.0) or 0.0), 6.5)
         logger.info("Voice score %.1f below %.1f — draft does not sound like the brand", voice_score, MIN_VOICE_SCORE)
 
+    # Rhythm, measured rather than judged. It reaches the writer as feedback and
+    # never reaches the voice pass, which has no instrument for it.
+    from utils.voice_spec import flatness_note
+
+    flat = flatness_note(content, metrics)
+    if flat and not evaluation.get("approved"):
+        evaluation["feedback"] = ((evaluation.get("feedback") or "").rstrip()
+                                  + "\n\nRHYTHM — " + flat).strip()
+
     # Anything the sanitiser left. It rides along with whatever else is going
     # back rather than refusing the draft on its own — a heading it could not
     # decide is a heading a person should look at, not a reason to spend a round.
