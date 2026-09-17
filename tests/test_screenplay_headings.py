@@ -53,12 +53,28 @@ class TestReadingHeadings:
         assert brand_separator("We write blog posts. No scene headings here.") == "—"
 
 
-class TestFormatIsCorrectedInCode:
+class TestHeadingsAreCorrectedInCode:
     def test_a_comma_becomes_the_brands_em_dash(self, corpus):
         fixed, fixes = sanitize_scene_headings(DRAFT, corpus)
-        assert "INT. UNIVERSITY CAMPUS — DAY" in fixed
         assert "EXT. OUTSIDE SCHOOL PREMISES — LATE AFTERNOON" in fixed
         assert len(fixes) == 2
+
+    def test_an_outdoor_place_marked_indoors_is_put_right(self, corpus):
+        """No judgement is needed to know which side of a door a campus is on,
+        so it is corrected rather than sent back for a revision round."""
+        fixed, _ = sanitize_scene_headings(DRAFT, corpus)
+        assert "EXT. UNIVERSITY CAMPUS — DAY" in fixed
+        assert "INT. UNIVERSITY CAMPUS" not in fixed
+
+    def test_nothing_is_left_for_the_advisory_to_find(self, corpus):
+        fixed, _ = sanitize_scene_headings(DRAFT, corpus)
+        assert heading_findings(fixed) == []
+
+    def test_an_ambiguous_place_is_never_guessed_at(self, corpus):
+        """This corpus writes both INT. DINER and EXT. DINER, for the two sides
+        of one door. A sanitiser that picked one would be inventing."""
+        both = "INT. DINER — DAY\nEXT. DINER — LATER\nINT./EXT. CAR — NIGHT\n"
+        assert sanitize_scene_headings(both, corpus) == (both, [])
 
     def test_the_hand_written_script_is_not_touched(self, gold, corpus):
         """It already uses the brand's separator. A sanitiser that rewrites the
@@ -94,8 +110,9 @@ class TestWhetherTheHeadingIsTrue:
     def test_an_int_ext_heading_is_not_faulted(self):
         assert heading_findings("INT./EXT. CAR — NIGHT\nHe drives.\n") == []
 
-    def test_it_reports_rather_than_rewrites(self, gold, corpus):
-        """The hand-written script contains "INT. CAMPUS — AFTER CLASSES". The
-        check says so; it does not quietly correct a person's own work."""
-        assert heading_findings(gold), "this is a real finding, and it is the gold's"
+    def test_the_hand_written_script_has_none_left(self, gold, corpus):
+        """It had one — "INT. CAMPUS — AFTER CLASSES" — and that was a slip
+        rather than a house style, so the fixture was corrected. A reference
+        with an error in it teaches the error."""
+        assert heading_findings(gold) == []
         assert sanitize_scene_headings(gold, corpus)[1] == []

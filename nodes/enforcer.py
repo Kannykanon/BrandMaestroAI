@@ -184,10 +184,8 @@ def enforcer_node(state: GraphState) -> GraphState:
             if heading_fixes:
                 logger.info("Scene headings normalised at iteration %d: %s", iteration, heading_fixes)
                 state = {**state, "content": content}
-        # Whether a heading is true is a different question, and it is reported
-        # rather than corrected: this brand's own hand-written script contains
-        # "INT. CAMPUS - AFTER CLASSES", and a check that rewrites the answer a
-        # person wrote by hand has stopped being evidence.
+        # Anything the lexicon could not decide. A diner is legitimately either
+        # prefix, so those are left alone rather than guessed at.
         heading_findings = _heading_findings(content)
         if heading_findings:
             logger.info("Scene heading mismatches at iteration %d: %d", iteration, len(heading_findings))
@@ -883,9 +881,9 @@ def enforcer_node(state: GraphState) -> GraphState:
         evaluation["score"] = min(float(evaluation.get("score", 0.0) or 0.0), 6.5)
         logger.info("Voice score %.1f below %.1f — draft does not sound like the brand", voice_score, MIN_VOICE_SCORE)
 
-    # Scene headings whose prefix contradicts the place they name. Advisory, so
-    # it rides along with whatever else is being sent back rather than refusing
-    # the draft on its own.
+    # Anything the sanitiser left. It rides along with whatever else is going
+    # back rather than refusing the draft on its own — a heading it could not
+    # decide is a heading a person should look at, not a reason to spend a round.
     if heading_findings and not evaluation.get("approved"):
         listed = "\n".join(f"  - {f['message']}" for f in heading_findings[:5])
         evaluation["feedback"] = (
