@@ -14,6 +14,23 @@ def deployer_node(state: GraphState) -> GraphState:
 
     generation_id = state["generation_id"]
     score = state.get("score", 0.0)
+
+    # An unapproved run delivers its best round, not its last one. Revision
+    # wanders: one run scored 6.3, 6.3, 7.5, 7.5, 6.0 before running out, and
+    # the draft it handed over was the 6.0 — which had also lost a fact the 7.5
+    # still carried correctly. Approved content is never substituted: the
+    # approval belongs to the draft that earned it.
+    best = state.get("best_content")
+    if not state.get("approved") and best and best != state.get("content"):
+        best_score = float(state.get("best_score") or 0.0)
+        if best_score > float(score or 0.0):
+            logger.info(
+                "Delivering the best draft of this run: iteration %s scored %.1f, "
+                "the last scored %.1f",
+                state.get("best_iteration"), best_score, float(score or 0.0),
+            )
+            state = {**state, "content": best, "score": best_score}
+            score = best_score
     # The enforcer's verdict, stored separately from status: a draft saved
     # because the revision loop ran out of rounds is completed, not approved.
     approved = bool(state.get("approved", False))

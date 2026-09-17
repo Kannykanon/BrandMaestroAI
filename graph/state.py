@@ -27,6 +27,15 @@ class GraphState(TypedDict):
 
     # Writer output
     content: str
+    # The best draft this run has produced, and what it scored. A revision is
+    # not an improvement by definition: one run scored 6.3, 6.3, 7.5, 7.5, 6.0
+    # and then failed a deterministic gate, and the draft delivered was the last
+    # one rather than the 7.5. Carried forward so the round that wandered cannot
+    # cost the run the round that worked.
+    best_content: Optional[str]
+    best_score: Optional[float]
+    best_iteration: Optional[int]
+    best_was_clean: Optional[bool]
     creative_angle: str
     iteration: int
 

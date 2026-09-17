@@ -921,6 +921,25 @@ def enforcer_node(state: GraphState) -> GraphState:
             logger.warning("Max iterations reached (quality only), forcing approval")
             evaluation["approved"] = True
 
+    # Remember this draft if it is the best the run has produced.
+    #
+    # "Best" prefers a draft that cleared every deterministic gate over one that
+    # merely scored well, because those gates catch things a score cannot see: a
+    # run whose last round lost "more than seven men" would otherwise have its
+    # highest-scoring draft chosen while that draft still carried the same lost
+    # fact. Among equals, the higher score wins; among those, the later round,
+    # since it has had more feedback.
+    clean = not carried_findings and hallucination_verdict != "FAIL" and not publishability.startswith("FAIL")
+    best_content = state.get("best_content")
+    best_score = float(state.get("best_score") or 0.0)
+    best_was_clean = bool(state.get("best_was_clean"))
+    score_now = float(evaluation.get("score", 0.0) or 0.0)
+    if best_content is None or (clean, score_now) >= (best_was_clean, best_score):
+        best_content, best_score, best_was_clean = content, score_now, clean
+        best_iteration = iteration
+    else:
+        best_iteration = state.get("best_iteration")
+
     logger.info(
         "Enforcer: hallucination=%s approved=%s score=%.1f style=%.1f tone=%.1f structure=%.1f signature=%.1f iteration=%d",
         hallucination_verdict,
@@ -951,5 +970,9 @@ def enforcer_node(state: GraphState) -> GraphState:
         "feedback":        evaluation.get("feedback", ""),
         "flagged_passages": flagged_str,
         "violation_history": prior_violations,
+        "best_content":    best_content,
+        "best_score":      best_score,
+        "best_iteration":  best_iteration,
+        "best_was_clean":  best_was_clean,
         "creative_angle":  evaluation.get("creative_angle", "unknown")
     }
