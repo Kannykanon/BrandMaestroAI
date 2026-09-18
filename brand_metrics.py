@@ -34,6 +34,18 @@ CACHE_TTL = 86400
 # few seconds of staleness for removing that latency spike entirely.
 STALE_TTL = 900
 
+# Bumped whenever the MEASURED MECHANICS section gains, loses or changes a key.
+#
+# The cache holds the whole brand context — the model's synthesis with the
+# counted mechanics already attached — so a deployment that starts counting
+# something new goes on serving a context without it until the entry expires,
+# which is a day. Em-dash counts were added to end a loop where the system
+# refused a mark the brand uses in every scene heading; the fix shipped, the
+# cache kept serving the old context, and the next run failed exactly as
+# before. Changing the key retires every stale entry the moment the new code
+# runs, and costs one re-attachment per brand rather than a re-synthesis.
+MECHANICS_VERSION = 2
+
 # Maximum number of recent per-document profiles passed in full to the
 # synthesis LLM. Older rows are already baked into the previous synthesis
 # and don't need to be re-sent verbatim.
@@ -199,12 +211,12 @@ class BrandMetricsSQL(MetricPort):
 
     @property
     def _cache_key(self) -> str:
-        return f"brand_context:{self.business_id}:{self.content_type}"
+        return f"brand_context:{MECHANICS_VERSION}:{self.business_id}:{self.content_type}"
 
     @property
     def _stale_key(self) -> str:
         """Holds the previous context while a rebuild is pending."""
-        return f"brand_context_stale:{self.business_id}:{self.content_type}"
+        return f"brand_context_stale:{MECHANICS_VERSION}:{self.business_id}:{self.content_type}"
 
     # ------------------------------------------------------------------ #
     #  Extraction — runs once per document, called from Celery task       #
