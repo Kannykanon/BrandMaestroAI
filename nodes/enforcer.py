@@ -897,6 +897,21 @@ def enforcer_node(state: GraphState) -> GraphState:
         evaluation["feedback"] = ((evaluation.get("feedback") or "").rstrip()
                                   + "\n\nRHYTHM — " + flat).strip()
 
+    # Sentences where the narrator says what something meant. Narrative only:
+    # a proposal explains for a living, and a scene does not.
+    if is_narrative(state.get("content_type", "")) and not evaluation.get("approved"):
+        from utils.coverage import narrator_explanations
+
+        explained = narrator_explanations(content)
+        if explained:
+            listed = "\n".join(f"  - {f['sentence']}" for f in explained)
+            evaluation["feedback"] = (
+                (evaluation.get("feedback") or "").rstrip()
+                + "\n\nTOLD, NOT SHOWN — these sentences state what something meant. Show the thing "
+                  "and let the reader take the meaning; where a character takes it, let them:\n"
+                + listed
+            ).strip()
+
     # Anything the sanitiser left. It rides along with whatever else is going
     # back rather than refusing the draft on its own — a heading it could not
     # decide is a heading a person should look at, not a reason to spend a round.

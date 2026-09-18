@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "gold")
 
 # The gates a piece must clear. Each returns a list of human-readable failures.
-GATES = ("mechanics", "preflight", "copying", "facts", "story", "headings", "rhythm")
+GATES = ("mechanics", "preflight", "copying", "facts", "story", "headings", "rhythm", "explaining")
 
 
 def _read(path: str) -> str:
@@ -129,4 +129,8 @@ def failures(content: str, pair: Pair) -> dict:
 
     note = flatness_note(content, brain)
     found["rhythm"] = [note] if note else []
+
+    from utils.coverage import narrator_explanations
+
+    found["explaining"] = [f["message"] for f in narrator_explanations(content)]
     return {gate: items for gate, items in found.items() if items}
