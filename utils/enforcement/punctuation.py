@@ -35,9 +35,20 @@ USE_CUES = (
 #   run 1  "Semicolons, em dashes, and exclamation marks are absent."
 #   run 2  "exclamation marks are reserved for rare, deliberate emphasis."
 # The second reads as permission and silently unbans the mark.
+# Marks whose use is counted from the brand's own documents. Where a mark is
+# counted the count settles it, because a synthesised sentence about a brand's
+# punctuation is a description and the corpus is the thing described. One said
+# a brand "avoids em-dashes" while its scripts used 87, and every draft was
+# refused for a mark that brand writes in every scene heading.
 _MEASURED_KEY_FOR_MARK = {
     "exclamation": "exclamation_marks_per_100_words",
     "question": "question_marks_per_100_words",
+    "em dash": "em_dashes_per_100_words",
+    "em-dash": "em_dashes_per_100_words",
+    "emdash": "em_dashes_per_100_words",
+    "semicolon": "semicolons_per_100_words",
+    "ellipsis": "ellipses_per_100_words",
+    "ellipses": "ellipses_per_100_words",
 }
 
 
@@ -165,7 +176,8 @@ def sanitize_banned_punctuation(content: str, metrics: str) -> tuple[str, list[s
             fixed = fixed.replace("!", ".")
             applied.append("exclamation marks -> periods")
 
-        if mark_is_banned(rules, ("em dash", "em-dash", "emdash")) and ("—" in fixed or "--" in fixed):
+        if mark_is_banned(rules, ("em dash", "em-dash", "emdash"),
+                          measured_rate_for(metrics, ("em dash",))) and ("—" in fixed or "--" in fixed):
             # A dash trailing off at the end of a sentence/line has nothing to
             # join with a comma — end the sentence instead of leaving one dangling.
             fixed = re.sub(r"\s*—\s*(?=[\"'”]?\s*(?:\n|$))", ".", fixed)
@@ -175,13 +187,14 @@ def sanitize_banned_punctuation(content: str, metrics: str) -> tuple[str, list[s
             fixed = re.sub(r"\s*--\s*", ", ", fixed)
             applied.append("em-dashes -> commas")
 
-        if mark_is_banned(rules, ("semicolon",)) and ";" in fixed:
+        if mark_is_banned(rules, ("semicolon",), measured_rate_for(metrics, ("semicolon",))) and ";" in fixed:
             # "X; y..." (independent clauses) -> "X. Y..." (two sentences)
             fixed = re.sub(r";\s*([a-z])", lambda m: ". " + m.group(1).upper(), fixed)
             fixed = fixed.replace(";", ".")  # anything left (e.g. "; However") is already capitalized
             applied.append("semicolons -> sentence breaks")
 
-        if mark_is_banned(rules, ("ellipsis", "ellipses")) and ("..." in fixed or "…" in fixed):
+        if mark_is_banned(rules, ("ellipsis", "ellipses"),
+                          measured_rate_for(metrics, ("ellipsis",))) and ("..." in fixed or "…" in fixed):
             fixed = fixed.replace("…", "...")  # normalize to one form before splitting
             fixed = re.sub(r"\.\.\.\s*([a-z])", lambda m: ". " + m.group(1).upper(), fixed)
             fixed = re.sub(r"\.{2,}", ".", fixed)  # any remaining run not followed by a lowercase letter

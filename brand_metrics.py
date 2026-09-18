@@ -523,6 +523,13 @@ class BrandMetricsSQL(MetricPort):
             "documents; anywhere in that range is this brand writing normally.\n"
             f"- exclamation_marks_per_100_words: {per100(corpus.count('!'))}\n"
             f"- question_marks_per_100_words: {per100(corpus.count('?'))}\n"
+            # Counted so the evidence decides, not the synthesis's description
+            # of it. A synthesised rule said this brand "avoids em-dashes"
+            # while its own scripts used 87 of them, and every draft was
+            # refused for a mark the brand writes in every scene heading.
+            f"- em_dashes_per_100_words: {per100(corpus.count('—') + corpus.count('--'))}\n"
+            f"- semicolons_per_100_words: {per100(corpus.count(';'))}\n"
+            f"- ellipses_per_100_words: {per100(corpus.count('...') + corpus.count('…'))}\n"
             f"- emoji_per_100_words: {per100(len(BrandMetricsSQL._EMOJI_RE.findall(corpus)))}\n"
             f"- all_caps_words_per_100_words: "
             f"{per100(sum(1 for w in words if len(w) > 2 and w.isupper()))}\n"
