@@ -28,17 +28,19 @@ def run_preflight_checks(content: str, metrics: str) -> list[dict]:
                 "message": "Brand avoids exclamation marks (!), but they were found.",
                 "excerpt": find_excerpt(content, "!"),
             })
-        if mark_is_banned(rules, ("em dash", "em-dash", "emdash")) and ("—" in content or "--" in content):
+        if mark_is_banned(rules, ("em dash", "em-dash", "emdash"),
+                          measured_rate_for(metrics, ("em dash",))) and ("—" in content or "--" in content):
             failures.append({
                 "message": "Brand avoids em-dashes (— or --), but they were found.",
                 "excerpt": find_excerpt(content, ["—", "--"]),
             })
-        if mark_is_banned(rules, ("semicolon",)) and ";" in content:
+        if mark_is_banned(rules, ("semicolon",), measured_rate_for(metrics, ("semicolon",))) and ";" in content:
             failures.append({
                 "message": "Brand avoids semicolons (;), but they were found.",
                 "excerpt": find_excerpt(content, ";"),
             })
-        if mark_is_banned(rules, ("ellipsis", "ellipses")) and ("..." in content or "…" in content):
+        if mark_is_banned(rules, ("ellipsis", "ellipses"),
+                          measured_rate_for(metrics, ("ellipsis",))) and ("..." in content or "…" in content):
             failures.append({
                 "message": "Brand avoids ellipses (...), but they were found.",
                 "excerpt": find_excerpt(content, ["...", "…"]),
