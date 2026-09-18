@@ -383,3 +383,98 @@ class TestRhythmIsMeasuredNotJudged:
 
         assert "Sentence rhythm, sentence length, and how much they vary" in ENFORCER_PROMPT
         assert "measured before you" in ENFORCER_PROMPT
+
+
+class TestTheJudgeIsNotShownTheRhythmRules:
+    """Forbidding it was not enough. Told plainly that rhythm was measured
+    elsewhere and none of its business, the judge quoted this brand's own rule
+    back as its reason for refusing four drafts in one run:
+
+        The brand voice requires *variation* in sentence length: 'Sentences are
+        short, and not uniformly short. Clipped ones carry the action...'
+
+    An instruction not to use information loses to the information.
+    """
+
+    @pytest.fixture(scope="class")
+    def spec(self):
+        from tests.gold_pairs import discover
+        from utils.brand_profile import extract_section
+
+        return extract_section(discover()[0].brain, "VOICE SPEC")
+
+    def test_the_writer_still_gets_them(self, spec):
+        from utils.voice_spec import RHYTHM_BLOCK
+
+        assert RHYTHM_BLOCK in spec
+        assert "not uniformly short" in spec and "Vary them" in spec
+
+    def test_the_judge_does_not(self, spec):
+        from utils.voice_spec import for_judge
+
+        judged = for_judge(spec)
+        for rule in ("not uniformly short", "Vary them", "reads as a list",
+                     "past twenty words", "end early"):
+            assert rule not in judged, f"the judge can still cite {rule!r}"
+
+    def test_everything_else_survives_the_trim(self, spec):
+        from utils.voice_spec import for_judge
+
+        judged = for_judge(spec)
+        assert "HOW ITS OPENINGS TEND TO GO" in judged
+        assert "Abstract nouns" in judged and "Plain words" in judged
+        assert "Nothing here is a template" in judged
+
+    def test_a_spec_without_a_rhythm_block_is_returned_whole(self):
+        from utils.voice_spec import for_judge
+
+        assert for_judge("SENTENCE AND PARAGRAPH HABITS:\n- Plain words.") == (
+            "SENTENCE AND PARAGRAPH HABITS:\n- Plain words."
+        )
+        assert for_judge("") == ""
+
+    def test_the_enforcer_trims_before_handing_it_over(self):
+        import inspect
+
+        from nodes import enforcer
+
+        assert "for_judge(" in inspect.getsource(enforcer.enforcer_node)
+
+
+class TestTheBriefsOwnCommentaryIsNotDemanded:
+    """Two checks were pulling against each other. Coverage demanded the words
+    of "This is the moment that marks the beginning of his entanglement...
+    widely regarded as the most feared cult" — mark, beginning, regarded,
+    eventually — and when a draft put them in, the judge refused it for
+    borrowed commentary. Both were right; the demand was wrong."""
+
+    @pytest.fixture(scope="class")
+    def pair(self):
+        from tests.gold_pairs import discover
+
+        return discover()[0]
+
+    def test_a_retelling_is_not_asked_for_the_briefs_framing(self, pair):
+        from utils.coverage import dropped_detail
+
+        told = (
+            "Kan tries to leave. He says he must get back to his hostel.\n"
+            "He finds more than seven men, seated, drinking. They tell him to drink. He says no.\n"
+            "Other men greet EMK with both hands. EMK asks about his studies and gives him a number.\n"
+        )
+        missing = " ".join(w for f in dropped_detail(told, pair.brief, 3.1) for w in f["missing"])
+        for framing in ("mark", "beginn", "regard", "eventually"):
+            assert framing not in missing, f"the draft was asked for {framing!r}"
+
+    def test_the_facts_in_that_sentence_are_still_demanded(self, pair):
+        """Dropping "widely regarded" must not drop "cult" or "deadliest"."""
+        from utils.coverage import content_words
+
+        beat = ("This is the moment that marks the beginning of his entanglement with the Viking "
+                "Confraternity, widely regarded as the most feared cult in the state.")
+        words = content_words(beat)
+        assert {"cult", "state"} <= words, "the facts in the sentence are still story"
+        # Words are stemmed before they are compared, which is why the exclusion
+        # list is stemmed too: written out in full, "beginning" was compared as
+        # "beginn" and matched nothing.
+        assert not ({"mark", "beginn", "regard", "moment"} & words)
