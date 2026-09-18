@@ -362,3 +362,101 @@ def _abstract_examples(text: str) -> list[str]:
             scored.append((abstractions / len(words), sentence.strip()))
     scored.sort(reverse=True)
     return [s for _, s in scored[:2]]
+
+# Verbs a narrator uses to tell the reader what something meant.
+_EXPLAINS = (
+    "shows|show|showed|signals|signal|signalled|signaled|signifies|signify|signified|"
+    "indicates|indicate|indicated|means|mean|meant|represents|represent|represented|"
+    "symbolises|symbolizes|symbolise|symbolize|conveys|convey|conveyed|implies|imply|"
+    "implied|suggests|suggest|suggested|carries|carry|carried|marks|mark|marked|"
+    "demonstrates|demonstrate|demonstrated|reflects|reflect|reflected"
+)
+
+# Who is doing the explaining. A character noticing something is the scene; a
+# gesture explaining itself is the narrator leaning in.
+#
+# The line between them is the subject, and this brand's own hand-written script
+# draws it cleanly. It writes "Kan notices. He does not fully understand what it
+# means. But he understands that it means something." — animate, uncertain, the
+# character's own experience. The draft it was compared against wrote "The
+# gesture shows deference. It shows fear." Same information, told rather than
+# played, and nothing in the system could see the difference.
+_INANIMATE_SUBJECT = (
+    r"(?:it|this|that|these|those|the\s+\w+(?:\s+\w+)?|his\s+\w+|her\s+\w+|their\s+\w+|"
+    r"a\s+\w+|an\s+\w+)"
+)
+
+_NARRATOR_EXPLAINS = re.compile(
+    rf"\b{_INANIMATE_SUBJECT}\s+(?:{_EXPLAINS})\b",
+    re.IGNORECASE,
+)
+
+# Subjects that are people, however the sentence starts. "He shows deference" is
+# somebody doing something.
+_PERSON_PRONOUNS = frozenset("he she they we i you him her them".split())
+
+# Words that begin a sentence in capitals without being anybody's name. Left in,
+# "The" matched the proper-noun branch, so every sentence opening with a
+# determiner read as a person doing something — which is most of them, and the
+# check found nothing at all.
+_NOT_A_NAME = frozenset("""
+the this that these those it its his hers their there here a an one other others
+some any each every no before after when while as and but so then now
+""".split())
+
+
+def _mentions_person(text: str) -> bool:
+    """Whether anybody is present in this stretch of a sentence.
+
+    Read only from the first word, this missed the clause that matters. The
+    hand-written script writes "But he understands that it means something" —
+    "But" is not a name, "it means" is the pattern, and the sentence was
+    reported as the narrator explaining when it is the character failing to.
+    Anybody named before the verb makes the explanation theirs.
+    """
+    for word in re.findall(r"[A-Za-z']+", text):
+        if word.lower() in _PERSON_PRONOUNS:
+            return True
+        if word[:1].isupper() and word.lower() not in _NOT_A_NAME:
+            return True
+    return False
+
+
+def narrator_explanations(content: str, limit: int = 5) -> list:
+    """Sentences where the narrator states what something meant.
+
+    Reported, not blocked. Whether an explanation is wrong depends on what is
+    being written — a proposal explains for a living — so this says what it
+    found and the piece's reviewer decides.
+    """
+    if not content:
+        return []
+    found = []
+    for sentence in sentences(prose_only_for_scan(content)):
+        stripped = sentence.strip()
+        match = _NARRATOR_EXPLAINS.search(stripped)
+        if not match:
+            continue
+        if _mentions_person(stripped[:match.start()]):
+            continue  # somebody's own understanding, not the narrator's aside
+        # Only when what follows is a meaning rather than a thing: "the gesture
+        # shows deference", not "the door shows a scratch".
+        tail = stripped[match.end():]
+        words = {_normalise(w) for w in _WORD.findall(tail)[:6]}
+        if not (words & _MEANING_STEMS) and not any(_ABSTRACT.search(w) for w in _WORD.findall(tail)[:6]):
+            continue
+        found.append({
+            "sentence": stripped[:160],
+            "message": f"states what something meant instead of showing it: {stripped[:90]!r}",
+        })
+        if len(found) >= limit:
+            break
+    return found
+
+
+def prose_only_for_scan(text: str) -> str:
+    """The draft's prose, tolerant of fragments that prose_only() would strip."""
+    from utils.voice_spec import _is_heading
+
+    return "\n".join(line.strip() for line in text.splitlines()
+                      if line.strip() and not _is_heading(line))
