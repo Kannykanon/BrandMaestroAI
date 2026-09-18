@@ -598,17 +598,32 @@ function updateApproveBadge(checkbox) {
 async function submitFeedback(e) {
     e.preventDefault();
 
-    const generationId = document.getElementById('feedback-generation-id').value;
-    const humanApproved = document.getElementById('feedback-human-approved').checked;
-    const humanScore = parseFloat(document.getElementById('feedback-human-score').value);
-    const humanFeedback = document.getElementById('feedback-comments').value;
-    const contentType = document.querySelector('input[name="content_type"]:checked').value;
-
+    // Everything below is inside the try, including reading the form.
+    //
+    // It was not. A reviewer reported writing a rejection and getting no
+    // rewrite, and the server had no record of the request ever arriving —
+    // which is what a TypeError up here looks like from the outside: the
+    // handler dies before the fetch, the console has the reason, and the page
+    // says nothing at all. A submission that fails has to say so.
     const submitBtn = document.getElementById('btn-submit-feedback');
     submitBtn.disabled = true;
     submitBtn.querySelector('span').innerText = 'Committing feedback...';
 
     try {
+        const generationId = document.getElementById('feedback-generation-id').value;
+        const humanApproved = document.getElementById('feedback-human-approved').checked;
+        const humanScore = parseFloat(document.getElementById('feedback-human-score').value);
+        const humanFeedback = document.getElementById('feedback-comments').value;
+        const typeInput = document.querySelector('input[name="content_type"]:checked');
+        const contentType = typeInput ? typeInput.value : '';
+
+        if (!generationId) {
+            throw new Error('No generation is selected to review. Generate a piece first, or reopen it from History.');
+        }
+        if (!contentType) {
+            throw new Error('No content type is selected — pick one in the Content Generator panel.');
+        }
+
         const response = await fetch(`${API_BASE}/conversation/feedback`, {
             method: 'POST',
             headers: {
@@ -626,7 +641,15 @@ async function submitFeedback(e) {
         });
 
         if (!response.ok) {
-            throw new Error('Failed to register feedback');
+            // Carry the server's own words. "Failed to register feedback" hides
+            // a 403 on the wrong business, a 422 on a malformed score and a 500
+            // behind one sentence that says none of them.
+            let detail = '';
+            try {
+                const body = await response.json();
+                detail = body.detail ? ` — ${typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)}` : '';
+            } catch (ignored) { /* a non-JSON error body is still an error */ }
+            throw new Error(`Feedback was not registered (HTTP ${response.status})${detail}`);
         }
 
         // A rejection queues a full rewrite against the reason given. It always
@@ -661,6 +684,8 @@ async function submitFeedback(e) {
 
     } catch (err) {
         showToast(err.message, 'error');
+        logConsole(`Feedback failed: ${err.message}`, 'error');
+        console.error('submitFeedback', err);
     } finally {
         submitBtn.disabled = false;
         submitBtn.querySelector('span').innerText = 'Commit Feedback to Model Memory';
