@@ -501,9 +501,12 @@ def flatness_note(draft: str, metrics: str) -> str:
     if not typical or not typical.get("median"):
         return ""
     measured = shape_metrics(prose_only(draft) or draft)
-    actual = measured.get("words_per_sentence_variation", 0.0)
-    if not actual or measured.get("sentences", 0) < 10:
+    # Zero is a measurement, not a missing one — a draft whose every sentence is
+    # the same length is the flattest a draft can be, and the first version of
+    # this check let exactly that through by treating 0.0 as "nothing measured".
+    if not measured or measured.get("sentences", 0) < 10:
         return ""
+    actual = measured.get("words_per_sentence_variation", 0.0)
     if actual >= typical["median"] * FLAT_SHARE:
         return ""
     return (
