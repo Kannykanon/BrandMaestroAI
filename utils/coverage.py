@@ -67,6 +67,7 @@ _MEANING = frozenset("""
 weight role title world status deference fear sense idea thing things something
 way ways matter matters power loyalty meaning point level nature kind sort
 beginning end future past reality truth
+mark marks marked regard regarded widely moment eventually entanglement
 """.split())
 
 # Sections of a source document that are planning, not story.
@@ -107,6 +108,19 @@ def _normalise(word: str) -> str:
     return word
 
 
+def _meaning_stems() -> frozenset:
+    """_MEANING as the stemmer will actually see it.
+
+    Words are normalised before this set is consulted, so "beginning" was
+    compared as "beginn" and never matched the entry written out in full — the
+    brief's framing went on being demanded from every retelling.
+    """
+    return frozenset(_normalise(word) for word in _MEANING)
+
+
+_MEANING_STEMS = _meaning_stems()
+
+
 def content_words(text: str) -> set:
     """The words that carry what happened: concrete, not grammar, not abstraction."""
     words = set()
@@ -114,7 +128,7 @@ def content_words(text: str) -> set:
         if len(raw) < 3 or raw.lower() in _STOPWORDS or _ABSTRACT.search(raw):
             continue
         word = _normalise(raw)
-        if word in _MEANING:
+        if word in _MEANING_STEMS:
             continue
         words.add(word)
     return words

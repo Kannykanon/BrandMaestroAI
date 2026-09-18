@@ -651,7 +651,14 @@ def enforcer_node(state: GraphState) -> GraphState:
     # both and answers with rewrites of the draft's own sentences.
     from utils.brand_profile import extract_section
 
-    voice_spec = extract_section(metrics, "VOICE SPEC") or "No voice spec measured for this brand yet."
+    from utils.voice_spec import for_judge
+
+    # Without the rhythm block: it is measured, checked in code and reported to
+    # the writer, and a judge shown the rules quoted them back as the reason for
+    # refusing four drafts in a row however plainly it had been told not to.
+    voice_spec = for_judge(extract_section(metrics, "VOICE SPEC")) or (
+        "No voice spec measured for this brand yet."
+    )
 
     # The moves the brand makes, in its own Brain's words: how it opens, how it
     # closes, the constructions it reaches for. This is what the voice pass is

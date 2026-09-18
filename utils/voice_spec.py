@@ -251,7 +251,26 @@ def beat_grammar(documents: Iterable[str], lines_per_beat: int = 6) -> dict:
     return {"opening": common(openings), "closing": common(closings)}
 
 
-def _rule_lines(spec: dict) -> list[str]:
+RHYTHM_BLOCK = "SENTENCE RHYTHM (measured, and checked in code — for the writer):"
+
+
+def for_judge(spec_text: str) -> str:
+    """The voice spec without the rhythm block.
+
+    Rhythm is measured before the voice pass is called and reported to the
+    writer in words. The judge has no instrument for it and a long record of
+    getting it wrong — including scoring this brand's hand-written script 7.0
+    for the rhythm the brand actually writes in — so it is not shown the rules.
+    """
+    if not spec_text or RHYTHM_BLOCK not in spec_text:
+        return spec_text
+    before, after = spec_text.split(RHYTHM_BLOCK, 1)
+    remainder = after.split("\n\n", 1)
+    tail = remainder[1] if len(remainder) > 1 else ""
+    return (before.rstrip() + ("\n\n" + tail if tail.strip() else "")).strip()
+
+
+def _rule_lines(spec: dict, split: bool = False):
     """How this brand writes, in words. Deliberately without rates.
 
     Every rule here used to carry the number it came from — "sentences run
@@ -267,7 +286,7 @@ def _rule_lines(spec: dict) -> list[str]:
     MECHANICS, where the deterministic checks use them — but they are not
     quoted here and the voice pass never sees them.
     """
-    bands, rules = spec.get("bands", {}), []
+    bands, rules, rhythm = spec.get("bands", {}), [], []
 
     def value(key, field="median"):
         return bands.get(key, {}).get(field)
@@ -284,25 +303,25 @@ def _rule_lines(spec: dict) -> list[str]:
 
     if median_length is not None:
         if median_length <= 8:
-            rules.append(
+            rhythm.append(
                 "Sentences are short, and not uniformly short. Clipped ones carry the action, and a "
                 "longer one arrives to carry a consequence or a detail before the writing clips back."
             )
         elif median_length <= 14:
-            rules.append(
+            rhythm.append(
                 "Sentences run to about a line — long enough to carry a clause, short enough to close "
                 "cleanly — with shorter ones cutting in."
             )
         else:
-            rules.append("Sentences run long, carrying several clauses before they close.")
-        rules.append(
+            rhythm.append("Sentences run long, carrying several clauses before they close.")
+        rhythm.append(
             "Vary them. A passage where every sentence is the same length reads as a list whatever "
             "that length is, and that is the commonest way to get this voice wrong."
         )
     if short is not None and short > 25:
-        rules.append("Let a sentence end early when it has said its thing. Do not pad it out to match the others.")
+        rhythm.append("Let a sentence end early when it has said its thing. Do not pad it out to match the others.")
     if long_share is not None and long_share < 5:
-        rules.append("Sentences that run past twenty words are rare. Break them rather than join them.")
+        rhythm.append("Sentences that run past twenty words are rare. Break them rather than join them.")
 
     nominal = value("nominalisations_per_100_words")
     if nominal is not None:
@@ -327,6 +346,10 @@ def _rule_lines(spec: dict) -> list[str]:
     dialogue = value("share_lines_that_are_dialogue")
     if dialogue is not None and dialogue > 3:
         rules.append("Dialogue appears, introduced by a speaker label on its own line.")
+
+    if split:
+        return rhythm, rules
+    return rhythm + rules
 
     # share_single_sentence_paragraphs is measured and deliberately not reported.
     # In a screenplay corpus it sits near 99 because screenplays are laid out one
@@ -389,7 +412,16 @@ def render_spec(spec: dict, grammar: Optional[dict] = None) -> str:
         "",
         "SENTENCE AND PARAGRAPH HABITS:",
     ]
-    lines += [f"- {rule}" for rule in _rule_lines(spec)]
+    rhythm, rest = _rule_lines(spec, split=True)
+    lines += [f"- {rule}" for rule in rest]
+    if rhythm:
+        # Kept in a block of its own so the voice pass can be handed a spec
+        # without it. Told not to rule on rhythm but shown the rules anyway, a
+        # judge quoted this brand's own "not uniformly short" line back as the
+        # reason for refusing four drafts in a row. An instruction not to use
+        # information loses to the information.
+        lines += ["", RHYTHM_BLOCK]
+        lines += [f"- {rule}" for rule in rhythm]
     for label, beat in (("OPENINGS", "opening"), ("CLOSINGS", "closing")):
         shapes = (grammar or {}).get(beat) or []
         if shapes:
