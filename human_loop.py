@@ -34,11 +34,25 @@ def handle_review_outcome(generation_id: str) -> None:
             ).first()
 
             if not record:
-                logger.warning("No feedback found for generation_id=%s", generation_id)
+                # Reported as "I rejected it and nothing happened". Whether the
+                # feedback never arrived or arrived and was not recorded, this
+                # is the line that distinguishes them, so it says which.
+                logger.warning(
+                    "REVIEW NOT ACTIONED generation_id=%s — no reviewer_learning row carries "
+                    "human feedback for it, so nothing was rejected and no rewrite was queued",
+                    generation_id,
+                )
                 return
 
             if record.human_approved:
-                logger.info("Generation %s approved — no re-trigger needed", generation_id)
+                # The approve box is ticked by default, so a reviewer who
+                # writes a correction and submits without unticking it has
+                # approved the draft. Logged at info with the score, because
+                # from the outside it looks identical to being ignored.
+                logger.info(
+                    "Generation %s was APPROVED (score=%s) — no rewrite queued. A rewrite is "
+                    "only triggered by a rejection.", generation_id, record.human_score,
+                )
                 return
 
             # Read every attribute needed after the session closes, while the
