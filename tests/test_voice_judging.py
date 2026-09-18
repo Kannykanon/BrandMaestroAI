@@ -355,6 +355,22 @@ class TestRhythmIsMeasuredNotJudged:
         gold = shape_metrics(prose_only(pair.gold))["words_per_sentence_variation"]
         assert gold < band["low"], "the gold is outside the band and must still pass"
 
+    def test_the_flattest_possible_draft_is_caught(self, pair):
+        """Zero variation is a measurement, not a missing one. The first
+        version of this check treated 0.0 as "nothing measured" and waved
+        through the one draft it should have been surest about."""
+        from utils.voice_spec import flatness_note, shape_metrics
+
+        flat = " ".join([
+            "He walks the road.", "She waits by it.", "They watch the gate.",
+            "He counts the men.", "She holds the bag.", "They leave the yard.",
+            "He climbs the wall.", "She calls the name.", "They cross the line.",
+            "He drops the key.", "She finds the door.", "They open the box.",
+            "He reads the note.", "She burns the page.",
+        ])
+        assert shape_metrics(flat)["words_per_sentence_variation"] == 0.0
+        assert flatness_note(flat, pair.brain), "every sentence the same length went unremarked"
+
     def test_a_short_piece_is_not_judged_on_its_rhythm(self):
         from utils.voice_spec import flatness_note
 
