@@ -11,6 +11,7 @@ commit. Add a pair by adding a directory; see tests/gold_pairs.py.
 """
 import pytest
 
+from schema import is_narrative
 from tests.gold_pairs import GATES, discover, failures
 
 PAIRS = discover()
@@ -21,9 +22,44 @@ def test_there_are_pairs_to_check():
     assert PAIRS, "no gold pairs found — the harness is checking nothing"
 
 
+def test_at_least_one_pair_carries_writing_the_brand_signed_off():
+    assert any(pair.gold.strip() for pair in PAIRS), (
+        "every pair is still waiting on its gold — nothing here checks that the "
+        "right answer passes, which is the only reason the harness exists"
+    )
+
+
+@pytest.mark.parametrize("pair", PAIRS, ids=str)
+def test_the_content_type_is_one_the_pipeline_supports(pair):
+    from schema import CONTENT_TYPES
+
+    assert pair.content_type in CONTENT_TYPES, (
+        f"{pair.name} declares type {pair.content_type!r}; the pipeline would "
+        f"refuse it, so the gates it is scored by are not the gates it ships with"
+    )
+
+
+@pytest.mark.parametrize(
+    "pair", [p for p in PAIRS if not is_narrative(p.content_type)], ids=str)
+def test_the_narrative_only_gates_stay_off_elsewhere(pair):
+    """Two gates exist because the brief IS the story. Ad copy states claims
+    about a business and uses a fraction of its source on purpose; an ad scored
+    for dropped beats fails for doing its job. Asserted on a draft built to trip
+    both, so the carve-out is checked rather than assumed from an empty result."""
+    tripwire = (
+        "The gesture shows deference. It signals fear. The silence means something.\n"
+        + pair.brief[:400]
+    )
+    found = failures(tripwire, pair)
+    assert "story" not in found, found.get("story")
+    assert "explaining" not in found, found.get("explaining")
+
+
 @pytest.mark.parametrize("pair", PAIRS, ids=str)
 class TestTheRightAnswerPasses:
     def test_the_gold_clears_every_gate(self, pair):
+        if not pair.gold.strip():
+            pytest.skip(f"{pair.name} has no gold.txt yet — see its README")
         found = failures(pair.gold, pair)
         assert found == {}, (
             f"the hand-written correct answer for {pair.name} is refused by "
