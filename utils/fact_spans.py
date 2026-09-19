@@ -53,7 +53,15 @@ _NUMBER_WORDS = (
 )
 
 # A number, with its currency or unit attached: 40%, $1,200, 7.5x, 2024, N5,000.
-_NUMERIC = r"(?:[$£€₦¥]\s?)?\d[\d,.]*\s?(?:%|x|k|m|bn|st|nd|rd|th)?"
+# The digits never end on a separator: "more than 14,000." kept the sentence's
+# full stop inside the fact, and the writer was handed a must-keep span it had
+# to end a sentence with to satisfy.
+#
+# The unit must not run into a word. Unguarded, the "m" of "minutes" read as the
+# unit for millions — "about 8 minutes" came back as the span "about 8 m" with
+# "inutes" left over, and every duration and distance in a product document was
+# extracted wrong. A script's product document had none; ad copy is mostly them.
+_NUMERIC = r"(?:[$£€₦¥]\s?)?\d[\d,.]*(?<![.,])\s?(?:%|x|k|m|bn|st|nd|rd|th)?(?![A-Za-z])"
 
 _ANCHOR = re.compile(
     rf"(?:\b(?:{_QUALIFIERS})\s+)?"

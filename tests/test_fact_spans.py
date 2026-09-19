@@ -51,6 +51,24 @@ class TestWhatCountsAsAFact:
         spans = " | ".join(extract_fact_spans(TREATMENT))
         assert "version 3" not in spans and "two earlier drafts" not in spans
 
+    def test_a_unit_does_not_eat_the_word_after_the_number(self):
+        """"about 8 minutes" came back as the span "about 8 m": the unit that
+        means millions matched the first letter of the following word, and
+        "inutes" was left behind. Product documents for anything but a story are
+        mostly durations, distances and weights, so this was every fact in one."""
+        assert extract_fact_spans("Opening takes about 8 minutes.") == ["about 8 minutes"]
+        assert extract_fact_spans("The kit weighs 4 kilograms.") == ["4 kilograms"]
+        assert extract_fact_spans("Coverage extends 30 xeric miles.") == ["30 xeric miles"]
+
+    def test_a_real_unit_still_attaches(self):
+        spans = " | ".join(extract_fact_spans("Raised $2m last year, at a 40% margin, on 5k accounts."))
+        assert "$2m" in spans and "40%" in spans and "5k accounts" in spans
+
+    def test_a_fact_does_not_swallow_the_sentences_full_stop(self):
+        """A must-keep span ending in a full stop is one the writer can only
+        satisfy by ending a sentence there."""
+        assert extract_fact_spans("Businesses banking here: more than 14,000.") == ["more than 14,000"]
+
     def test_nothing_to_extract_is_not_an_error(self):
         assert extract_fact_spans("") == [] and extract_fact_spans("He waits. Nobody comes.") == []
 
