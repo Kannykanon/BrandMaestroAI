@@ -4,6 +4,7 @@ import os
 
 import redis
 from celery import Celery
+from celery.exceptions import SoftTimeLimitExceeded
 from kombu import Exchange, Queue
 
 from database import get_db_session
@@ -164,13 +165,34 @@ def get_async_redis():
 # Tasks
 # ---------------------------------------------------------------------------
 
+# How long a generation may take before the worker kills it.
+#
+# This was 300s while the streaming endpoint waits MAX_STREAM_SECONDS (900) for
+# the same task, so the worker was killing generations the UI was still
+# patiently waiting for. A real run with an 8-iteration cap takes four to
+# twelve minutes; nearly all of them crossed 300.
+#
+# What made that expensive rather than merely wrong: SoftTimeLimitExceeded is
+# an ordinary Exception, so it landed in the generic handler below and was
+# RETRIED, twice, ten seconds apart. One generation became up to three full
+# runs of a paid pipeline, each starting from scratch with its own research,
+# its own drafts and its own best-draft memory, all writing to one generation
+# row. That is the doubled event stream, and it is why a draft scored 9.2 by
+# one attempt was never a candidate when another attempt delivered 6.5.
+#
+# Derived from the same variable the stream reads so the two cannot drift apart
+# again, plus a minute for the delivery the soft limit interrupts.
+GENERATION_SOFT_LIMIT = int(os.getenv("MAX_STREAM_SECONDS", "900"))
+GENERATION_HARD_LIMIT = GENERATION_SOFT_LIMIT + 60
+
+
 @celery_app.task(
     bind=True,
     name="tasks.generate_content",
-    max_retries=2,              
+    max_retries=2,
     default_retry_delay=10,
-    soft_time_limit=300,  
-    time_limit=360         
+    soft_time_limit=GENERATION_SOFT_LIMIT,
+    time_limit=GENERATION_HARD_LIMIT,
 )
 def generate_content(
     self,
@@ -270,6 +292,26 @@ def generate_content(
             "generation_id": generation_id,
             "score":         final_state.get("score", 0.0)
         }
+
+    except SoftTimeLimitExceeded:
+        # Never retried. A generation that ran out of time will run out of time
+        # again, and starting it over spends another full pipeline to arrive at
+        # the same place — while the first attempt's events are still arriving
+        # on the same stream, so the two attempts interleave and whichever
+        # finishes last overwrites the other's work.
+        logger.error(
+            "Generation exceeded %ds business_id=%s generation_id=%s — not retried",
+            GENERATION_SOFT_LIMIT, business_id, generation_id,
+        )
+        _mark_generation_failed(
+            generation_id=generation_id,
+            business_id=business_id,
+            content_type=content_type,
+            topic=topic,
+            format_type=format_type,
+            user_id=user_id,
+        )
+        raise
 
     except Exception as exc:
         logger.error(
