@@ -12,11 +12,22 @@ against a reading of the latest failure. A pair is a directory:
     tests/fixtures/gold/<name>/
         brief.txt              the product document the piece is written from
         gold.txt               the hand-written correct answer
+        type.txt               the content type, default "script"
         voice/*.txt            the brand-voice documents the Brain is built from
         rejected/<case>.txt    a draft that must be refused
         rejected/<case>.expect one word naming the gate that must refuse it
 
 Adding a pair is dropping a directory in. Nothing here is registered by name.
+
+The gates a pair runs are the gates its content type runs. A script retells its
+source and so may reuse longer runs of it, must cover its beats, and must not
+stop to explain what a gesture meant; ad copy does none of those things, and
+scoring it by the script's rules would have measured the carve-outs backwards.
+
+gold.txt is the one file that cannot be written here. It is the piece the brand
+would sign off, and its whole value is that somebody outside this system judged
+it good. A pair without one still runs its rejected drafts — that half is
+mechanical — and skips the half that needs the judgement.
 
 The gates run without a model or a database, so the harness is free and runs on
 every commit. What it cannot check is whether prose sounds right — that is the
@@ -51,7 +62,8 @@ class Rejected:
 class Pair:
     name: str
     brief: str
-    gold: str
+    gold: str  # "" for a pair still waiting on writing the brand has signed off
+    content_type: str = "script"
     voice: list = field(default_factory=list)
     rejected: list = field(default_factory=list)
 
@@ -72,9 +84,10 @@ def discover() -> list:
         if not os.path.isdir(directory):
             continue
         brief = os.path.join(directory, "brief.txt")
-        gold = os.path.join(directory, "gold.txt")
-        if not (os.path.exists(brief) and os.path.exists(gold)):
+        if not os.path.exists(brief):
             continue
+        gold = os.path.join(directory, "gold.txt")
+        type_path = os.path.join(directory, "type.txt")
         rejected = []
         for draft in sorted(glob.glob(os.path.join(directory, "rejected", "*.txt"))):
             expect_path = draft[:-4] + ".expect"
@@ -83,7 +96,8 @@ def discover() -> list:
         pairs.append(Pair(
             name=os.path.basename(directory),
             brief=_read(brief),
-            gold=_read(gold),
+            gold=_read(gold) if os.path.exists(gold) else "",
+            content_type=(_read(type_path).strip() if os.path.exists(type_path) else "script"),
             voice=[_read(p) for p in sorted(glob.glob(os.path.join(directory, "voice", "*.txt")))],
             rejected=rejected,
         ))
@@ -94,43 +108,46 @@ def failures(content: str, pair: Pair) -> dict:
     """Every deterministic gate that would refuse this content, by gate name.
 
     The same checks the enforcer runs, in the same order, minus the ones that
-    need a model. Kept in one place so a change to a gate is scored against
-    every pair at once.
+    need a model — and branching on content type where the enforcer branches,
+    so a pair is scored by the rules its own type actually ships with.
     """
-    from utils.coverage import dropped_detail
+    from schema import is_narrative
+    from utils.coverage import dropped_detail, narrator_explanations
     from utils.enforcement import check_measured_mechanics, run_preflight_checks
-    from utils.enforcement.constants import NARRATIVE_VERBATIM_SPAN_WORDS
+    from utils.enforcement.constants import (MAX_VERBATIM_SPAN_WORDS,
+                                             NARRATIVE_VERBATIM_SPAN_WORDS)
     from utils.enforcement.provenance import find_extractive_spans
     from utils.fact_spans import extract_fact_spans, missing_fact_spans
-    from utils.voice_spec import band_high
+    from utils.screenplay import heading_findings
+    from utils.voice_spec import band_high, flatness_note
 
+    narrative = is_narrative(pair.content_type)
     brain = pair.brain
     found: dict = {gate: [] for gate in GATES}
     found["mechanics"] = [f["message"] for f in check_measured_mechanics(content, brain)]
     found["preflight"] = [f["message"] for f in run_preflight_checks(content, brain)]
     found["copying"] = [
         f"{span['length']} words: {span['text'][:60]}"
-        for span in find_extractive_spans(content, pair.brief,
-                                          max_span=NARRATIVE_VERBATIM_SPAN_WORDS)
+        for span in find_extractive_spans(
+            content, pair.brief,
+            max_span=NARRATIVE_VERBATIM_SPAN_WORDS if narrative else MAX_VERBATIM_SPAN_WORDS)
     ]
     found["facts"] = [f'lost: "{span}"'
                       for span in missing_fact_spans(content, extract_fact_spans(pair.brief))]
-    found["story"] = [
-        f"{'never told' if beat['skipped'] else 'told thinly'}: {beat['beat'][:60]}"
-        for beat in dropped_detail(content, pair.brief,
-                                   abstraction_high=band_high(brain, "nominalisations_per_100_words"))
-    ]
+    if narrative:
+        # Blocking only where the brief IS the story. A blog uses a fraction of
+        # its research on purpose, and an ad uses almost none of it.
+        found["story"] = [
+            f"{'never told' if beat['skipped'] else 'told thinly'}: {beat['beat'][:60]}"
+            for beat in dropped_detail(
+                content, pair.brief,
+                abstraction_high=band_high(brain, "nominalisations_per_100_words"))
+        ]
+        # A proposal explains for a living; a scene does not.
+        found["explaining"] = [f["message"] for f in narrator_explanations(content)]
     # Prose has no scene headings, so this is empty for everything but a script.
-    from utils.screenplay import heading_findings
-
     found["headings"] = [f["message"] for f in heading_findings(content)]
-
-    from utils.voice_spec import flatness_note
 
     note = flatness_note(content, brain)
     found["rhythm"] = [note] if note else []
-
-    from utils.coverage import narrator_explanations
-
-    found["explaining"] = [f["message"] for f in narrator_explanations(content)]
     return {gate: items for gate, items in found.items() if items}
