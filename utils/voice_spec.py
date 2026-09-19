@@ -270,6 +270,33 @@ def for_judge(spec_text: str) -> str:
     return (before.rstrip() + ("\n\n" + tail if tail.strip() else "")).strip()
 
 
+def brain_for_judge(brain: str) -> str:
+    """The whole Brand Brain as the voice pass should see it.
+
+    for_judge() above strips the rhythm block from the VOICE SPEC section, and
+    for four months that was believed to be enough. It was not: the judge's
+    prompt is also handed the entire Brain as BRAND METRICS, rhythm block and
+    all, so the rules were removed from one variable and supplied in full by
+    the next one. The judge went on quoting them — "the brand voice requires
+    variation in sentence length: 'Sentences are short, and not uniformly
+    short...'" — as the reason for refusing draft after draft.
+
+    The measured rates go too. Every comment around the voice pass says it is
+    given no rates and that this is the point, because handed the numbers the
+    judge faulted whichever one a draft had crossed: three rounds ordering a
+    script to join its sentences, then one ordering them split. That was true
+    of the variables built for it and false of the Brain it was sent.
+
+    What is left is what the judge is actually for: how this brand opens and
+    closes, the constructions it reaches for, its tone, what it may claim.
+    """
+    if not brain:
+        return brain
+    without_rates = re.sub(r"#\s*MEASURED MECHANICS\s*\n.*?(?=\n#\s+[A-Z]|\Z)", "",
+                           brain, flags=re.DOTALL)
+    return for_judge(without_rates).strip()
+
+
 def _rule_lines(spec: dict, split: bool = False):
     """How this brand writes, in words. Deliberately without rates.
 

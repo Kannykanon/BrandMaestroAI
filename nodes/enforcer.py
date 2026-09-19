@@ -651,7 +651,7 @@ def enforcer_node(state: GraphState) -> GraphState:
     # both and answers with rewrites of the draft's own sentences.
     from utils.brand_profile import extract_section
 
-    from utils.voice_spec import for_judge
+    from utils.voice_spec import brain_for_judge, for_judge
 
     # Without the rhythm block: it is measured, checked in code and reported to
     # the writer, and a judge shown the rules quoted them back as the reason for
@@ -691,7 +691,9 @@ def enforcer_node(state: GraphState) -> GraphState:
     # The enforcer no longer uses raw RAG examples, relying strictly on synthesized rules.
     result = LLMSingleton.get("enforcement").invoke(
         ENFORCER_PROMPT.format(
-            metrics=metrics,
+            # Not `metrics`. The whole Brain here re-supplied the rhythm rules
+            # and the rates that every variable below was built to withhold.
+            metrics=brain_for_judge(metrics),
             content=content,
             topic=state.get("topic", "") or "No topic provided.",
             research=state.get("research", "") or "No research/source material was provided for this generation.",
