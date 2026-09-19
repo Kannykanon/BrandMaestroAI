@@ -441,6 +441,76 @@ class TestTheJudgeIsNotShownTheRhythmRules:
         assert "for_judge(" in inspect.getsource(enforcer.enforcer_node)
 
 
+class TestTheRulesDoNotArriveByTheOtherDoor:
+    """The trim above was believed to be enough for months and was not.
+
+    The judge's prompt is handed the whole Brand Brain as BRAND METRICS as well
+    as the trimmed spec, so the rhythm rules were removed from one variable and
+    supplied in full by the next. The judge kept quoting them — "the brand voice
+    requires variation in sentence length" — as its reason for refusing draft
+    after draft, and a source-level check that for_judge() was called passed
+    happily throughout. These assert on the text, not on the call.
+    """
+
+    BRAIN = (
+        "# BRAND IDENTITY\nA studio that writes plainly.\n\n"
+        "# MEASURED MECHANICS\n- median_words_per_sentence: 7.0\n"
+        "- share_sentences_under_6_words: 0.34\n\n"
+        "# VOICE SPEC (measured from this brand's own writing)\n"
+        "SENTENCE AND PARAGRAPH HABITS:\n- Plain words.\n\n"
+        "SENTENCE RHYTHM (measured, and checked in code — for the writer):\n"
+        "- Sentences are short, and not uniformly short. Clipped ones carry the action.\n\n"
+        "HOW ITS OPENINGS TEND TO GO: straight into the action.\n"
+    )
+
+    def test_the_whole_brain_loses_the_rhythm_rules(self):
+        from utils.voice_spec import brain_for_judge
+
+        judged = brain_for_judge(self.BRAIN)
+        assert "not uniformly short" not in judged
+        assert "SENTENCE RHYTHM" not in judged
+
+    def test_the_whole_brain_loses_the_rates(self):
+        """Every comment around the voice pass says it is given no rates and
+        that this is the point. It was given all of them."""
+        from utils.voice_spec import brain_for_judge
+
+        judged = brain_for_judge(self.BRAIN)
+        assert "MEASURED MECHANICS" not in judged
+        assert "0.34" not in judged and "7.0" not in judged
+
+    def test_what_the_judge_is_for_survives(self):
+        from utils.voice_spec import brain_for_judge
+
+        judged = brain_for_judge(self.BRAIN)
+        assert "BRAND IDENTITY" in judged and "writes plainly" in judged
+        assert "HOW ITS OPENINGS TEND TO GO" in judged
+        assert "Plain words" in judged
+
+    def test_the_rendered_prompt_carries_neither(self):
+        """The end of the pipe, where the leak actually was."""
+        from prompts.enforcer import ENFORCER_PROMPT
+        from utils.voice_spec import brain_for_judge
+
+        rendered = ENFORCER_PROMPT.format(
+            metrics=brain_for_judge(self.BRAIN),
+            content="He bows.", topic="t", research="r", permitted_claims="none",
+            human_directive="", voice_spec="- Plain words.", voice_craft="none",
+            closed_subjects="- none",
+        )
+        assert "not uniformly short" not in rendered
+        assert "0.34" not in rendered
+
+    def test_the_prompt_does_not_order_a_rhythm_check(self):
+        """A binary check the judge MUST answer outranks any instruction not to
+        raise the subject. It was asked to rule on rhythm in the same prompt
+        that withheld the rules for it."""
+        from prompts.enforcer import ENFORCER_PROMPT
+
+        assert "SENTENCE RHYTHM:" not in ENFORCER_PROMPT
+        assert "Wrong sentence length" not in ENFORCER_PROMPT
+
+
 class TestTheBriefsOwnCommentaryIsNotDemanded:
     """Two checks were pulling against each other. Coverage demanded the words
     of "This is the moment that marks the beginning of his entanglement...

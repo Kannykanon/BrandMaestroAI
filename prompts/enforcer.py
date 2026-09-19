@@ -195,9 +195,7 @@ Before scoring, you MUST answer each of these binary checks by comparing the con
    trail-off? A placeholder ellipsis inside a claim is a structural failure. An ellipsis the
    brand uses intentionally as punctuation is not. (YES = FAIL / NO = PASS)
 
-6. SENTENCE RHYTHM: Does the content follow the brand's sentence rhythm defined in the brand metrics? (YES/NO)
-
-7. HEDGING CHECK: Does the content avoid hedging words the brand prohibits according to the Tone Signature in the brand metrics? (YES/NO — list any violations)
+6. HEDGING CHECK: Does the content avoid hedging words the brand prohibits according to the Tone Signature in the brand metrics? (YES/NO — list any violations)
 
 SCORING CONSTRAINT:
   - An N/A answer means the brand defines no such rule. N/A NEVER counts as a NO and never
@@ -212,11 +210,15 @@ STEP 3 — DIMENSION SCORING
 
 Only run this if the hallucination check PASSED.
 
-**Style (sentence mechanics, rhythm, formatting, vocabulary):**
-- 0.0–0.2: Completely different writing mechanics. Wrong sentence length, wrong rhythm, wrong formatting.
-- 0.3–0.4: Some surface similarity but fundamental mechanics are off.
-- 0.5–0.6: Recognizable attempt. Gets some mechanics right but misses others.
-- 0.7–0.8: Strong match. Rhythm, sentence patterns, and formatting are mostly right. Minor deviations.
+**Style (word choice, sentence shape, formatting):**
+Sentence rhythm and sentence length are NOT yours to judge. They are measured in code before
+you are called and reported to the writer separately. Do not raise them, do not cite them as a
+reason for any score, and do not ask for sentences to be combined, split, lengthened or varied.
+A piece written in short sentences is not thereby wrong.
+- 0.0–0.2: Completely different writing. Wrong words, wrong sentence shapes, wrong formatting.
+- 0.3–0.4: Some surface similarity but the fundamentals are off.
+- 0.5–0.6: Recognizable attempt. Gets some of it right but misses others.
+- 0.7–0.8: Strong match. Word choice, sentence shapes and formatting are mostly right. Minor deviations.
 - 0.9–1.0: Indistinguishable. A reader familiar with the brand would not detect the difference.
 
 **Tone (register, assertiveness, hedging, emotional quality, reader relationship):**
