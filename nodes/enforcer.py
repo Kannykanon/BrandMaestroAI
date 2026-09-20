@@ -512,7 +512,10 @@ def enforcer_node(state: GraphState) -> GraphState:
     max_span = (NARRATIVE_VERBATIM_SPAN_WORDS if is_narrative(state.get("content_type", ""))
                 else MAX_VERBATIM_SPAN_WORDS)
     extractive_spans = find_extractive_spans(
-        content, research_text, max_span=max_span, name_evidence=name_evidence
+        content, research_text, max_span=max_span, name_evidence=name_evidence,
+        # The spans the writer was ordered to reproduce exactly, a few hundred
+        # lines above. Without them this check refuses what that one demands.
+        must_keep=fact_spans,
     )
     if extractive_spans:
         logger.warning(

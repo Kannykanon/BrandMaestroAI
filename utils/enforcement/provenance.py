@@ -366,10 +366,29 @@ def _authored_word_count(content: str, ctoks, i: int, j: int,
     return authored
 
 
+def _must_keep_regions(content: str, spans) -> list:
+    """Where in `content` the spans the writer was ordered to reproduce sit.
+
+    Tolerant of the punctuation around them: the draft writes "the most feared
+    cult group in the state, and one of the deadliest in the country", and the
+    comma is the draft's own.
+    """
+    regions = []
+    for span in spans or ():
+        parts = [re.escape(part) for part in
+                 (raw.strip(".,;:!?\u2014\u2013-") for raw in span.split()) if part]
+        if len(parts) < 2:
+            continue
+        for match in re.finditer(r"\W+".join(parts), content, re.IGNORECASE):
+            regions.append((match.start(), match.end()))
+    return regions
+
+
 def find_extractive_spans(content: str, source: str,
                            max_span: int = MAX_VERBATIM_SPAN_WORDS,
                            limit: int = 5,
-                           name_evidence: str = None) -> list[dict]:
+                           name_evidence: str = None,
+                           must_keep=None) -> list[dict]:
     """Runs of more than `max_span` consecutive words copied verbatim from source.
 
     Catches the failure mode where the writer summarises its research instead of
@@ -377,9 +396,23 @@ def find_extractive_spans(content: str, source: str,
     internal material the source happened to contain) rather than re-expressing
     the facts in the brand's own voice.
 
-    Two kinds of verbatim reuse are legitimate and exempt: direct quotations,
-    which have to match their source, and language the brand repeats across its
-    own documents, which is standing copy rather than lifted research.
+    Three kinds of verbatim reuse are legitimate and exempt: direct quotations,
+    which have to match their source; language the brand repeats across its own
+    documents, which is standing copy rather than lifted research; and the fact
+    spans the writer was handed as must-keep, which this system orders it to
+    reproduce exactly.
+
+    That third one was missing and the two checks met head on. A treatment
+    states "the most feared cult group in the state, and one of the deadliest in
+    the country" — two claims, extracted as two must-keep spans of eight and
+    seven words because a superlative's qualifier belongs to it. The writer kept
+    both, in the order the source states them, and the sixteen words that
+    resulted were reported as copying. It had done exactly as it was told.
+
+    Only the spans themselves are exempt, never the sentence around them: a run
+    that passes through one is split by it, and each remaining stretch is still
+    measured. Reproducing a fact is not the same as reproducing the source's
+    prose, which is the distinction the whole check rests on.
     """
     ctoks = tokens_with_offsets(content)
     stoks = [t for t, _, _ in tokens_with_offsets(source)]
@@ -429,7 +462,9 @@ def find_extractive_spans(content: str, source: str,
     # text, which settles it.
     name_words = _name_words(name_evidence if name_evidence is not None else source)
 
-    protected = verbatim_regions(content) + _matching_about_regions(content, source)
+    protected = (verbatim_regions(content)
+                 + _matching_about_regions(content, source)
+                 + _must_keep_regions(content, must_keep))
     blocked = [
         any(rs <= start and end <= re_ for rs, re_ in protected)
         for _, start, end in ctoks
