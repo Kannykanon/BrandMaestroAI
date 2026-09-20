@@ -70,6 +70,35 @@ class TestWhatIsLeftAlone:
         assert narrator_explanations("") == []
 
 
+class TestTwoWaysItWasSlippedPast:
+    """Both from one approved draft, side by side in the same paragraph:
+
+        They greet EMK specifically with both hands.
+        This gesture signals status.
+        It hints at fear.
+
+    The check was built on "The gesture shows deference" and caught nothing
+    here. It scored 9.5 and shipped.
+    """
+
+    def test_a_determiner_before_the_noun_does_not_hide_it(self):
+        """"The gesture signals status" was caught and "This gesture signals
+        status" was not — one determiner apart, because this/that/these/those
+        were listed only as bare pronouns."""
+        assert narrator_explanations("This gesture signals status.")
+        assert narrator_explanations("That title carries real weight.")
+
+    def test_hinting_is_explaining(self):
+        assert narrator_explanations("It hints at fear.")
+
+    def test_the_words_those_determiners_normally_start_are_still_clean(self):
+        """"This is his only link home" is the hand-written script's own
+        sentence, and "That night he leaves" is a scene."""
+        for line in ("This is his only link home.", "That night he leaves.",
+                     "These men are seated.", "Those are his friends."):
+            assert narrator_explanations(line) == [], line
+
+
 class TestItIsAGateInTheHarness:
     def test_the_gold_clears_it(self, pair):
         from tests.gold_pairs import failures
