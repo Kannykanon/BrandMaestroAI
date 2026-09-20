@@ -155,6 +155,38 @@ class TestLosingAFact:
         span = ["the most feared cult group in the state"]
         assert missing_fact_spans("He leaves with the number in his pocket.", span) == []
 
+    def test_two_must_keep_spans_side_by_side_are_not_copying(self):
+        """The source states both claims in one clause, so a writer that keeps
+        both in the order it found them produces sixteen consecutive copied
+        words while doing exactly as it was told. The system cannot order a
+        phrase reproduced and then refuse it as copied."""
+        from utils.enforcement.provenance import find_extractive_spans
+
+        source = ("The group is widely regarded as the most feared cult group in the state, "
+                  "and one of the deadliest in the country. He leaves before dark.")
+        spans = extract_fact_spans(source)
+        draft = ("He is with them now. The group is the most feared cult group in the state, "
+                 "and one of the deadliest in the country.")
+
+        assert find_extractive_spans(draft, source, max_span=14), "the trap this undoes"
+        assert find_extractive_spans(draft, source, max_span=14, must_keep=spans) == []
+
+    def test_the_sentence_around_a_must_keep_span_is_still_checked(self):
+        """Only the spans are exempt. A run that passes through one is split by
+        it, and what remains is measured — otherwise a writer could paste a
+        paragraph by hanging it off a fact."""
+        from utils.enforcement.provenance import find_extractive_spans
+
+        import pathlib
+
+        source = (pathlib.Path(__file__).parent / "fixtures" / "gold" / "kancity"
+                  / "brief.txt").read_text(encoding="utf-8")
+        spans = extract_fact_spans(source)
+        lifted = ("He finds a group of more than seven men, seated, drinking. They wave him "
+                  "over, offer him a seat. He takes it. They tell him to drink with them.")
+        found = find_extractive_spans(lifted, source, max_span=14, must_keep=spans)
+        assert found and found[0]["length"] >= 14
+
     def test_reordering_a_superlative_is_not_losing_it(self):
         """A number has one correct wording and a superlative has many. The
         brand's own second draft wrote "one of the country's deadliest", which

@@ -127,14 +127,18 @@ def failures(content: str, pair: Pair) -> dict:
     found: dict = {gate: [] for gate in GATES}
     found["mechanics"] = [f["message"] for f in check_measured_mechanics(content, brain)]
     found["preflight"] = [f["message"] for f in run_preflight_checks(content, brain)]
+    fact_spans = extract_fact_spans(pair.brief)
     found["copying"] = [
         f"{span['length']} words: {span['text'][:60]}"
         for span in find_extractive_spans(
             content, pair.brief,
-            max_span=NARRATIVE_VERBATIM_SPAN_WORDS if narrative else MAX_VERBATIM_SPAN_WORDS)
+            max_span=NARRATIVE_VERBATIM_SPAN_WORDS if narrative else MAX_VERBATIM_SPAN_WORDS,
+            # As the enforcer does. Without this the harness refuses the spans
+            # the writer is ordered to reproduce.
+            must_keep=fact_spans)
     ]
     found["facts"] = [f'lost: "{span}"'
-                      for span in missing_fact_spans(content, extract_fact_spans(pair.brief))]
+                      for span in missing_fact_spans(content, fact_spans)]
     if narrative:
         # Blocking only where the brief IS the story. A blog uses a fraction of
         # its research on purpose, and an ad uses almost none of it.

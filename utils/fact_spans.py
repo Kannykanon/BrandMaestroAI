@@ -34,9 +34,13 @@ feared cult group in the state, and one of the deadliest in the country" into
 different scope, in six words. A superlative's qualifier is part of it exactly
 as a number's is.
 
-These spans are not exempted from the copying gate and do not need to be: each
-is short enough to clear it on its own. A claim that cannot be said in eight
-words is phrasing, and phrasing is the writer's job.
+These spans are exempt from the copying gate, because a system cannot order a
+phrase reproduced exactly and then refuse it as copied. Each is short enough to
+clear that gate alone, but the source states two of them side by side, and a
+writer that kept both in the order it found them produced sixteen consecutive
+copied words while doing as it was told.
+
+Only the spans are exempt, never the sentence built around them.
 """
 from __future__ import annotations
 
