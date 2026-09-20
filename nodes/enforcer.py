@@ -914,6 +914,29 @@ def enforcer_node(state: GraphState) -> GraphState:
                 + listed
             ).strip()
 
+    # Scenes the source does not account for. Every other check asks whether
+    # the source reached the draft; this asks whether the draft stayed inside
+    # the source. A run that had told the whole treatment by its first act went
+    # on to write two more, in which Kan sits alone remembering faces — and the
+    # story gate was satisfied, because every beat it knew about had been told.
+    if is_narrative(state.get("content_type", "")) and not evaluation.get("approved"):
+        from utils.coverage import unsupported_scenes
+        from utils.documents import reference_documents
+
+        invented = unsupported_scenes(
+            content,
+            reference_documents(state["business_id"], state.get("content_type", "")) or research_text,
+        )
+        if invented:
+            listed = "\n".join(f"  - {f['heading']}" for f in invented)
+            evaluation["feedback"] = (
+                (evaluation.get("feedback") or "").rstrip()
+                + "\n\nSCENES THE SOURCE DOES NOT ACCOUNT FOR — each of these tells nothing the "
+                  "draft has not already told. If the source has run out, the piece ends; do not "
+                  "write on past it. Delete these or replace them with something that happens:\n"
+                + listed
+            ).strip()
+
     # Anything the sanitiser left. It rides along with whatever else is going
     # back rather than refusing the draft on its own — a heading it could not
     # decide is a heading a person should look at, not a reason to spend a round.
