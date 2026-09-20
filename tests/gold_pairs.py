@@ -43,7 +43,8 @@ from dataclasses import dataclass, field
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "gold")
 
 # The gates a piece must clear. Each returns a list of human-readable failures.
-GATES = ("mechanics", "preflight", "copying", "facts", "story", "headings", "rhythm", "explaining")
+GATES = ("mechanics", "preflight", "copying", "facts", "story", "headings", "rhythm",
+         "explaining", "invention")
 
 
 def _read(path: str) -> str:
@@ -112,7 +113,7 @@ def failures(content: str, pair: Pair) -> dict:
     so a pair is scored by the rules its own type actually ships with.
     """
     from schema import is_narrative
-    from utils.coverage import dropped_detail, narrator_explanations
+    from utils.coverage import dropped_detail, narrator_explanations, unsupported_scenes
     from utils.enforcement import check_measured_mechanics, run_preflight_checks
     from utils.enforcement.constants import (MAX_VERBATIM_SPAN_WORDS,
                                              NARRATIVE_VERBATIM_SPAN_WORDS)
@@ -145,6 +146,9 @@ def failures(content: str, pair: Pair) -> dict:
         ]
         # A proposal explains for a living; a scene does not.
         found["explaining"] = [f["message"] for f in narrator_explanations(content)]
+        # And the other direction: what the draft added that the source has not
+        # got. Only scripts have scenes, so only scripts can invent one.
+        found["invention"] = [f["message"] for f in unsupported_scenes(content, pair.brief)]
     # Prose has no scene headings, so this is empty for everything but a script.
     found["headings"] = [f["message"] for f in heading_findings(content)]
 

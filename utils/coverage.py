@@ -460,3 +460,119 @@ def prose_only_for_scan(text: str) -> str:
 
     return "\n".join(line.strip() for line in text.splitlines()
                       if line.strip() and not _is_heading(line))
+
+# When a scene counts as telling a beat at all, and when it counts as telling
+# one well enough to earn its place without adding anything new.
+#
+# Both numbers come from the one hand-written script this system has. Its
+# scenes tell their best-matching beat at 0.39, 0.33, 0.73, 0.67, 0.71 and
+# 0.29, and exactly one of them — a retelling that moves nothing forward —
+# tells no beat that an earlier scene had not already told. That scene sits at
+# 0.73. The two fabricated scenes that prompted this check sit at 0.25, which
+# is the floor: they match a beat only because they name Kan and a number.
+#
+# The gap between 0.73 and 0.25 is what this check lives in. It is a wide gap
+# and a single example, which is why nothing here refuses a draft on its own.
+TELLS_A_BEAT = 0.25
+RETELLS_A_BEAT_WELL = 0.5
+
+# How much of a scene may be words the draft has already used before the scene
+# counts as going back over itself. The hand-written script never passes 0.35.
+# A draft's own invented transition — Kan walking past the gates into an
+# unknown part of the city, which the source does not contain and which is
+# perfectly good screenwriting — sits at 0.33, and without this it was being
+# reported as fabrication. The two fabricated scenes sit at 0.58 and 0.64:
+# they are recaps, and a recap is made of words that have already been said.
+RECYCLED = 0.5
+
+
+def _scene_bodies(content: str) -> list:
+    """(heading, prose) for each scene, ignoring anything before the first one."""
+    from utils.screenplay import HEADING
+    from utils.voice_spec import _is_heading
+
+    scenes, heading, body = [], None, []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if HEADING.match(stripped):
+            if heading and body:
+                scenes.append((heading, " ".join(body)))
+            heading, body = stripped, []
+            continue
+        if _is_heading(stripped):
+            continue  # act titles, FADE IN, FADE OUT
+        if heading:
+            body.append(stripped)
+    if heading and body:
+        scenes.append((heading, " ".join(body)))
+    return scenes
+
+
+def unsupported_scenes(content: str, source: str, limit: int = 4) -> list:
+    """Scenes the source does not account for.
+
+    Every other check in this system asks whether the source reached the draft.
+    This one asks the opposite: whether the draft stayed inside the source. A
+    run that had told the whole treatment by its first act went on to write two
+    more, in which Kan sits alone in his room, thinks about the day, remembers
+    faces and finds his reality altered. None of it happens in the source. The
+    story gate was satisfied — every beat had been told — and nothing else was
+    looking.
+
+    Why it is not simply "prose the source does not contain": an adaptation
+    invents constantly and must. Measured against the source word by word, the
+    hand-written script's closing scene is 0.34 grounded and one of the invented
+    scenes is 0.33. A threshold drawn between those two numbers would have
+    refused the correct answer to catch half the fabrication, which is the
+    mistake this system has made before and the reason the gold pair exists.
+
+    What separates them is not novelty but purpose. Every scene in the
+    hand-written script either carries a beat nothing before it had carried, or
+    tells its own beat unmistakably. A fabricated scene does neither: it has
+    nothing new to say and no beat it is really telling, which is why it reads
+    as a recap of a story that has already finished.
+
+    Reported, never blocking. An adaptation may legitimately write a scene the
+    source only implies, and the cost of being wrong here is refusing writing
+    somebody meant.
+    """
+    if not content or not source:
+        return []
+    scenes = _scene_bodies(content)
+    if len(scenes) < 2:
+        return []  # nothing to be redundant against
+
+    beats = story_beats(source)
+    beat_words = [content_words(beat) for beat in beats]
+    if not any(beat_words):
+        return []
+
+    findings, told_already, said_already = [], set(), set()
+    for heading, body in scenes:
+        words = content_words(body)
+        if not words:
+            continue
+        shares = [len(words & wanted) / len(wanted) if wanted else 0.0
+                  for wanted in beat_words]
+        fresh = {i for i, share in enumerate(shares)
+                 if share >= TELLS_A_BEAT and i not in told_already}
+        recycled = len(words & said_already) / len(words) if said_already else 0.0
+        # All three, because each alone refuses writing somebody meant. No new
+        # beat is true of a retelling; a weak match is true of a terse scene;
+        # and repeating earlier words is true of any scene with the same people
+        # in it. Together they describe a scene that has nothing to say and is
+        # saying it with what is lying around.
+        if not fresh and max(shares) < RETELLS_A_BEAT_WELL and recycled >= RECYCLED:
+            findings.append({
+                "heading": heading[:120],
+                "closest": round(max(shares), 2),
+                "recycled": round(recycled, 2),
+                "message": (f"this scene tells nothing the draft has not already told: "
+                            f"{heading[:80]!r}"),
+            })
+        told_already |= fresh
+        said_already |= words
+    return findings[:limit]
+
