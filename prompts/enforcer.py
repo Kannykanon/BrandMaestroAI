@@ -90,8 +90,6 @@ What a genuine failure looks like:
   - Padding: a longer word chosen over a plain one, a clause added to fill a sentence out.
   - Copying the brief's own commentary instead of dramatising it — "this marks the beginning of his
     entanglement" is the source explaining its story, not the brand telling one.
-  - Writing so clipped it reads as a list of facts rather than a scene — judged by whether it reads
-    that way, never by how many words the sentences have.
   - Broken or unidiomatic English ("He must convene beyond campus boundaries") is an automatic fail.
   - In a script: a scene whose action could not happen where its heading says it does. A scene headed
     INT. UNIVERSITY HOSTEL whose action is the character walking away from a group across town is two

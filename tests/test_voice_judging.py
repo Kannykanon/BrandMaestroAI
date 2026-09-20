@@ -510,6 +510,25 @@ class TestTheRulesDoNotArriveByTheOtherDoor:
         assert "SENTENCE RHYTHM:" not in ENFORCER_PROMPT
         assert "Wrong sentence length" not in ENFORCER_PROMPT
 
+    def test_the_prompt_offers_no_exception_for_clipped_writing(self):
+        """The prompt forbids rhythm complaints at length — do not ask for
+        sentences to be longer or shorter, do not count words, if your only
+        complaint can be expressed as a number there is no complaint — and then
+        listed one genuine failure as "writing so clipped it reads as a list of
+        facts rather than a scene". The judge took the exception and left the
+        rule: it quoted that line back verbatim, as "the brand guide", while
+        refusing eight drafts in a run for reading like a list.
+
+        An escape hatch phrased as "only when it really does read that way" is
+        not a narrow one. Every clipped draft can be described that way, and
+        this brand writes clipped on purpose — its own hand-written script is
+        the most clipped thing in the corpus.
+        """
+        from prompts.enforcer import ENFORCER_PROMPT
+
+        assert "reads as a list of facts" not in ENFORCER_PROMPT
+        assert "so clipped" not in ENFORCER_PROMPT
+
 
 class TestTheBriefsOwnCommentaryIsNotDemanded:
     """Two checks were pulling against each other. Coverage demanded the words
