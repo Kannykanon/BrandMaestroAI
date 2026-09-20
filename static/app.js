@@ -435,6 +435,8 @@ async function triggerGeneration(e) {
         // streamed, and the UI called that 'Completed' — so the one draft that
         // most needed a reviewer's eye arrived looking like the approved ones.
         let lastApproved = null;
+        // What the console has already said, per field, for this run.
+        const lastLogged = {};
 
         while (true) {
             const { value, done } = await reader.read();
@@ -470,24 +472,39 @@ async function triggerGeneration(e) {
                     // LangGraph returns chunks like {"node_name": {"content": "..."}}
                     // We need to unwrap the inner state update object
                     let stateUpdate = chunk;
+                    // Every node returns the whole accumulated state, so each
+                    // chunk carries the research, the angle, the score and the
+                    // feedback of the nodes before it. Logged unconditionally,
+                    // one iteration printed the enforcer's verdict twice — once
+                    // when the writer's chunk carried it forward and once when
+                    // the enforcer restated it — with the writer's LLM call
+                    // between them. It reads exactly like two runs racing, and
+                    // was diagnosed as that more than once.
+                    const changed = (field, value) => {
+                        if (value === undefined || value === null) return false;
+                        const seen = JSON.stringify(value);
+                        if (lastLogged[field] === seen) return false;
+                        lastLogged[field] = seen;
+                        return true;
+                    };
                     const keys = Object.keys(chunk);
                     if (keys.length === 1 && typeof chunk[keys[0]] === 'object' && chunk[keys[0]] !== null) {
                         stateUpdate = chunk[keys[0]];
                     }
 
                     // Process graph execution states
-                    if (stateUpdate.research) {
+                    if (stateUpdate.research && changed('research', stateUpdate.research)) {
                         renderResearch(stateUpdate.research);
                         logConsole('[Researcher] Research gathered - see the Research panel');
                     }
-                    if (stateUpdate.creative_angle) {
+                    if (stateUpdate.creative_angle && changed('creative_angle', stateUpdate.creative_angle)) {
                         statusBadge.innerText = 'Creating Angle';
                         logConsole(`[Creative Director] Angle: ${stateUpdate.creative_angle}`, 'highlight');
                     }
                     if (stateUpdate.status) {
                         statusBadge.innerText = stateUpdate.status.toUpperCase();
                     }
-                    if (stateUpdate.score) {
+                    if (stateUpdate.score && changed('score', stateUpdate.score)) {
                         logConsole(`[Auditor Evaluator] Compliance Score: ${stateUpdate.score} / 10`);
                     }
                     if (typeof stateUpdate.approved === 'boolean') {
@@ -512,7 +529,7 @@ async function triggerGeneration(e) {
                         // Scroll to output
                         renderedDiv.scrollTop = renderedDiv.scrollHeight;
                     }
-                    if (stateUpdate.feedback) {
+                    if (stateUpdate.feedback && changed('feedback', stateUpdate.feedback)) {
                         logConsole(`[Auditor Feedback] Revisions: ${stateUpdate.feedback}`);
                     }
                 } catch (jsonErr) {
