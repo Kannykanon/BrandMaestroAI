@@ -872,10 +872,32 @@ def enforcer_node(state: GraphState) -> GraphState:
         voice_score = 0.0
     rewrites = evaluation.get("voice_rewrites") or []
     if isinstance(rewrites, list) and rewrites:
+        # A suggestion the rest of the enforcer will refuse is worse than no
+        # suggestion. Asked for a line in the brand's voice, the voice pass
+        # offered "This marks the beginning of his entanglement" — the source's
+        # own commentary, and the sentence its own prompt names as an example of
+        # a genuine failure. The writer used it, the told-not-shown check
+        # flagged it two rounds later, and the run went to its cap without
+        # approving anything.
+        #
+        # Narrative only, like the check it defers to: a proposal explains what
+        # things mean for a living.
+        from utils.coverage import narrator_explanations
+
+        usable = []
+        for item in rewrites:
+            if not (isinstance(item, dict) and item.get("from") and item.get("to")):
+                continue
+            if is_narrative(state.get("content_type", "")) and narrator_explanations(item["to"]):
+                logger.info(
+                    "Dropped a voice rewrite that states what something meant: %r", item["to"],
+                )
+                continue
+            usable.append(item)
+
         lines = []
-        for item in rewrites[:5]:
-            if isinstance(item, dict) and item.get("from") and item.get("to"):
-                lines.append(f'  - as written: "{item["from"]}"\n    in the brand\'s voice: "{item["to"]}"')
+        for item in usable[:5]:
+            lines.append(f'  - as written: "{item["from"]}"\n    in the brand\'s voice: "{item["to"]}"')
         if lines and voice_score < MIN_VOICE_SCORE:
             evaluation["feedback"] = (
                 "VOICE — these sentences do not sound like the brand. Rewrite them along these lines, keeping "
