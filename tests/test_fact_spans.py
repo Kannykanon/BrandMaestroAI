@@ -69,6 +69,27 @@ class TestWhatCountsAsAFact:
         satisfy by ending a sentence there."""
         assert extract_fact_spans("Businesses banking here: more than 14,000.") == ["more than 14,000"]
 
+    def test_a_superlative_keeps_its_qualifier_and_its_scope(self):
+        """"the most feared cult group in the state, and one of the deadliest
+        in the country" came back from a draft as "the deadliest in the state":
+        a different attribute, a dropped "one of", a different scope."""
+        spans = extract_fact_spans(
+            "The group is widely regarded as the most feared cult group in the state, "
+            "and one of the deadliest in the country."
+        )
+        assert "the most feared cult group in the state" in spans
+        assert "one of the deadliest in the country" in spans
+
+    def test_words_that_merely_end_in_est_are_not_claims(self):
+        """"the forest" is a wood and "among the rest of them" is a crowd."""
+        for line in ("He walks into the forest.", "Among the rest of them, nobody moves.",
+                     "One of the guest rooms is empty.", "The latest news arrived.",
+                     "He made the best of it."):
+            assert extract_fact_spans(line) == [], line
+
+    def test_most_without_the_is_a_quantifier_not_a_claim(self):
+        assert extract_fact_spans("Most people leave before the end.") == []
+
     def test_nothing_to_extract_is_not_an_error(self):
         assert extract_fact_spans("") == [] and extract_fact_spans("He waits. Nobody comes.") == []
 
@@ -117,3 +138,34 @@ class TestLosingAFact:
 
     def test_case_and_punctuation_do_not_matter(self):
         assert missing_fact_spans("MORE THAN SEVEN MEN — seated.", ["more than seven men"]) == []
+
+    def test_a_strengthened_superlative_is_a_lost_fact(self):
+        """The draft states the claim, and states it bigger than the source
+        does. Dropping "one of" is the same move as dropping "more than"."""
+        span = ["one of the deadliest in the country"]
+        assert missing_fact_spans("It is the deadliest in the state.", span) == span
+
+    def test_the_source_s_own_superlative_survives_verbatim(self):
+        span = ["one of the deadliest in the country"]
+        assert missing_fact_spans(
+            "He does not know the group is one of the deadliest in the country.", span) == []
+
+    def test_a_piece_that_never_makes_the_claim_is_left_alone(self):
+        """Scope is an editorial choice. Only stating it wrongly is a fault."""
+        span = ["the most feared cult group in the state"]
+        assert missing_fact_spans("He leaves with the number in his pocket.", span) == []
+
+    def test_reordering_a_superlative_is_not_losing_it(self):
+        """A number has one correct wording and a superlative has many. The
+        brand's own second draft wrote "one of the country's deadliest", which
+        says exactly what the source says, and an earlier version of this check
+        faulted it — the tight-rule failure this module exists to undo."""
+        span = ["one of the deadliest in the country"]
+        assert missing_fact_spans(
+            "It is a cult in the state, one of the country's deadliest.", span) == []
+
+    def test_only_a_claim_that_names_a_set_is_checked_this_way(self):
+        """"the most feared cult group in the state" can be restated a dozen
+        ways that are all true. Nothing here pretends to judge those."""
+        span = ["the most feared cult group in the state"]
+        assert missing_fact_spans("This group is feared across the state.", span) == []

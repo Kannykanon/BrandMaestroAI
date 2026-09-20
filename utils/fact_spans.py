@@ -25,9 +25,18 @@ either losing the number or sounding like nobody. The sentence around it is
 phrasing, and the writer still has to build that itself.
 
 So: quantities, dates, money and the names attached to them are extracted as
-spans, handed to the writer as must-keep, and exempted from the copying gate.
-Nothing else from a product document is exempt, and no brand-voice document
-contributes a span at all.
+spans and handed to the writer as must-keep. Nothing else from a product
+document is, and no brand-voice document contributes a span at all.
+
+Superlatives are here for the same reason, after a draft turned "the most
+feared cult group in the state, and one of the deadliest in the country" into
+"the deadliest in the state" — a different attribute, a dropped "one of" and a
+different scope, in six words. A superlative's qualifier is part of it exactly
+as a number's is.
+
+These spans are not exempted from the copying gate and do not need to be: each
+is short enough to clear it on its own. A claim that cannot be said in eight
+words is phrasing, and phrasing is the writer's job.
 """
 from __future__ import annotations
 
@@ -89,6 +98,56 @@ _PLANNING_LINE = re.compile(
     r"^\s*(?:note|notes|todo|tbd|internal|draft|status|version|wip)\b[:\-]", re.IGNORECASE
 )
 
+# Claims that are superlatives. A number is not the only kind of fact whose
+# qualifier is part of it.
+#
+# A product document said the group was "widely regarded as the most feared cult
+# group in the state, and one of the deadliest in the country". A draft wrote
+# "It is the deadliest in the state" — three changes, each making it a claim the
+# source does not make: a different attribute, a dropped "one of", a different
+# scope. The hallucination gate caught it, and the judge then told the writer to
+# use the source's phrasing, which is a nineteen-word clause the copying gate
+# refuses. The writer spent a round trapped between them.
+#
+# Handing these over as must-keep spans up front is the same move this module
+# already makes for "more than seven men", and for the same reason: there is no
+# second correct wording. Both spans are short enough to clear the copying gate
+# on their own, so nothing here widens what may be reproduced.
+_SET_OF = r"(?:one|two|three|four|five|several|a\s+few)\s+of\s+the|among\s+the"
+
+# Words ending in -est that are not superlatives. Without them "among the rest
+# of them" and "one of the guest rooms" read as claims about being the most of
+# something.
+_NOT_SUPERLATIVE = (
+    "rest|test|west|nest|guest|quest|chest|crest|priest|forest|honest|modest|"
+    "earnest|interest|harvest|contest|protest|request|arrest|invest|digest|"
+    "suggest|manifest|conquest|unrest|tempest|midwest|incest|behest|pest|vest|"
+    "zest|jest|lest|wrest|attest|detest|divest|northwest|southwest"
+)
+
+# "the most" is required rather than a bare "most": "most people left" is a
+# quantifier, not a claim to be the most of anything. A bare "the ...est" is not
+# matched at all, because "the forest" is a wood.
+_SUPERLATIVE = (
+    rf"the\s+(?:most|least)\s+[A-Za-z]+"
+    rf"|(?:{_SET_OF})\s+(?:most|least)\s+[A-Za-z]+"
+    rf"|(?:{_SET_OF})\s+(?!(?:{_NOT_SUPERLATIVE})\b)[A-Za-z]+est\b"
+)
+
+# What it is the most of, and where. Both belong to the claim: a cult that is
+# the most feared in the state is not the most feared in the country.
+_NOT_A_NOUN = r"in|of|and|or|the|a|an|to|for|with|at|by|from|that|which|is|are|was|were"
+
+_SUPERLATIVE_SPAN = re.compile(
+    rf"(?:{_SUPERLATIVE})"
+    rf"(?:\s+(?!(?:{_NOT_A_NOUN})\b)[A-Za-z][A-Za-z'’\-]*){{0,2}}"
+    rf"(?:\s+(?:in|of)\s+(?:the\s+)?[A-Za-z][A-Za-z'’\-]*)?",
+    re.IGNORECASE,
+)
+
+# The word whose presence says the draft is making this claim at all.
+_SUPERLATIVE_WORD = re.compile(r"\b(?:most|least)\s+([A-Za-z]+)|\b([A-Za-z]+est)\b", re.I)
+
 MAX_SPAN_WORDS = 8
 
 
@@ -132,9 +191,31 @@ def extract_fact_spans(source: str, limit: int = 20) -> list[str]:
         return []
     spans: list[str] = []
     seen: set[str] = set()
+
+    def consider(span: str) -> bool:
+        """Keep this span unless it is empty, bare, or already said. False when full."""
+        if not span or not any(ch.isalnum() for ch in span):
+            return True
+        # A bare number with nothing attached is a page number or a scene
+        # index, not a claim.
+        if not _WORD.search(span):
+            return True
+        key = re.sub(r"[^a-z0-9]+", " ", span.lower()).strip()
+        # "More than seven men" and "more than seven men encountered" are one
+        # fact stated twice. Keep the first, shortest form: the writer needs
+        # the claim, not every sentence the source wrapped around it.
+        if any(key.startswith(k) or k.startswith(key) for k in seen):
+            return True
+        seen.add(key)
+        spans.append(span)
+        return len(spans) < limit
+
     for line in source.splitlines():
         if _PLANNING_LINE.match(line):
             continue
+        found: list = []
+        for match in _SUPERLATIVE_SPAN.finditer(line):
+            found.append((match.start(), _clean(match.group(0))))
         for match in _ANCHOR.finditer(line):
             # The unit group may have eaten the space after the number, which
             # would leave the noun unreachable: "40,000 " then "naira".
@@ -144,22 +225,9 @@ def extract_fact_spans(source: str, limit: int = 20) -> list[str]:
             # Up to three following words, stopping at any punctuation that ends
             # the noun phrase. "seven men, seated" gives "seven men".
             noun = _following_noun(tail)
-            span = _clean(f"{anchor} {noun}" if noun else anchor)
-            if not span or not any(ch.isalnum() for ch in span):
-                continue
-            # A bare number with nothing attached is a page number or a scene
-            # index, not a claim.
-            if not _WORD.search(span):
-                continue
-            key = re.sub(r"[^a-z0-9]+", " ", span.lower()).strip()
-            # "More than seven men" and "more than seven men encountered" are one
-            # fact stated twice. Keep the first, shortest form: the writer needs
-            # the claim, not every sentence the source wrapped around it.
-            if any(key.startswith(k) or k.startswith(key) for k in seen):
-                continue
-            seen.add(key)
-            spans.append(span)
-            if len(spans) >= limit:
+            found.append((match.start(), _clean(f"{anchor} {noun}" if noun else anchor)))
+        for _, span in sorted(found, key=lambda pair: pair[0]):
+            if not consider(span):
                 return spans
     return spans
 
@@ -183,6 +251,46 @@ def _normalise(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
 
+# How near the superlative the qualifier has to sit to still be qualifying it.
+# "one of the country's deadliest" is 24 characters; a qualifier further off
+# than this is attached to something else.
+_SET_WINDOW = 40
+
+_SET_MARKER = re.compile(r"\b(?:one|two|three|four|five|several|some|a few|among)\s+(?:of\s+)?the?\b")
+
+
+def _dropped_the_set_it_belongs_to(needle: str, haystack: str) -> bool:
+    """Whether a draft states a "one of the ..." claim as an outright "the ...".
+
+    Narrower than the rule for numbers, and deliberately. "More than seven men"
+    has no second correct wording, so any restatement is a loss. A superlative
+    has many: "one of the country's deadliest" says exactly what "one of the
+    deadliest in the country" says, and the brand's own second draft wrote it
+    that way. Faulting that would be the tight-rule failure again.
+
+    What has no second correct wording is the set. Being one of the deadliest
+    and being the deadliest are different claims, and collapsing them is the
+    same move as writing "seven men" for "more than seven men" — which is how a
+    draft came to call the group "the deadliest in the state" when the source
+    called it the most feared in the state and one of the deadliest in the
+    country.
+
+    So: only claims whose source form is a set membership are checked, and only
+    for whether the draft kept a set anywhere near where it makes the claim.
+    """
+    if not _SET_MARKER.search(needle):
+        return False
+    match = _SUPERLATIVE_WORD.search(needle)
+    word = (match.group(1) or match.group(2)) if match else ""
+    if not word:
+        return False
+    for found in re.finditer(rf"\b{re.escape(word)}\b", haystack):
+        before = haystack[max(0, found.start() - _SET_WINDOW):found.start()]
+        if not _SET_MARKER.search(before):
+            return True          # stated, and stated as the only one
+    return False
+
+
 def missing_fact_spans(content: str, spans: list[str]) -> list[str]:
     """Which of `spans` the draft states, but no longer states correctly."""
     if not spans or not content:
@@ -204,8 +312,12 @@ def missing_fact_spans(content: str, spans: list[str]) -> list[str]:
         # an editorial choice. Blocking that would fail a blog for writing "four
         # in ten marketers" where its research said "about 40% of marketers" —
         # the tight-rule failure this whole change exists to undo.
-        number = next((w for w in needle.split()
+        anchor = next((w for w in needle.split()
                        if re.search(r"\d", w) or w in _NUMBER_WORD_SET), "")
-        if number and re.search(rf"\b{re.escape(number)}\b", haystack):
+        if anchor:
+            if re.search(rf"\b{re.escape(anchor)}\b", haystack):
+                missing.append(span)
+            continue
+        if _dropped_the_set_it_belongs_to(needle, haystack):
             missing.append(span)
     return missing
