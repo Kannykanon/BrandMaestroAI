@@ -416,12 +416,22 @@ def process_feedback(
                 logger.info(f"Feedback for {generation_id} already saved, skipping")
                 return {"status": "already_saved", "generation_id": generation_id}
 
-        memory.save_feedback(
+        saved = memory.save_feedback(
             generation_id=generation_id,
             human_approved=human_approved,
             human_score=human_score,
             human_feedback=human_feedback
         )
+        if not saved:
+            # Nothing to attach the verdict to, and nothing further will work:
+            # retraining counts rows that do not exist and the rewrite step
+            # looks for a rejection that was never written down. Said plainly
+            # here because every other layer reports success.
+            logger.error(
+                "FEEDBACK NOT SAVED generation_id=%s — no generation exists with that id, so "
+                "the review was discarded and no rewrite was queued", generation_id,
+            )
+            return {"status": "no_such_generation", "generation_id": generation_id}
 
         RETRAIN_THRESHOLD = 100
 

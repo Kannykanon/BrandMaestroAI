@@ -86,6 +86,14 @@ def handle_review_outcome(generation_id: str) -> None:
             format_type=format_type,
             user_id=user_id,
             use_search=use_search,
+            # Passed explicitly because generate_content defaults research_mode
+            # to "both", and the researcher only falls back to use_search when
+            # research_mode is absent. So use_search was read from the record,
+            # handed over, and then overruled by the default — a piece grounded
+            # in the brand's own documents was rewritten with web search on,
+            # which is the exact switch the comment above says it avoids. The
+            # two values stated here are the researcher's own fallback.
+            research_mode="both" if use_search else "rag",
             human_feedback=human_feedback,
             regeneration_depth=next_depth,
             parent_generation_id=generation_id,

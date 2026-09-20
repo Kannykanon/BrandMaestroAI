@@ -97,24 +97,86 @@ class FeedbackPortSQL(FeedbackPort):
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
+    def _backfill_from_generation(self, session, generation_id: str):
+        """A learning row for a generation that never reached the deployer.
+
+        save() above runs in the deployer, which is the last node in the graph.
+        A run that ended before it — killed on a time limit, or failed — leaves
+        a generations row the reviewer can see and open, and no reviewer_learning
+        row at all. Reviewing one of those used to do nothing whatsoever.
+
+        use_search cannot be recovered: generations does not record it. The
+        rewrite therefore runs against the brand's own documents, which is the
+        safer of the two guesses for a piece being rewritten from its source.
+        """
+        generation = session.query(Generation).filter_by(
+            generation_id=generation_id
+        ).first()
+        if generation is None:
+            return None
+
+        # Depth is carried so the reject -> rewrite loop stays bounded across a
+        # gap in the chain. A rewrite of a rewrite counts as two.
+        depth = 0
+        if generation.parent_generation_id:
+            parent = session.query(ReviewerLearning).filter_by(
+                generation_id=generation.parent_generation_id
+            ).first()
+            depth = ((parent.regeneration_depth or 0) + 1) if parent else 1
+
+        score = float(generation.score or 0.0)
+        record = ReviewerLearning(
+            generation_id=generation_id,
+            business_id=generation.business_id,
+            content_type=generation.content_type,
+            creative_angle="unknown",
+            generated_content=generation.content or "",
+            agent_auto_score=score,
+            agent_auto_approved=(generation.approved if generation.approved is not None
+                                 else score >= 8.0),
+            topic=generation.topic,
+            user_id=generation.user_id,
+            format_type=generation.format_type,
+            has_human_feedback=False,
+            use_search=False,
+            regeneration_depth=depth,
+        )
+        session.add(record)
+        session.flush()
+        logger.info(
+            "Backfilled reviewer_learning for generation_id=%s (depth=%d) — the run that "
+            "produced it never reached the deployer", generation_id, depth,
+        )
+        return record
+
     def save_feedback(self,
                       generation_id: str,
                       human_approved: bool,
                       human_score: float,
-                      human_feedback: str):
+                      human_feedback: str) -> bool:
+        """Record a reviewer's verdict. True when it was actually recorded.
 
+        This returned nothing and silently discarded the feedback when no
+        reviewer_learning row existed. Every layer above reported success: the
+        task returned "saved", the endpoint returned 200, and the page told the
+        reviewer their rewrite was on its way. Nothing had been written, so the
+        rewrite step found no rejection and queued nothing.
+        """
         with get_db_session() as session:
             record = session.query(ReviewerLearning).filter_by(
                 generation_id=generation_id
             ).first()
             if not record:
-                return
+                record = self._backfill_from_generation(session, generation_id)
+            if not record:
+                return False
             record.human_approved = human_approved
             record.human_score = human_score
             record.human_feedback = human_feedback
             record.has_human_feedback = True
             record.agent_correct = (human_approved == record.agent_auto_approved)
             session.commit()
+        return True
 
     @retry(
         retry=retry_if_exception_type(Exception),

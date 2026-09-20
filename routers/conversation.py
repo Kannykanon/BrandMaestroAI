@@ -167,6 +167,25 @@ async def submit_feedback(
 
     require_business_access(current_user, feedback.business_id)
 
+    # Checked here rather than left to the worker. The task is queued and the
+    # response returns before it runs, so a verdict on a generation that does
+    # not exist was accepted with a 200 and a page that said the rewrite was on
+    # its way. Whatever the reviewer is looking at, if there is no row for it
+    # the rewrite cannot happen and they need to hear so now.
+    from database import Generation, get_db_session
+
+    with get_db_session() as session:
+        exists = session.query(Generation.generation_id).filter_by(
+            generation_id=feedback.generation_id,
+            business_id=feedback.business_id,
+        ).first()
+    if not exists:
+        raise HTTPException(
+            status_code=404,
+            detail=(f"No generation {feedback.generation_id} for this business. "
+                    "Nothing was recorded and no rewrite was queued."),
+        )
+
     task = process_feedback.delay(
         generation_id=feedback.generation_id,
         business_id=feedback.business_id,
