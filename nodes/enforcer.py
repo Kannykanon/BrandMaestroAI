@@ -184,6 +184,20 @@ def enforcer_node(state: GraphState) -> GraphState:
             if heading_fixes:
                 logger.info("Scene headings normalised at iteration %d: %s", iteration, heading_fixes)
                 state = {**state, "content": content}
+        # A name the draft spells two ways. It introduced the character as EMK,
+        # wrote Emk three times after that, and the voice pass spent its only
+        # finding on it and approved the draft anyway — so it shipped both.
+        # Which capitals a name takes is not a judgement call either.
+        from utils.documents import reference_documents
+        from utils.screenplay import sanitize_character_names
+
+        product = reference_documents(state["business_id"], state.get("content_type", ""))
+        if product:
+            content, name_fixes = sanitize_character_names(content, product)
+            if name_fixes:
+                logger.info("Character names normalised at iteration %d: %s", iteration, name_fixes)
+                state = {**state, "content": content}
+
         # Anything the lexicon could not decide. A diner is legitimately either
         # prefix, so those are left alone rather than guessed at.
         heading_findings = _heading_findings(content)
