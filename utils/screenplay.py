@@ -162,3 +162,48 @@ def heading_findings(content: str) -> list:
                     "message": f"line {number}: {raw!r} is marked EXT. but a {hit} is indoors",
                 })
     return findings
+
+
+# A name the source writes only in capitals is spelled that way: EMK is an
+# initialism, not a character introduced in the screenplay convention of
+# capitalising a name on first appearance. The treatment writes EMK five times
+# and Emk never; it writes Kan twelve times and KAN twice, so Kan is an ordinary
+# name and normal case is correct for it.
+_ALL_CAPS = re.compile(r"\b[A-Z]{2,}\b")
+
+
+def initialisms(source: str) -> set:
+    """Names the source spells only in capitals."""
+    found = set()
+    for word in set(_ALL_CAPS.findall(source)):
+        mixed = re.search(rf"\b(?:{re.escape(word.title())}|{re.escape(word.lower())})\b", source)
+        if not mixed:
+            found.add(word)
+    return found
+
+
+def sanitize_character_names(content: str, source: str) -> tuple:
+    """Spell a name the way the source spells it, where the draft cannot decide.
+
+    A draft introduced the character as EMK and then wrote Emk three times. The
+    voice pass spent its only finding on it and approved the draft anyway, so it
+    shipped both spellings.
+
+    Corrected here rather than sent back, for the same reason the scene-heading
+    separator is: which capitals a name takes is not a judgement call.
+
+    Only names the draft itself spells two ways are touched. The source writes
+    plenty of words in capitals — headings, act titles, the document's own
+    section labels — and none of those are evidence about anything until a draft
+    has already shown it cannot keep one spelling.
+    """
+    if not content or not source:
+        return content, []
+    fixed, notes = content, []
+    for name in sorted(initialisms(source)):
+        variants = re.findall(rf"\b(?:{re.escape(name.title())}|{re.escape(name.lower())})\b", content)
+        if not variants or not re.search(rf"\b{re.escape(name)}\b", content):
+            continue                      # not used, or already spelled one way
+        fixed = re.sub(rf"\b(?:{re.escape(name.title())}|{re.escape(name.lower())})\b", name, fixed)
+        notes.append(f"{variants[0]} -> {name} ({len(variants)}x)")
+    return fixed, notes
