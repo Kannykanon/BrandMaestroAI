@@ -369,7 +369,9 @@ _EXPLAINS = (
     "indicates|indicate|indicated|means|mean|meant|represents|represent|represented|"
     "symbolises|symbolizes|symbolise|symbolize|conveys|convey|conveyed|implies|imply|"
     "implied|suggests|suggest|suggested|carries|carry|carried|marks|mark|marked|"
-    "demonstrates|demonstrate|demonstrated|reflects|reflect|reflected"
+    "demonstrates|demonstrate|demonstrated|reflects|reflect|reflected|"
+    # "It hints at fear" arrived in a draft the rest of this caught twice over.
+    "hints|hint|hinted|speaks\\s+to|points\\s+to"
 )
 
 # Who is doing the explaining. A character noticing something is the scene; a
@@ -381,9 +383,13 @@ _EXPLAINS = (
 # character's own experience. The draft it was compared against wrote "The
 # gesture shows deference. It shows fear." Same information, told rather than
 # played, and nothing in the system could see the difference.
+# this/that/these/those take a noun as readily as they stand alone, and only
+# the bare forms were listed. "The gesture shows status" was caught and "This
+# gesture signals status" was not — the same sentence, one determiner apart,
+# and the draft that shipped used the one that slipped.
 _INANIMATE_SUBJECT = (
-    r"(?:it|this|that|these|those|the\s+\w+(?:\s+\w+)?|his\s+\w+|her\s+\w+|their\s+\w+|"
-    r"a\s+\w+|an\s+\w+)"
+    r"(?:it|(?:this|that|these|those)(?:\s+\w+)?|the\s+\w+(?:\s+\w+)?|"
+    r"his\s+\w+|her\s+\w+|their\s+\w+|a\s+\w+|an\s+\w+)"
 )
 
 _NARRATOR_EXPLAINS = re.compile(
