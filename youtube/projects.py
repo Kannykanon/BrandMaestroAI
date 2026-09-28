@@ -605,6 +605,7 @@ def serialize_project(db: Session, project: YTProject, include_script: bool = Fa
                 "image_issues": s.image_issues or [],
                 "sound": s.sound,
                 "asset_ids": s.asset_ids,
+                "screen_asset_id": s.screen_asset_id,
                 "products": [p.id for p in shot_products(db, project, s, products)],
             }
             for s in shots

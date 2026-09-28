@@ -78,6 +78,8 @@ class ShotPatch(BaseModel):
     visual: Optional[str] = Field(None, max_length=2000)
     # Products this shot shows; null goes back to matching product names in the line and visual.
     asset_ids: Optional[list[int]] = Field(None, max_length=20)
+    # A screen asset to show exactly, instead of a drawn scene; null for a drawn scene.
+    screen_asset_id: Optional[int] = None
     # Ambience under the shot, e.g. "heavy rain, distant thunder"; empty for none.
     sound: Optional[str] = Field(None, max_length=200)
 
@@ -527,6 +529,9 @@ def update_shot(project_id: int, shot_id: int, body: ShotPatch, db: Db, current_
         if "asset_ids" in body.model_fields_set:
             from youtube import brand_assets
             brand_assets.set_shot_products(db, project, shot_id, body.asset_ids)
+        if "screen_asset_id" in body.model_fields_set:
+            from youtube import brand_assets
+            brand_assets.set_shot_screen(db, project, shot_id, body.screen_asset_id, StorageSingleton.get())
         if "sound" in body.model_fields_set:
             from youtube import sound
             sound.set_shot_sound(db, project, shot_id, body.sound or "")
@@ -1060,7 +1065,7 @@ def list_assets(db: Db, current_user: CurrentUser):
 @router.post("/assets", status_code=status.HTTP_201_CREATED)
 async def create_asset(db: Db, current_user: CurrentUser, name: str = Form(...), kind: str = Form(...),
                        file: UploadFile = File(...)):
-    """Upload a product photo or a logo. Name products as scripts call them, so shots find them."""
+    """Upload a product photo, logo, location, screen or music track. Name products as scripts call them, so shots find them."""
     a = _assets()
     data = await _read_upload(file)
     try:
