@@ -221,6 +221,9 @@ class YTShot(YTModel):
     sound: Mapped[Optional[str]] = mapped_column(String(120))
     # Products this shot shows, chosen by a person; NULL means "those its line or visual names".
     asset_ids: Mapped[Optional[list]] = mapped_column(JSON)
+    # A screen asset (an app screenshot) this shot shows exactly as uploaded, instead of a drawn
+    # scene; NULL for a drawn scene. See youtube/brand_assets.py.
+    screen_asset_id: Mapped[Optional[int]] = mapped_column(Integer)
     # Problems the automatic image check still sees after its redraws.
     image_issues: Mapped[Optional[list]] = mapped_column(JSON)
     # Which avatar provider made clip_key, and how many seconds it animates.
@@ -287,7 +290,7 @@ class YTAsset(YTModel):
     id: Mapped[int] = mapped_column(primary_key=True)
     business_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # product | logo
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # product | logo | music | location | screen
     storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
     created_at: Mapped[datetime] = _created_at()
 
@@ -415,6 +418,7 @@ COLUMN_MIGRATIONS = (
     ("yt_projects", "series_id", "INTEGER"),
     ("yt_projects", "episode", "INTEGER"),
     ("yt_projects", "recap", "TEXT"),
+    ("yt_shots", "screen_asset_id", "INTEGER"),
 )
 
 

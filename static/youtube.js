@@ -576,7 +576,7 @@
                     <div class="yt-thumb">${a.kind === 'music' ? '<span class="yt-music-icon"><i class="fa-solid fa-music"></i></span>' : imgTag(`/assets/${a.id}/image`, a.version, a.name)}</div>
                     <div><strong>${escapeHTML(a.name)}</strong><div class="yt-muted">${a.kind}</div></div>
                     <button class="btn btn-sm btn-danger" title="Delete" onclick="ytStudio.deleteAsset(${a.id})"><i class="fa-regular fa-trash-can"></i></button>
-                </div>`).join('') : '<p class="yt-muted">No products or logos yet.</p>';
+                </div>`).join('') : '<p class="yt-muted">No products, logos or screens yet.</p>';
             hydrateImages(list);
         } catch (err) {
             list.innerHTML = `<p class="yt-error">${escapeHTML(err.message)}</p>`;
@@ -842,6 +842,27 @@
         } }, 'Sound saved');
     }
 
+    async function setShotScreen(projectId, shotId, value) {
+        try {
+            renderProject(await api(`/projects/${projectId}/shots/${shotId}`, {
+                method: 'PATCH', body: JSON.stringify({ screen_asset_id: value ? Number(value) : null }),
+            }));
+        } catch (err) {
+            toastError(err);
+        }
+    }
+
+    function shotScreen(p, s, busy) {
+        const screens = state.assets.filter(a => a.kind === 'screen');
+        if (!screens.length && !s.screen_asset_id) return '';
+        return `<label class="yt-sound" title="Show an app or website screenshot exactly as uploaded, instead of a drawn scene">
+            <i class="fa-solid fa-mobile-screen"></i>
+            <select ${busy ? 'disabled' : ''} onchange="ytStudio.setShotScreen(${p.id}, ${s.id}, this.value)">
+                <option value="">Drawn scene</option>
+                ${screens.map(a => `<option value="${a.id}" ${a.id === s.screen_asset_id ? 'selected' : ''}>Screen: ${escapeHTML(a.name)}</option>`).join('')}
+            </select></label>`;
+    }
+
     async function saveShotSound(projectId, shotId, sound) {
         try {
             renderProject(await api(`/projects/${projectId}/shots/${shotId}`, { method: 'PATCH', body: JSON.stringify({ sound }) }));
@@ -922,17 +943,19 @@
                         <div class="yt-muted">“${escapeHTML(s.text)}”</div>
                         ${s.image_error ? `<div class="yt-error">${escapeHTML(s.image_error)}</div>` : ''}
                         ${s.has_image && s.image_issues.length ? `<div class="yt-warning" title="Found by the automatic image check after its redraw"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHTML(s.image_issues.join('; '))}</div>` : ''}
-                        ${shotProducts(p, s, busy)}
+                        ${shotScreen(p, s, busy)}
+                        ${s.screen_asset_id ? '' : shotProducts(p, s, busy)}
                         <label class="yt-sound" title="Ambient sound under this shot; empty for none">
                             <i class="fa-solid fa-volume-low"></i>
                             <input value="${attr(s.sound || '')}" maxlength="120" placeholder="Sound, e.g. heavy rain, distant thunder" ${busy ? 'disabled' : ''}
                                 onchange="ytStudio.saveShotSound(${p.id}, ${s.id}, this.value)">
                         </label>
+                        ${s.screen_asset_id ? '<div class="yt-muted">Shown exactly as uploaded, held still while the line plays. Never animated.</div>' : `
                         <textarea id="yt-visual-${s.id}" ${busy ? 'disabled' : ''} maxlength="2000" title="What the shot shows">${escapeHTML(s.visual || '')}</textarea>
                         <div class="yt-actions">
                             <button class="btn btn-secondary btn-sm" ${busy || !sb.image_provider_configured ? 'disabled' : ''} onclick="ytStudio.redrawShot(${p.id}, ${s.id})">
                                 <i class="fa-solid fa-paintbrush"></i> <span>${s.has_image ? 'Save &amp; redraw' : 'Save &amp; draw'}</span></button>
-                        </div>
+                        </div>`}
                     </div>
                 </div>`).join('')}</div>` : ''}`;
     }
@@ -1613,7 +1636,7 @@
         previewVoice, previewSelectedVoice, generatePreviews,
         openCharacter, closeCharacter, confirmRights, uploadFace, deleteCharacterImage, generateSheet, approveSheet,
         loadStyles, createStyle, saveStyle, uploadStyleReference, removeStyleReference, deleteStyle,
-        loadAssets, createAsset, drawAsset, deleteAsset, toggleProjectProduct, toggleShotProduct, saveEndCard, saveAudio, saveShotSound,
+        loadAssets, createAsset, drawAsset, deleteAsset, toggleProjectProduct, toggleShotProduct, setShotScreen, saveEndCard, saveAudio, saveShotSound,
         setSeries,
         loadProjects, openProject, planProject, voiceProject, castSpeaker, changeSpeaker, deleteProject, stopProject,
         setProjectStyle, generateStoryboard, changeShotType, redrawShot, approveStoryboard,
