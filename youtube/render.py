@@ -2,7 +2,8 @@
 
     timeline   every shot's start and length, from its audio and the gaps between lines
     avatars    dialogue shots are animated for at most YT_MAX_TALKING_SECONDS; the rest of a
-               long line plays over the shot's still image (a cutaway)
+               long line plays over the shot's still image (a cutaway). A shot showing a
+               screen is never animated and never panned: its line plays over the screen
     budget     avatar cost is estimated first; above YT_AVATAR_BUDGET_USD a render needs
                explicit confirmation
     composer   ffmpeg joins still and talking segments, lays the voice track under them,
@@ -88,7 +89,9 @@ def timeline(shots: list[YTShot], port: AvatarPort) -> list[TimedShot]:
         else:
             gap = END_TAIL_S
         speech = float(shot.duration_s or 0.0)
-        talks = shot.shot_type in TALKING_SHOT_TYPES and shot.speaker_label != NARRATOR
+        # A screen shot shows an interface, not the speaker: the line is heard over it.
+        talks = (shot.shot_type in TALKING_SHOT_TYPES and shot.speaker_label != NARRATOR
+                 and not shot.screen_asset_id)
         talk = min(speech, cap, port.max_seconds) if talks else 0.0
         timed.append(TimedShot(shot, cursor, speech, gap, talk))
         cursor += speech + gap
@@ -281,7 +284,9 @@ def compose(db: Session, project: YTProject, storage: StoragePort, port: AvatarP
             remaining = item.length_s - talk_s
             if remaining > 0.01:
                 out = work / f"seg-{len(segments):04d}.mp4"
-                still_segment(image, next_frames(remaining), out, settings, direction=index)
+                # A pan would crop the edges of a screen, so it is held still like the end card.
+                still_segment(image, next_frames(remaining), out, settings, direction=index,
+                              pan=not shot.screen_asset_id)
                 segments.append(out)
 
         card_s = _card_seconds(project)
@@ -303,7 +308,8 @@ def compose(db: Session, project: YTProject, storage: StoragePort, port: AvatarP
         final = work / "final.mp4"
         join_and_finish(segments, audio, captions_for(items, settings), final, settings, work)
         info = media_info(final)
-        first_dialogue = next((i.shot for i in items if i.talk_s > 0), shots[0])
+        first_dialogue = next((i.shot for i in items if i.talk_s > 0),
+                              next((s for s in shots if not s.screen_asset_id), shots[0]))
         thumb = thumbnail(storage.get(first_dialogue.image_key), project.format)
         return final.read_bytes(), float(info["duration_s"] or 0.0), thumb
 

@@ -1,12 +1,16 @@
-"""Brand assets (product photos and logos), products in storyboard shots, and the end card.
+"""Brand assets (product photos and logos), products in storyboard shots, screens, and the end card.
 
-    assets     images a business uploads once: `product` photos and `logo` files
+    assets     images a business uploads once: `product` photos, `logo` files and `screen` shots
     products   a project lists the products it features; a shot shows a product when its
                line or visual names it, or when a person picks products for that shot
+    screens    app or website screenshots; a shot a person sets to a screen shows it exactly,
+               framed in code, instead of a drawn scene: a tutorial step on the real interface
     end card   the closing frame of an ad: logo, call to action and URL on a brand colour
 
 Product photos are sent to the image model as references with an instruction to
-reproduce the product exactly. The end card is drawn in code, so its text is exact.
+reproduce the product exactly. Screens never reach a model: an image model redraws
+an interface with invented buttons and garbled labels, which in a how-to is worse
+than no picture. Screens and the end card are drawn in code, so their text is exact.
 """
 from __future__ import annotations
 
@@ -26,7 +30,7 @@ from youtube.storage import StoragePort, business_key
 
 logger = __import__("logging").getLogger(__name__)
 
-ASSET_KINDS = ("product", "logo", "music", "location")
+ASSET_KINDS = ("product", "logo", "music", "location", "screen")
 # Assets that can appear in a shot, matched by name in its line or visual.
 SCENE_KINDS = ("product", "location")
 AUDIO_TYPES = {"mp3": "audio/mpeg", "wav": "audio/wav", "m4a": "audio/mp4", "ogg": "audio/ogg", "flac": "audio/flac"}
@@ -83,7 +87,8 @@ def create_asset(db: Session, business_id: str, name: str, kind: str, data: byte
         mime = AUDIO_TYPES[ext]
     else:
         try:
-            mime, _, _ = inspect_image(data, wide_ok=kind == "logo")
+            # Logos and screens (a cropped button bar, say) are often wide and short.
+            mime, _, _ = inspect_image(data, wide_ok=kind in ("logo", "screen"))
         except ValueError as e:
             raise ProjectError(str(e)) from e
         from youtube.storyboard import EXTENSIONS
@@ -107,6 +112,9 @@ def delete_asset(db: Session, asset: YTAsset, storage: Optional[StoragePort]) ->
         for shot in projects._shots(db, project):
             if shot.asset_ids and asset.id in shot.asset_ids:
                 shot.asset_ids = [i for i in shot.asset_ids if i != asset.id]
+                changed = True
+            if shot.screen_asset_id == asset.id:
+                _clear_screen(shot, storage)
                 changed = True
         audio = project.audio or {}
         if audio.get("music_asset_id") == asset.id:
@@ -190,6 +198,107 @@ def set_shot_products(db: Session, project: YTProject, shot_id: int, asset_ids: 
         shot.asset_ids = asset_ids
         projects.clear_approval(project)
         projects.settle_status(db, project)
+    db.commit()
+    db.refresh(shot)
+    return shot
+
+
+# ---------------------------------------------------------------------------
+#  Screens in shots
+# ---------------------------------------------------------------------------
+# Where the screenshot sits in the frame, as fractions of its height: clear of the
+# burned-in captions below it (see youtube/captions.py), which in a Short sit high
+# to stay clear of the Shorts interface.
+SCREEN_BOX = {"short": (0.05, 0.64), "long_form": (0.05, 0.80)}
+SCREEN_WIDTH = 0.90
+
+
+def screen_frame(data: bytes, width: int, height: int, video_format: str) -> bytes:
+    """A screenshot as one video frame (PNG): whole and unaltered, over a blurred, darkened copy of itself.
+
+    It is scaled to fit, never cropped, so no part of the interface is lost.
+    """
+    from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
+
+    with Image.open(io.BytesIO(flatten_on_white(data))) as source:
+        screen = source.convert("RGB")
+    scale = max(width / screen.width, height / screen.height)
+    ground = screen.resize((max(int(screen.width * scale), width), max(int(screen.height * scale), height)))
+    left, top = (ground.width - width) // 2, (ground.height - height) // 2
+    ground = ground.crop((left, top, left + width, top + height))
+    ground = ImageEnhance.Brightness(ground.filter(ImageFilter.GaussianBlur(min(width, height) * 0.04))).enhance(0.4)
+
+    box_top, box_bottom = SCREEN_BOX.get(video_format, SCREEN_BOX["long_form"])
+    box_w, box_h = int(width * SCREEN_WIDTH), int(height * (box_bottom - box_top))
+    fit = min(box_w / screen.width, box_h / screen.height)
+    size = (max(int(screen.width * fit), 1), max(int(screen.height * fit), 1))
+    screen = screen.resize(size, Image.LANCZOS)
+    x, y = (width - size[0]) // 2, int(height * box_top) + (box_h - size[1]) // 2
+
+    radius = int(min(size) * 0.035)
+    mask = Image.new("L", size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, size[0] - 1, size[1] - 1), radius, fill=255)
+    offset = max(int(min(width, height) * 0.01), 2)
+    shadow = Image.new("L", (width, height), 0)
+    shadow.paste(mask, (x, y + offset))
+    ground.paste((0, 0, 0), (0, 0, width, height), shadow.filter(ImageFilter.GaussianBlur(offset * 2)).point(lambda v: int(v * 0.6)))
+    ground.paste(screen, (x, y), mask)
+
+    out = io.BytesIO()
+    ground.save(out, format="PNG")
+    return out.getvalue()
+
+
+def draw_screen_shot(db: Session, project: YTProject, shot: YTShot, storage: StoragePort):
+    """Make a screen shot's frame from its screenshot. Costs nothing and involves no model."""
+    from youtube import storyboard
+    from youtube.images import GeneratedImage
+    from youtube.media import SIZES
+
+    screen = get_asset(db, project.business_id, shot.screen_asset_id)
+    if screen is None or screen.kind != "screen":
+        raise ProjectError(f"Shot {shot.position} shows a screen that no longer exists; choose another")
+    width, height = SIZES[project.format]
+    data = screen_frame(storage.get(screen.storage_key), width, height, project.format)
+    key = storyboard._store_image(storage, (project.business_id, "projects", str(project.id), "images",
+                                            f"shot-{shot.position:04d}"), data, "image/png")
+    storyboard._delete(storage, shot.image_key)
+    shot.image_key, shot.image_error, shot.image_issues = key, None, None
+    projects.clear_clip(shot)
+    return GeneratedImage(data, "image/png", width, height)
+
+
+def _clear_screen(shot: YTShot, storage: Optional[StoragePort]) -> None:
+    """Stop showing a screen. Its frame goes too: the shot now needs a drawn scene."""
+    from youtube import storyboard
+
+    shot.screen_asset_id = None
+    if shot.image_key:
+        storyboard._delete(storage, shot.image_key)
+        shot.image_key = None
+    projects.clear_clip(shot)
+
+
+def set_shot_screen(db: Session, project: YTProject, shot_id: int, asset_id: Optional[int],
+                    storage: StoragePort) -> YTShot:
+    """Show a screen in a shot, framed at once, or None to go back to a drawn scene."""
+    projects._require_not_busy(project)
+    shot = db.execute(select(YTShot).where(YTShot.id == shot_id, YTShot.project_id == project.id)).scalar_one_or_none()
+    if shot is None:
+        raise ProjectError("No such shot in this project")
+    if asset_id is not None:
+        screen = get_asset(db, project.business_id, asset_id)
+        if screen is None or screen.kind != "screen":
+            raise ProjectError("Choose one of this business's screen assets")
+    if asset_id == shot.screen_asset_id:
+        return shot
+    if asset_id is None:
+        _clear_screen(shot, storage)
+    else:
+        shot.screen_asset_id = asset_id
+        draw_screen_shot(db, project, shot, storage)
+    projects.clear_approval(project)
+    projects.settle_status(db, project)
     db.commit()
     db.refresh(shot)
     return shot

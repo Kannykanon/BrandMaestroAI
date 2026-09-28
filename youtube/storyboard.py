@@ -347,13 +347,15 @@ def storyboard_problems(db: Session, project: YTProject, port: Optional[ImagePor
     """Everything that must be fixed before the storyboard can be drawn. Empty means ready."""
     port = port or ImageRegistry.get()
     problems = []
-    if port.missing_env():
-        problems.append(f"The image provider {port.name} is not configured (missing {', '.join(port.missing_env())})")
     shots = projects._shots(db, project)
+    # Screen shots are framed in code, so they need neither an image model nor anyone on screen.
+    drawn = [s for s in shots if not s.screen_asset_id]
+    if port.missing_env() and (drawn or not shots):
+        problems.append(f"The image provider {port.name} is not configured (missing {', '.join(port.missing_env())})")
     if not shots:
         return problems + ["Plan the shots first"]
     cast = _cast_characters(db, project)
-    needed = sorted({label for shot in shots for label in on_screen(shot, port.max_characters)})
+    needed = sorted({label for shot in drawn for label in on_screen(shot, port.max_characters)})
     for label in needed:
         character = cast.get(label)
         if character is None:
@@ -438,10 +440,15 @@ def scene_references(db: Session, project: YTProject, shot: YTShot, storage: Sto
 
 def draw_shot(db: Session, project: YTProject, shot: YTShot, storage: StoragePort, port: ImagePort,
               checker="default") -> GeneratedImage:
-    """Draw a shot, check it, and redraw it (at most YT_IMAGE_CHECK_RETRIES times) while problems are found."""
-    from youtube.brand_assets import shot_products
+    """Draw a shot, check it, and redraw it (at most YT_IMAGE_CHECK_RETRIES times) while problems are found.
+
+    A shot showing a screen is framed from its screenshot instead: no model, no check, no cost.
+    """
+    from youtube.brand_assets import draw_screen_shot, shot_products
     from youtube.quality import check_retries, scene_checker
 
+    if shot.screen_asset_id:
+        return draw_screen_shot(db, project, shot, storage)
     products = shot_products(db, project, shot)
     references, characters = scene_references(db, project, shot, storage, port, products)
     style = db.get(YTStyle, project.style_id) if project.style_id else None
@@ -556,7 +563,7 @@ def approve_storyboard(db: Session, project: YTProject) -> YTProject:
 def storyboard_summary(db: Session, project: YTProject, shots: list[YTShot]) -> dict:
     try:
         port = ImageRegistry.get()
-        estimate = port.cost_usd(sum(1 for s in shots if not s.image_key))
+        estimate = port.cost_usd(sum(1 for s in shots if not s.image_key and not s.screen_asset_id))
         provider, configured = port.name, not port.missing_env()
     except ValueError:
         estimate, provider, configured = None, None, False
