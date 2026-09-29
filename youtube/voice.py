@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 import urllib.request
 from abc import ABC, abstractmethod
@@ -35,6 +36,33 @@ logger = logging.getLogger(__name__)
 
 def _env(name: str) -> str:
     return os.getenv(name, "").strip()
+
+
+# Initialisms that are said as words; every other short all-capitals word is spelled out.
+SAID_AS_WORDS = frozenset({"NASA", "NATO", "FIFA", "OPEC", "AIDS", "ASAP", "SWIFT", "COVID", "LASER", "RADAR",
+                           "SCUBA", "PIN", "SIM", "GIF", "JPEG", "UEFA", "NAFTA", "ECOWAS"})
+_INITIALISM = re.compile(r"\b([A-Z]{2,5})(s?)\b")
+
+
+def spoken_text(text: str, keep: frozenset[str] | set[str] = frozenset()) -> str:
+    """What a voice is given for a line: initialisms spelled letter by letter, nothing else changed.
+
+    Kokoro reads "USDT" as one word, roughly "ust", and "USDC" as "usdk"; "U S D T"
+    is four letter names. Only the voice gets this: captions keep the script's words.
+    Words in `keep` (a project's speaker labels, which screenplays write in capitals)
+    and a line written wholly in capitals (shouting, not initialisms) are left alone.
+    """
+    letters = [c for c in text if c.isalpha()]
+    if letters and sum(c.isupper() for c in letters) / len(letters) > 0.6:
+        return text
+
+    def spell(match: re.Match) -> str:
+        word, plural = match.groups()
+        if word in SAID_AS_WORDS or word in keep:
+            return match.group(0)
+        return " ".join(word) + ("'s" if plural else "")
+
+    return _INITIALISM.sub(spell, text)
 
 
 @dataclass(frozen=True)

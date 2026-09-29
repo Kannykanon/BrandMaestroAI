@@ -48,7 +48,10 @@ from youtube.storage import StoragePort, business_key
 
 logger = logging.getLogger(__name__)
 
-TALKING_SHOT_TYPES = {"dialogue", "two_character"}
+# Only a shot with the speaker alone on screen is lip-synced. The avatar models
+# animate every face in the frame and cannot be told which one is speaking, so a
+# two_character shot moved both people's mouths; its line now plays over the still.
+TALKING_SHOT_TYPES = {"dialogue"}
 END_TAIL_S = 0.6  # a moment of the last image after the final word
 
 

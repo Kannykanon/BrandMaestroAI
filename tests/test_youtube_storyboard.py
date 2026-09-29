@@ -230,8 +230,21 @@ class TestStoryboard:
         project, _, _ = ready_project(env)
         shot = next(s for s in projects._shots(env.db, project) if s.speaker_label == "LEO")
         shot.characters = ["MAYA", "NARRATOR", "LEO", "MAYA"]
+        shot.shot_type = "two_character"
         assert storyboard.on_screen(shot, 1) == ["LEO"]
         assert storyboard.on_screen(shot, 5) == ["LEO", "MAYA", "MAYA"]
+
+    def test_a_dialogue_shot_shows_the_speaker_alone(self, env):
+        # It is lip-synced, and the avatar models move every mouth in the frame.
+        project, _, _ = ready_project(env)
+        shot = next(s for s in projects._shots(env.db, project) if s.speaker_label == "LEO")
+        shot.characters = ["MAYA", "LEO"]
+        assert shot.shot_type == "dialogue"
+        assert storyboard.on_screen(shot, 5) == ["LEO"]
+        storyboard.draw_shot(env.db, project, shot, env.storage, env.images, checker=None)
+        call = env.images.calls[-1]
+        assert [label for label in call.labels if label.startswith("Reference sheet")] == ["Reference sheet for LEO (Leo):"]
+        assert "the only person whose face can be seen" in call.prompt
 
     def test_one_failed_shot_does_not_stop_the_others(self, env):
         project, _, _ = ready_project(env)

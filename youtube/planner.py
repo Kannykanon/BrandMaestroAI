@@ -22,7 +22,7 @@ PLANNER_PROMPT = """You are storyboarding a video from an approved script. Do no
 For each shot below, decide:
 - "shot_type": one of "narration", "dialogue", "two_character", "cutaway".
     * A NARRATOR shot is always "narration".
-    * A character's line is "dialogue", or "two_character" when the other person in the exchange should be visible in the same frame.
+    * A character's line is "dialogue": the speaker alone in frame, lip-synced. Use "two_character" only when both people must be seen together; that shot is held still under the line, so prefer "dialogue" for most lines.
 - "visual": one or two sentences describing the image on screen: setting, action, framing, mood. Describe one single moment, like one frame of a film, not a sequence of actions. Describe what we see, not what is said.
 - "characters": the speaker labels of every character visible in the shot, including in narration shots. Empty only when none of them can be seen.
 - "sound": the ambient sound of the scene in a few words (e.g. "heavy rain, distant thunder", "busy cafe chatter"), or "" if it should be quiet. No music, no speech.

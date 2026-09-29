@@ -36,7 +36,7 @@ from youtube.eligibility import get_eligible_script
 from youtube.models import FORMATS, YTCast, YTCharacter, YTCost, YTProject, YTShot
 from youtube.script_parser import NARRATOR, ScriptError, plan_shots
 from youtube.storage import StoragePort, business_key
-from youtube.voice import VoiceRegistry
+from youtube.voice import VoiceRegistry, spoken_text
 
 logger = logging.getLogger(__name__)
 
@@ -454,7 +454,7 @@ def voice_project(db: Session, project: YTProject, storage: StoragePort, force: 
             clips.append(Audio.from_wav(storage.get(shot.audio_key)))
             continue
         provider = VoiceRegistry.get(character.voice_provider)
-        audio = provider.synthesize(shot.text, character.voice_id)
+        audio = provider.synthesize(spoken_text(shot.text, keep=set(voices)), character.voice_id)
         storage.put(key, audio.to_wav(), content_type="audio/wav")
         shot.audio_key, shot.duration_s, shot.status = key, audio.duration_s, "voiced"
         clear_clip(shot)

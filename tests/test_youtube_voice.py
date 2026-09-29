@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from youtube.audio import SAMPLE_RATE, Audio, concatenate, silence
-from youtube.voice import GoogleTTSVoice, KokoroVoice, VoicePort, VoiceRegistry
+from youtube.voice import GoogleTTSVoice, KokoroVoice, VoicePort, VoiceRegistry, spoken_text
 
 
 class TestAudio:
@@ -55,6 +55,19 @@ def kokoro_dir(tmp_path):
     (tmp_path / (KokoroVoice.VOICES_FILE + ".npz")).rename(tmp_path / KokoroVoice.VOICES_FILE)
     (tmp_path / KokoroVoice.DEFAULT_MODEL).write_bytes(b"model")
     return tmp_path
+
+
+class TestSpokenText:
+    def test_initialisms_are_spelled_letter_by_letter(self):
+        # Kokoro reads "USDT" as one word, roughly "ust".
+        assert spoken_text("Fund with USDT or USDC.") == "Fund with U S D T or U S D C."
+        assert spoken_text("US stocks, in your USD balance.") == "U S stocks, in your U S D balance."
+        assert spoken_text("Two ETFs.") == "Two E T F's."
+
+    def test_words_and_names_are_left_alone(self):
+        assert spoken_text("NASA and NATO, a dollar, I am, Hisa.") == "NASA and NATO, a dollar, I am, Hisa."
+        assert spoken_text("KAN walks in with EMK.", keep={"KAN"}) == "KAN walks in with E M K."
+        assert spoken_text("GET OUT OF MY HOUSE!") == "GET OUT OF MY HOUSE!", "a shouted line is not initialisms"
 
 
 class TestKokoro:

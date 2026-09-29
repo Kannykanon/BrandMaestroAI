@@ -335,7 +335,13 @@ def _cast_characters(db: Session, project: YTProject) -> dict[str, Optional[YTCh
 
 
 def on_screen(shot: YTShot, max_characters: int) -> list[str]:
-    """Speaker labels to draw in a shot: the speaker first, narrator never, at most max_characters."""
+    """Speaker labels to draw in a shot: the speaker first, narrator never, at most max_characters.
+
+    A dialogue shot is lip-synced, and the avatar models animate every face in the
+    frame, so it shows the speaker alone.
+    """
+    if shot.shot_type == "dialogue" and shot.speaker_label != NARRATOR:
+        return [shot.speaker_label][:max_characters]
     labels = [c for c in (shot.characters or []) if c != NARRATOR]
     if shot.speaker_label != NARRATOR and shot.speaker_label in labels:
         labels.remove(shot.speaker_label)
@@ -394,7 +400,8 @@ def scene_prompt(project: YTProject, shot: YTShot, style: Optional[YTStyle],
     speaker_names = dict(characters)
     if shot.shot_type == "dialogue" and shot.speaker_label in speaker_names:
         lines.append(f"FRAMING: {speaker_names[shot.speaker_label].name} is speaking. Their face is clearly visible, "
-                     "turned towards the camera, mouth unobstructed, head and shoulders in the upper two thirds of the frame.")
+                     "turned towards the camera, mouth unobstructed, head and shoulders in the upper two thirds of the frame. "
+                     "They are the only person whose face can be seen: anyone else is out of frame, or seen from behind.")
     elif shot.shot_type == "two_character" and len(characters) >= 2:
         names = " and ".join(c.name for _, c in characters[:2])
         lines.append(f"FRAMING: {names} are both in frame with their faces unobstructed, facing each other or the camera.")

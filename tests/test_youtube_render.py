@@ -316,6 +316,14 @@ class TestTimeline:
         items = render.timeline(shots_of(env, project), PaidAvatar())
         assert items[0].shot.speaker_label == "NARRATOR" and items[0].talk_s == 0
 
+    def test_a_two_character_shot_is_heard_not_lip_synced(self, env):
+        # The avatar model would move both people's mouths, not only the speaker's.
+        project = approved_project(env)
+        shots = shots_of(env, project)
+        shots[1].shot_type = "two_character"
+        items = render.timeline(shots, PaidAvatar())
+        assert items[1].talk_s == 0 and items[2].talk_s > 0
+
 
 class TestEstimateAndProblems:
     def test_estimate_counts_new_clips_and_budget(self, env, monkeypatch):
